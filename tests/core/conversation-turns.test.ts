@@ -407,6 +407,26 @@ describe('conversation turn service', () => {
     expect(h.seenArgs[1]!.attachments).toBeUndefined()
   })
 
+  test('a done emit that throws settles as an error without billing the completion twice', async () => {
+    const h = makeHarness()
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'hi' } as ChatChunk
+      yield { type: 'done', usage: { input: 5, output: 2 } } as ChatChunk
+    })
+    const metered: unknown[] = []
+    const service = makeService(h, {
+      hooks: { meter: async (info) => { metered.push(info.usage) } },
+      payload: (key) => {
+        if (h.events.some((e) => e.event === 'test.chunk')) throw new Error('bus down')
+        return { threadKey: key }
+      },
+    })
+    expect(await service.start(h.ctx, 'm1', 'hello')).toBe('accepted')
+    await service.waitFor('m1')
+    expect(h.rows.get('m1')!.some((r) => r.kind === 'error')).toBe(true)
+    expect(metered).toEqual([{ input: 5, output: 2 }])
+  })
+
   test('two empty completions settle as an error turn with kind empty_reply — never a silent gap', async () => {
     const h = makeHarness()
     h.setStream(async function* () { yield { type: 'done', usage: { input: 10, output: 4 } } as ChatChunk })

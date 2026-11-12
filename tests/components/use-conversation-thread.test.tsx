@@ -287,14 +287,14 @@ describe('useConversationThread', () => {
   })
 
   it('an older in-flight load (started before the settle) never drops the retained turn; the settle load does', async () => {
-    const pending: Array<(messages: ConversationMessage[]) => void> = []
-    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
-      pending.push(messages => resolve({ messages }))
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void; reject: (e: Error) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve, reject) => {
+      pending.push({ resolve: messages => resolve({ messages }), reject })
     })
     const store = makeStore()
     const { result } = await actRender(() => hookFor(store, 'a', { load, events: { ...EVENTS, appended: 'conv.test.appended' } }))
     await waitUntil(() => pending.length === 1, { label: 'mount load started' })
-    await act(async () => { pending[0]!([]) })
+    await act(async () => { pending[0]!.resolve([]) })
     await act(async () => {
       emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'reply' } })
     })
@@ -303,14 +303,152 @@ describe('useConversationThread', () => {
     await waitUntil(() => pending.length === 2, { label: 'mid-turn load started' })
     await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
     await waitUntil(() => pending.length === 3, { label: 'settle load started' })
-    // … resolves after the settle with pre-settle rows: the live turn stays.
-    await act(async () => { pending[1]!([]) })
+    // … fails after the settle: it started before the settle, so it must not drop the
+    // retained turn (the send guard would not catch a throw — only the sequence floor does).
+    await act(async () => { pending[1]!.reject(new Error('offline')) })
+    await act(async () => {})
     expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'reply' }])
     await act(async () => {
-      pending[2]!([{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }])
+      pending[2]!.resolve([{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }])
     })
     expect(result.current.liveChunks).toBeNull()
     expect(result.current.messages).toHaveLength(1)
+  })
+
+  it('an older in-flight load that returns null after the settle never drops the retained turn either', async () => {
+    const pending: Array<{ resolve: (body: { messages: ConversationMessage[] } | null) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] } | null>((resolve) => {
+      pending.push({ resolve })
+    })
+    const store = makeStore()
+    const { result } = await actRender(() => hookFor(store, 'a', { load }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve({ messages: [] }) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'reply' } })
+    })
+    act(() => { void result.current.refresh() })
+    await waitUntil(() => pending.length === 2, { label: 'mid-turn load started' })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 3, { label: 'settle load started' })
+    await act(async () => { pending[1]!.resolve(null) })
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'reply' }])
+    await act(async () => { pending[2]!.resolve({ messages: [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't1', content: 'reply' }] }) })
+    expect(result.current.liveChunks).toBeNull()
+  })
+
+  it('a send that fails while the previous turn\'s settle load is in flight: the reply still arrives and the failed message stays', async () => {
+    // Round-2 finding: the send bumped the sequence, the settle load was rejected, and the
+    // previous reply never showed — only the failed optimistic row.
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push({ resolve: messages => resolve({ messages }) })
+    })
+    const store = makeStore()
+    store.postResult = { ok: false, status: 500, error: 'boom' }
+    const { result } = await actRender(() => hookFor(store, 'a', { load }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve([{ kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'first' }]) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn A' } })
+    })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 2, { label: 'settle load started' })
+    await act(async () => { await result.current.send('second') })
+    expect(result.current.sendError).toBe('boom')
+    const aRows: ConversationMessage[] = [
+      { kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'first' },
+      { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'tA', content: 'turn A' },
+    ]
+    // The stale settle load is rejected — and replaced by a fresh one.
+    await act(async () => { pending[1]!.resolve(aRows) })
+    await waitUntil(() => pending.length === 3, { label: 'replacement load started' })
+    await act(async () => { pending[2]!.resolve(aRows) })
+    expect(result.current.messages.map(m => (m.kind === 'user' || m.kind === 'assistant' ? m.content : m.kind))).toEqual(['first', 'turn A', 'second'])
+    expect(result.current.liveChunks).toBeNull()
+    expect(result.current.streaming).toBe(false)
+    // The next send retires the failed row.
+    store.postResult = { ok: true }
+    await act(async () => { await result.current.send('third') })
+    expect(result.current.messages.map(m => (m.kind === 'user' || m.kind === 'assistant' ? m.content : m.kind))).toEqual(['first', 'turn A', 'second', 'third'])
+    expect(pending).toHaveLength(3) // a plain send starts no load
+  })
+
+  it('a send accepted while the previous settle load is in flight keeps its optimistic row through the replacement load, with no duplicate once durable', async () => {
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push({ resolve: messages => resolve({ messages }) })
+    })
+    const store = makeStore()
+    const { result } = await actRender(() => hookFor(store, 'a', { load }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve([]) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn A' } })
+    })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 2, { label: 'settle load started' })
+    await act(async () => { await result.current.send('second') })
+    const aRows: ConversationMessage[] = [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'tA', content: 'turn A' }]
+    await act(async () => { pending[1]!.resolve(aRows) })
+    await waitUntil(() => pending.length === 3, { label: 'replacement load started' })
+    // The replacement read storage before the POST landed: the optimistic row is re-appended.
+    await act(async () => { pending[2]!.resolve(aRows) })
+    expect(result.current.messages.map(m => (m.kind === 'user' || m.kind === 'assistant' ? m.content : m.kind))).toEqual(['turn A', 'second'])
+    expect(result.current.liveChunks).toEqual([])
+    expect(result.current.streaming).toBe(true)
+    // B settles: its durable row replaces the optimistic one, nothing doubles.
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 4, { label: 'B settle load started' })
+    await act(async () => {
+      pending[3]!.resolve([...aRows,
+        { kind: 'user', ts: '2026-07-20T00:00:02Z', content: 'second' },
+        { kind: 'assistant', ts: '2026-07-20T00:00:03Z', turnId: 'tB', content: 'turn B' }])
+    })
+    expect(result.current.messages.map(m => (m.kind === 'user' || m.kind === 'assistant' ? m.content : m.kind))).toEqual(['turn A', 'second', 'turn B'])
+    expect(result.current.liveChunks).toBeNull()
+  })
+
+  it('a queued send acknowledged after done but before the settle load lands still settles the turn and takes the queue from the server', async () => {
+    // Round-2 finding: the late acknowledgment bumped the sequence, the settle load was
+    // rejected, the finished turn stayed "live" and the consumed queue item reappeared.
+    const pending: Array<{ resolve: (body: { messages: ConversationMessage[]; queued?: Array<{ id: string; ts: string; content: string }>; streaming?: boolean }) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push({ resolve })
+    })
+    let resolvePost: (v: { ok: boolean; queued?: { id: string } }) => void = () => {}
+    const post = () => new Promise<{ ok: boolean; queued?: { id: string } }>((resolve) => { resolvePost = resolve })
+    const store = makeStore()
+    const { result } = await actRender(() => hookFor(store, 'a', { load, post, queue: { enabled: true } }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve({ messages: [] }) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn A' } })
+    })
+    const sent = act(async () => { await result.current.send('follow-up') })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await waitUntil(() => pending.length === 2, { label: 'settle load started' })
+    // The acknowledgment lands after done, before the settle load resolves.
+    await act(async () => { resolvePost({ ok: true, queued: { id: 'q1' } }) })
+    await sent
+    expect(result.current.queued.map(q => q.id)).toEqual(['q1'])
+    await act(async () => { pending[1]!.resolve({ messages: [{ kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'tA', content: 'turn A' }] }) })
+    await waitUntil(() => pending.length === 3, { label: 'replacement load started' })
+    // The server already started the follow-up: the item is gone from the queue, the turn is live.
+    await act(async () => {
+      pending[2]!.resolve({
+        messages: [
+          { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'tA', content: 'turn A' },
+          { kind: 'user', ts: '2026-07-20T00:00:02Z', content: 'follow-up' },
+        ],
+        queued: [],
+        streaming: true,
+      })
+    })
+    expect(result.current.messages).toHaveLength(2)
+    expect(result.current.queued).toEqual([])
+    expect(result.current.liveChunks).toEqual([])
+    expect(result.current.streaming).toBe(true)
   })
 
   it('thread switch resets state and ignores events for the previous thread', async () => {

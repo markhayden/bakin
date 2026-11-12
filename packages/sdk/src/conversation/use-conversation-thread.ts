@@ -146,6 +146,26 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // first chunk) starts from an empty live turn and is never cleared by the
   // previous turn's refetch settling after it.
   const retainedLiveFromLoadSeqRef = useRef<number | null>(null)
+  // The settle refetch is owed until a load started at or after the settle
+  // finishes (applied, thrown, or null) — a send landing mid-flight rejects
+  // that load's snapshot, so the settlement is re-run from a fresh read.
+  const settleLoadFloorRef = useRef<number | null>(null)
+  // Optimistic user rows not yet seen in a transcript load. A load re-appends
+  // them after its rows (dropping the ones it carries, matched by content on
+  // the tail), so a refetch that read storage before the POST landed never
+  // hides the message the composer already let go of. A FAILED send keeps its
+  // row until the next send or thread switch — the row is the user's only
+  // copy of the text.
+  const optimisticRowsRef = useRef<Array<{ row: ConversationMessage; failed: boolean }>>([])
+  const withOptimisticRows = (durable: ConversationMessage[]): ConversationMessage[] => {
+    const pending = optimisticRowsRef.current
+    if (pending.length === 0) return durable
+    const tail = durable.filter((m) => m.kind === 'user').slice(-pending.length)
+    const textOf = (m: ConversationMessage) => (m.kind === 'user' ? m.content : undefined)
+    const kept = pending.filter((o) => o.failed || !tail.some((m) => textOf(m) === textOf(o.row)))
+    optimisticRowsRef.current = kept
+    return kept.length ? [...durable, ...kept.map((o) => o.row)] : durable
+  }
 
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
@@ -160,8 +180,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // the retained live turn goes with its outcome, whatever that is.
     const settlesRetained = () =>
       retainedLiveFromLoadSeqRef.current !== null && loadSeq >= retainedLiveFromLoadSeqRef.current
+    const isSettleLoad = () => settleLoadFloorRef.current !== null && loadSeq >= settleLoadFloorRef.current
     const dropRetained = () => {
-      if (!settlesRetained() || activeKeyRef.current !== threadKey) return
+      if (activeKeyRef.current !== threadKey) return
+      if (isSettleLoad()) settleLoadFloorRef.current = null
+      if (!settlesRetained()) return
       retainedLiveFromLoadSeqRef.current = null
       setLiveChunks(null)
     }
@@ -185,11 +208,22 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       dropRetained()
       return
     }
-    if (sendSeqRef.current !== sendSeqAtStart) return
+    if (sendSeqRef.current !== sendSeqAtStart) {
+      // A send (or a queued-send acknowledgment) landed while this load was
+      // in flight; its snapshot is stale. If it was the load meant to settle
+      // the retained turn, settlement still has to happen — from a fresh
+      // read, the newest truth — or the finished turn stays "live" and the
+      // reply it carries never shows (review finding, round 2).
+      if (isSettleLoad()) {
+        settleLoadFloorRef.current = null
+        void loadTranscript()
+      }
+      return
+    }
     if (loadSeq < appliedLoadSeqRef.current) return
     appliedLoadSeqRef.current = loadSeq
     setMeta(body.meta ?? null)
-    setMessages(body.messages)
+    setMessages(withOptimisticRows(body.messages))
     setQueued(body.queued ?? [])
     // Same batch as the rows that replace it: the live turn is swapped for
     // its durable twin in one render, never a frame without it.
@@ -209,6 +243,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMeta(null)
     setLiveChunks(null)
     retainedLiveFromLoadSeqRef.current = null
+    settleLoadFloorRef.current = null
+    optimisticRowsRef.current = []
     setStreaming(false)
     setSendError(null)
     setQueued([])
@@ -259,6 +295,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // later one) applies — loadTranscript clears them in the same batch as
     // the rows.
     retainedLiveFromLoadSeqRef.current = loadSeqRef.current + 1
+    settleLoadFloorRef.current = loadSeqRef.current + 1
     // The settle refetch IS the newest truth — bump the seq so it applies
     // even if an older send's guard would otherwise block a stale load.
     sendSeqRef.current += 1
@@ -328,14 +365,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
         )
       } else {
         sendSeqRef.current += 1
-        setMessages((current) => [
-          ...current,
-          optimisticUser ?? {
-            kind: 'user',
-            ts: new Date().toISOString(),
-            content,
-          },
-        ])
+        const row = optimisticUser ?? { kind: 'user' as const, ts: new Date().toISOString(), content }
+        optimisticRowsRef.current = [...optimisticRowsRef.current.filter((o) => !o.failed), { row, failed: false }]
+        setMessages((current) => [...current, row])
         setStreaming(true)
         retainedLiveFromLoadSeqRef.current = null
         setLiveChunks([])
@@ -349,6 +381,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     const row: ConversationMessage = optionsRef.current.optimisticRow
       ? optionsRef.current.optimisticRow(content, attachments)
       : { kind: 'user', ts: new Date().toISOString(), content }
+    // A new send retires earlier FAILED rows (their text is back in the
+    // composer or abandoned); rows still awaiting durability stay.
+    optimisticRowsRef.current = [...optimisticRowsRef.current.filter((o) => !o.failed), { row, failed: false }]
     setMessages((prev) => [...prev, row])
     setStreaming(true)
     // This turn owns the live state now: a previous turn's settle refetch
@@ -367,6 +402,8 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       setStreaming(false)
       setLiveChunks(null)
       setSendError(res.error ?? `send failed (${res.status ?? 'network'})`)
+      const entry = optimisticRowsRef.current.find((o) => o.row === row)
+      if (entry) entry.failed = true
     }
   }, [])
 

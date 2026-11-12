@@ -723,6 +723,20 @@ async function runTurn(
     }
   }
 
+  // Spend is attributed ONCE per turn whichever path settles it — the
+  // success path meters before its done emit, and a throwing emit must not
+  // bill the same completion again from the error path.
+  let metered = false
+  const meterOnce = async () => {
+    if (metered) return
+    metered = true
+    try {
+      await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
+    } catch (err) {
+      log.error(`[${config.name}] metering failed for ${key}`, err as Error)
+    }
+  }
+
   const tap = (chunk: ChatChunk) => {
     try {
       config.hooks?.onChunk?.(key, chunk)
@@ -852,11 +866,7 @@ async function runTurn(
     // Attribute the turn's spend — aborted turns billed whatever usage
     // arrived. A usage-less done still records the run (tokens unknown,
     // never a fabricated zero). Never throws into the turn path.
-    try {
-      await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
-    } catch (err) {
-      log.error(`[${config.name}] metering failed for ${key}`, err as Error)
-    }
+    await meterOnce()
     ctx.events.emit(config.events.done, {
       ...config.payload(key),
       agentId,
@@ -881,11 +891,7 @@ async function runTurn(
       } catch (hookErr) {
         log.error(`[${config.name}] onTurnComplete hook failed for ${key}`, hookErr as Error)
       }
-      try {
-        await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
-      } catch (meterErr) {
-        log.error(`[${config.name}] metering failed for ${key}`, meterErr as Error)
-      }
+      await meterOnce()
       try {
         ctx.events.emit(config.events.done, {
           ...config.payload(key),
@@ -912,13 +918,7 @@ async function runTurn(
     // A completion that was billed before the turn failed (an empty reply
     // twice: two done chunks, then the error) is still spend — attribute
     // it like an aborted turn's. No done arrived ⇒ nothing to attribute.
-    if (doneUsage) {
-      try {
-        await config.hooks?.meter?.({ key, agentId, turnId, usage: doneUsage })
-      } catch (meterErr) {
-        log.error(`[${config.name}] metering failed for ${key}`, meterErr as Error)
-      }
-    }
+    if (doneUsage) await meterOnce()
     try {
       ctx.events.emit(config.events.error, { ...config.payload(key), agentId, message, ...(kind ? { kind } : {}) })
     } catch (emitErr) {
