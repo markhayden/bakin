@@ -360,7 +360,11 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // `appended` that lands before React re-renders must still refetch (the
     // settle load may have read storage before the flush).
     streamingRef.current = false
+    // A settle ends whichever live turn was open — chunks or not — and
+    // retires its generation, so a send's late acknowledgment (or failure)
+    // can neither re-open nor clear it: the refetch is the authority now.
     liveOpenRef.current = false
+    liveGenRef.current += 1
     // The live chunks stay until the settle refetch (the next load, or any
     // later one) applies — loadTranscript clears them in the same batch as
     // the rows.
@@ -458,14 +462,15 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
         addOptimisticRow(row).ackedLoadSeq = loadSeqRef.current + 1
         setMessages((current) => [...current, row])
         // The server took the message as its next turn. If that turn's
-        // chunks — or its settle — already reached us, the live state is
+        // chunks — or any settle — already reached us, the live state is
         // theirs; only when nothing has happened since the send does this
-        // open the provisional live turn.
+        // open the provisional live turn (empty: the previous turn is over
+        // on the server, its chunks come back with the settle refetch).
         if (liveGenRef.current === liveGenAtSend) {
           setStreaming(true)
           retainedLiveFromLoadSeqRef.current = null
           openLiveTurn()
-          setLiveChunks((prev) => prev ?? [])
+          setLiveChunks([])
         }
       }
       if (inFlightSendsRef.current === 0) runOwedSettle()

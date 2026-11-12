@@ -784,6 +784,65 @@ describe('useConversationThread', () => {
     expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'turn D' }]) // retained until its load
   })
 
+  it('an acknowledgment that lands after the previous turn settled, before the new reply\'s first chunk, never merges the two turns', async () => {
+    // Round-7 finding: the accepted-start kept A's retained chunks as B's live turn, so
+    // B's first chunk rendered "turn Aturn B".
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push({ resolve: messages => resolve({ messages }) })
+    })
+    let resolvePost: (v: { ok: boolean }) => void = () => {}
+    const post = () => new Promise<{ ok: boolean }>((resolve) => { resolvePost = resolve })
+    const store = makeStore()
+    const { result } = await actRender(() => hookFor(store, 'a', { load, post, queue: { enabled: true } }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve([]) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn A' } })
+    })
+    let sent!: Promise<void>
+    await act(async () => { sent = result.current.send('next') })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    await act(async () => { resolvePost({ ok: true }); await sent })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn B' } })
+    })
+    expect(result.current.liveChunks).toEqual([{ type: 'text', content: 'turn B' }])
+  })
+
+  it('a reply that failed before its first chunk, settling before the acknowledgment, is not re-marked as streaming', async () => {
+    const pending: Array<{ resolve: (messages: ConversationMessage[]) => void }> = []
+    const load = (_k: string) => new Promise<{ messages: ConversationMessage[] }>((resolve) => {
+      pending.push({ resolve: messages => resolve({ messages }) })
+    })
+    let resolvePost: (v: { ok: boolean }) => void = () => {}
+    const post = () => new Promise<{ ok: boolean }>((resolve) => { resolvePost = resolve })
+    const store = makeStore()
+    const { result } = await actRender(() => hookFor(store, 'a', { load, post, queue: { enabled: true } }))
+    await waitUntil(() => pending.length === 1, { label: 'mount load started' })
+    await act(async () => { pending[0]!.resolve([]) })
+    await act(async () => {
+      emitPluginEvent({ event: EVENTS.chunk, threadKey: 'a', chunk: { type: 'text', content: 'turn A' } })
+    })
+    let sent!: Promise<void>
+    await act(async () => { sent = result.current.send('next') })
+    await act(async () => { emitPluginEvent({ event: EVENTS.done, threadKey: 'a' }) })
+    // B errors at once, with no chunk, before its POST answers.
+    await act(async () => { emitPluginEvent({ event: EVENTS.error, threadKey: 'a', message: 'runtime down' }) })
+    await act(async () => { resolvePost({ ok: true }); await sent })
+    expect(result.current.streaming).toBe(false)
+    await waitUntil(() => pending.length === 2, { label: 'owed settle load started' })
+    const durable: ConversationMessage[] = [
+      { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 'tA', content: 'turn A' },
+      { kind: 'user', ts: '2026-07-20T00:00:02Z', content: 'next' },
+      { kind: 'error', ts: '2026-07-20T00:00:03Z', turnId: 'tB', message: 'runtime down' },
+    ]
+    await act(async () => { pending[1]!.resolve(durable) })
+    expect(result.current.messages).toEqual(durable)
+    expect(result.current.streaming).toBe(false)
+    expect(result.current.liveChunks).toBeNull()
+  })
+
   it('a send that fails after a later send took over the live turn clears nothing', async () => {
     // Round-6 finding: A's rejection cleared B's provisional live turn before B's first chunk.
     const store = makeStore()
