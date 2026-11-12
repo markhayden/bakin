@@ -308,6 +308,10 @@ How it holds:
   file-backed one creates `models-store.json` on first read.
 - OpenClaw tool access is verified with `readMcpCredential`, which never
   creates `mcp-secret`. With no secret, tool access reads as not provisioned.
+- A check does not write the file log either (`BAKIN_DISABLE_FILE_LOG`, set
+  before anything can log): the log lives in the Bakin home, so one log
+  line used to create `~/.bakin/logs/` on a machine with no home yet. The
+  check scenarios snapshot `logs/` too (`snapshotTree(…, { includeLogs })`).
 - The orchestrator never writes or clears the marker under `checkOnly`, and
   an empty roster is reported as `skipped` / `check_only`, not provisioned.
 

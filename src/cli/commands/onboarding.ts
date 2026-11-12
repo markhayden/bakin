@@ -120,12 +120,22 @@ export async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}
 }
 
 /**
+ * A check does not even leave a log line behind: the file log lives in the
+ * Bakin home, and writing it would create `~/.bakin/logs/` on a machine
+ * that has no home yet. Called before anything in the process can log.
+ */
+function checkWritesNoLog(): void {
+  process.env.BAKIN_DISABLE_FILE_LOG = '1'
+}
+
+/**
  * A check changes nothing: compose the check-only services (read-only
  * stores, no secret creation or migration, no provisioning) before any
  * component can reach for the normal ones. This process only checks, so
  * the mode is never switched back.
  */
 async function composeForCheck(): Promise<void> {
+  checkWritesNoLog()
   const { createCheckAppServices } = await import('../../core/app-services')
   await createCheckAppServices()
 }
@@ -233,6 +243,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const force = args.includes('--force')
   const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
+
+  if (checkOnly) checkWritesNoLog()
 
   // --check changes nothing and --force clears the marker: there is no run
   // that does both.
