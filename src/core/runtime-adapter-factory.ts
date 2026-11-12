@@ -6,16 +6,24 @@ import { withModelAvailabilityObservation } from './model-availability'
 import type { RuntimeAdapterName } from './settings'
 
 export interface RuntimeAdapterSupportInfo {
+  /** The runtime's name as people write it. */
+  label: string
+  /** One line on what choosing it means, for a first-run choice. */
+  summary: string
   setupUrl: string
   docsUrl: string
 }
 
 const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportInfo> = {
   openclaw: {
+    label: 'OpenClaw',
+    summary: 'A separate gateway you install and run alongside Bakin.',
     setupUrl: 'https://makinbakin.com/docs/start/first-time-setup/',
     docsUrl: 'https://openclaw.ai/docs/',
   },
   pi: {
+    label: 'Pi',
+    summary: 'Runs inside Bakin; nothing else to install.',
     setupUrl: 'https://pi.dev/docs/latest/quickstart',
     docsUrl: 'https://pi.dev/docs/latest',
   },

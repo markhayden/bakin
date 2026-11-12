@@ -229,7 +229,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(1)
   }
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
-  const { collectOnboardingSelections, OnboardingCancelledError } = await import('../../core/cli/onboarding-interactive')
+  const { collectOnboardingSelections, OnboardingCancelledError, promptRuntimeChoice } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
   const { renderToString } = await import('../../core/cli/ui/render-to-string')
@@ -247,6 +247,37 @@ async function cmdOnboard(args: string[]): Promise<void> {
     console.error('bakin onboard: --check and --force cannot be combined. --check reports without changing anything; --force replays setup. Run one or the other.')
     process.exit(1)
   }
+
+  // Which runtime this home uses is decided once, here, before anything
+  // else: a flag or an environment value that cannot be honoured is refused
+  // even on a home that is already onboarded, and before any write.
+  const interactive = isTTY && Boolean(process.stdin.isTTY) && !yes && !json && !checkOnly
+  const { chooseRuntime, readRuntimeFlag } = await import('../onboard-runtime')
+  const chosen = await chooseRuntime({ flag: readRuntimeFlag(args), interactive, promptRuntimeChoice })
+  if (chosen.kind === 'cancelled') {
+    console.error('Onboarding cancelled before setup ran. Run `bakin onboard` again when you are ready.')
+    process.exit(130)
+  }
+  if (chosen.kind === 'refused') {
+    if (json) {
+      const { refusalSummary } = await import('../../core/onboarding/summary')
+      console.log(JSON.stringify(refusalSummary(chosen.code, chosen.found)))
+    } else {
+      console.error(`bakin onboard: ${chosen.message}`)
+    }
+    process.exit(1)
+  }
+  // A choice that is not stored in this home (and not already the
+  // environment's) applies to this process: every check and install below
+  // composes the chosen runtime, the same way the environment override does.
+  // The settings step writes it down when the choice is to be kept.
+  if (chosen.kind === 'use' && chosen.source !== 'existing' && chosen.source !== 'env') {
+    process.env.BAKIN_RUNTIME_ADAPTER = chosen.adapter
+    const { resetSettingsCache } = await import('../../core/settings')
+    resetSettingsCache()
+  }
+  const decided = chosen.kind === 'use' ? { adapter: chosen.adapter, source: chosen.source } : undefined
+  const runtimeProposal = chosen.kind === 'use' && chosen.persist ? chosen.adapter : undefined
 
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
@@ -269,6 +300,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
 
   const baseOpts = {
+    // The wizard needs a terminal to draw on and a person who did not ask
+    // for a scripted run.
     interactive: isTTY && !json && !checkOnly,
     autoApprove: yes || (!isTTY && !json),
     json,
@@ -277,7 +310,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     if (checkOnly) await composeForCheck()
-    const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force }
+    const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...(runtimeProposal ? { runtimeProposal } : {}) }
 
     let busyFrame = 0
     let busyDetail: string | undefined
@@ -411,7 +444,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     if (json) {
       // Always the last line: what the run came to.
       const { runSummary } = await import('../../core/onboarding/summary')
-      console.log(JSON.stringify(runSummary(result)))
+      console.log(JSON.stringify(runSummary(result, decided, chosen.found)))
     }
 
     if (!json) {

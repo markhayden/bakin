@@ -343,13 +343,14 @@ bakin install <search|search-models|media|plugin-assets|agent-sync|recommended-p
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs. --check reports what a run would do and changes nothing (no files, no marker, no provisioning); it cannot be combined with --force, which replays setup on an onboarded home.">
+<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs. --check reports what a run would do and changes nothing (no files, no marker, no provisioning); it cannot be combined with --force, which replays setup on an onboarded home. On a home that stores no runtime yet, onboarding decides one first: whichever is set up on this machine, Pi when none is, and a question when a person is at the terminal. A scripted run with more than one set up must say which with --runtime. The choice is stored once; onboarding never switches a stored runtime (use `bakin runtime use`).">
 ```sh frame="terminal"
-bakin onboard [--check] [--yes] [--json] [--force] [--verbose]
+bakin onboard [--runtime <openclaw|pi>] [--check] [--yes] [--json] [--force] [--verbose]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
+      <tr><td><code>[value]</code><span class="cli-command__choices"><span>--runtime &lt;openclaw</span><span>pi&gt;</span></span></td><td>choice</td><td>no</td><td>Choose one of these values.</td></tr>
       <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>

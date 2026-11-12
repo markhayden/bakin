@@ -73,6 +73,13 @@ export interface OnboardingOptions {
   selectedRecommendedAgentIds?: readonly string[]
   /** Component ids explicitly approved by the human onboarding TUI. */
   approvedComponents?: readonly string[]
+  /**
+   * The runtime a first run decided on (`decideRuntime`, `persist: true`).
+   * The `settings` install commits it under `install-state` — and is run
+   * for it even when the settings check is already ok, because only that
+   * operation can tell whether another run stored a different one meanwhile.
+   */
+  runtimeProposal?: string
   /** Optional human UI completion callback. Never used for JSON output. */
   onOutcome?: (outcome: {
     name: string

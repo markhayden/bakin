@@ -12,6 +12,7 @@ import {
   OnboardingIntro,
   OnboardingProgress,
   OnboardingRequiredReport,
+  OnboardingRuntimePrompt,
   OnboardingSummary,
 } from '../../src/core/cli/ui/onboarding'
 import type { ComponentOutcome } from '../../src/core/onboarding'
@@ -187,6 +188,40 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Already onboarded on 2026-05-19.')
     expect(rendered).toContain('Run `bakin onboard --force`')
     expect(rendered).not.toContain('[OK]')
+  })
+
+  describe('runtime selection screen', () => {
+    const options = [
+      { adapter: 'openclaw', label: 'OpenClaw', summary: 'A separate gateway you install and run alongside Bakin.', found: false },
+      { adapter: 'pi', label: 'Pi', summary: 'Runs inside Bakin; nothing else to install.', found: true },
+    ]
+
+    it('offers every supported runtime and marks the ones found on this machine', () => {
+      const rendered = renderToString(<OnboardingRuntimePrompt options={options} preselected="pi" onSubmit={() => {}} />)
+      expect(rendered).toContain('Choose the agent runtime')
+      expect(rendered).toContain('Which runtime should this home use?')
+      expect(rendered).toContain('OpenClaw')
+      expect(rendered).toContain('Pi (found)')
+      expect(rendered).toContain('Not found on this machine.')
+      expect(rendered).toContain('Found on this machine.')
+      // How to change it later is said where the choice is made.
+      expect(rendered).toContain('bakin runtime use')
+    })
+
+    it('counts what was found', () => {
+      const both = options.map((option) => ({ ...option, found: true }))
+      const rendered = renderToString(<OnboardingRuntimePrompt options={both} preselected="openclaw" onSubmit={() => {}} />)
+      expect(rendered).toContain('OpenClaw (found)')
+      expect(rendered).toContain('Pi (found)')
+      expect(rendered).not.toContain('Not found on this machine.')
+    })
+
+    it('puts the pointer on the preselected runtime: what Enter picks', () => {
+      const lineWithPointer = (preselected: string) => renderToString(<OnboardingRuntimePrompt options={options} preselected={preselected} onSubmit={() => {}} />)
+        .split('\n').find((line) => line.includes('❯')) ?? ''
+      expect(lineWithPointer('pi')).toContain('Pi (found)')
+      expect(lineWithPointer('openclaw')).toContain('OpenClaw')
+    })
   })
 
   it('renders confirmation prompts with shared sections instead of badges', () => {

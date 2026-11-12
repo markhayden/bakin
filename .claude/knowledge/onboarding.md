@@ -56,6 +56,48 @@ throw from the boundary (the operator left the wizard with Ctrl-C) stops
 onboarding there: nothing after the bootstrap runs, no marker is written,
 exit 130.
 
+## Choosing the runtime
+
+A home that stores no runtime decides one before anything else runs
+(`src/cli/onboard-runtime.ts` → `decideRuntime` in
+`src/core/onboarding/runtime-choice.ts`, a pure table over four facts):
+
+| # | Situation | Result |
+|---|---|---|
+| 1 | `--runtime` or `BAKIN_RUNTIME_ADAPTER` names an unsupported runtime | refuse `invalid_runtime` |
+| 2 | `BAKIN_RUNTIME_ADAPTER` set (flag absent or equal) | that runtime, source `env`, never stored |
+| 3 | `BAKIN_RUNTIME_ADAPTER` set, `--runtime` differs | refuse `runtime_conflict` |
+| 4 | A runtime is stored (flag absent or equal) | the stored one, source `existing` |
+| 5 | A runtime is stored, `--runtime` differs | refuse `runtime_already_set` |
+| 6 | `--runtime` given | that runtime, source `flag`, stored |
+| 7 | Nothing found on the machine | Pi, source `default`, stored |
+| 8 | A person is at the terminal and something was found | ask (source `asked`, stored) |
+| 9 | Scripted, exactly one found | that runtime, source `detected`, stored |
+| 10 | Scripted, more than one found | refuse `ambiguous_runtime` |
+
+- "Found" is each adapter's own read-only presence probe (Pi: its agent
+  directory exists; OpenClaw: its home holds a config file), composed by
+  `detectRuntimes()` in the factory, always in the order `openclaw`, `pi`.
+- "A person is at the terminal" means stdin and stdout are terminals and
+  none of `--yes`, `--json`, `--check` was given.
+- A refusal exits 1 before any write, and before the already-onboarded
+  shortcut. Under `--json` it prints only
+  `{"summary":{"exitCode":1,"markerWritten":false,"runtime":{"refused":"<code>","found":[…]}}}`.
+- A choice that is not already stored or in the environment is applied to
+  the process (the same mechanism as the environment override), so every
+  check and install composes the chosen runtime. When it is to be stored,
+  it is handed to the run as `runtimeProposal` and committed by the
+  settings step (below) — even when the settings check is already ok.
+- Nothing is chosen on top of a settings file that cannot be trusted; the
+  settings step reports the file and the run stops there.
+- Onboarding never switches a stored runtime. That is `bakin runtime use`.
+
+Upgrade note: a home onboarded before this stored no runtime and ran on
+the built-in default (OpenClaw). `bakin onboard` on it still answers
+"already onboarded". `bakin onboard --force` now decides like a first run,
+so on a machine with both runtimes set up a scripted `--force` needs
+`--runtime openclaw`.
+
 ## The settings step
 
 `settings.ts` gates everything that reads `getSettings()` and is where a
@@ -237,9 +279,11 @@ which wins.
 ### The local rig (`bun run onboard:rig`)
 
 Runs the real wizard in your terminal against a throwaway home built by the
-same harness. Flags: `--runtime none|pi|openclaw|both`, `--auth
-none|fake|copy`, `--stored <adapter>`, `--keep`, `--home <dir>`,
-`--network`; everything after `--` goes to `bakin onboard`. It prints what
+same harness. Flags: `--runtime none|pi|openclaw|both` (what is set up on
+the "machine"), `--auth none|fake|copy`, `--stored <adapter>` (a home that
+already decided), `--keep`, `--home <dir>`, `--network`; everything after
+`--` goes to `bakin onboard`. Try `--runtime none` (Pi by default, no
+question), `--runtime pi` and `--runtime both` (the runtime question). It prints what
 the run wrote, any refused supervisor call or denied request, and confirms
 that the real `~/.bakin`, `~/.pi`, `~/.openclaw`, `~/.antfly` and the search
 service unit are unchanged. `--auth copy` only reads `~/.pi/agent/auth.json`.

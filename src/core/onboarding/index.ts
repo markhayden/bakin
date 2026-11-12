@@ -246,8 +246,13 @@ async function runComponent(
     }
   }
 
+  // A pending runtime proposal goes through the settings install even when
+  // the file checks ok: the commit, and the comparison with whatever another
+  // run stored in the meantime, happen inside that operation and nowhere else.
+  const commitsRuntime = component.name === 'settings' && opts.runtimeProposal !== undefined && !opts.checkOnly
+
   // ok / warn → no install, outcome matches check
-  if (check.status === 'ok') {
+  if (check.status === 'ok' && !commitsRuntime) {
     return {
       name: component.name,
       finalStatus: 'ok',
@@ -310,6 +315,7 @@ async function runComponent(
     const install = await installComponent(component, {
       autoApprove: opts.autoApprove,
       allowServiceClaim: false,
+      ...(commitsRuntime ? { runtimeAdapter: opts.runtimeProposal } : {}),
       ...(opts.approvedComponents ? { approvedComponents: [...opts.approvedComponents] } : {}),
       ...(opts.selectedRecommendedPluginIds ? { selectedRecommendedPluginIds: [...opts.selectedRecommendedPluginIds] } : {}),
       ...(opts.selectedRecommendedAgentIds ? { selectedRecommendedAgentIds: [...opts.selectedRecommendedAgentIds] } : {}),
@@ -364,6 +370,8 @@ async function runComponent(
         return {
           name: component.name,
           finalStatus: 'error',
+          // A failure a caller must tell apart (a refused runtime choice).
+          ...(install.code ? { code: install.code } : {}),
           check,
           message: install.message,
           remediation: check.remediation,

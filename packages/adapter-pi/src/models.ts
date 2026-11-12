@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 
-import type { ModelsStore, ModelsStoreEntry } from '@earendil-works/pi-ai'
+import type { CredentialStore, ModelsStore, ModelsStoreEntry } from '@earendil-works/pi-ai'
 import { ModelRegistry, ModelRuntime } from '@earendil-works/pi-coding-agent'
 
 import type { AgentRuntimeAdapter, ProviderCredentialInventory, RuntimeAvailableModel, RuntimeCapabilities, RuntimeRoutingPolicy, RuntimeRoutingSupport } from '@bakin/core/adapters/runtime'
@@ -56,6 +56,20 @@ function readOnlyModelsStore(path: string): ModelsStore {
   }
 }
 
+/**
+ * Read-only processes, and nobody has ever logged in: the SDK's file-backed
+ * credential store creates an empty `auth.json` when it is constructed.
+ * With no file there are no credentials, so this store says exactly that
+ * and refuses writes. (An existing `auth.json` is read through the SDK's
+ * own store, which does not touch it.)
+ */
+const NO_CREDENTIALS: CredentialStore = {
+  read: async () => undefined,
+  list: async () => [],
+  modify: async () => { throw new Error('adapter-pi: a read-only process cannot store credentials') },
+  delete: async () => { throw new Error('adapter-pi: a read-only process cannot delete credentials') },
+}
+
 /** Set by the adapter's initialize(); rebuilds the registry when it changes. */
 export function setModelRegistryReadOnly(value: boolean): void {
   if (readOnly === value) return
@@ -73,8 +87,9 @@ export function getModelRegistry(): Promise<PiModelHandle> {
     // without an SDK re-pin. allowModelNetwork stays default-false: no
     // network at create (initialize() is write-free by conformance pin).
     const modelsStorePath = getPiPath('agent', 'models-store.json')
+    const authPath = getPiPath('agent', 'auth.json')
     handlePromise = ModelRuntime.create({
-      authPath: getPiPath('agent', 'auth.json'),
+      ...(readOnly && !existsSync(authPath) ? { credentials: NO_CREDENTIALS } : { authPath }),
       modelsPath: getPiPath('agent', 'models.json'),
       ...(readOnly ? { modelsStore: readOnlyModelsStore(modelsStorePath) } : { modelsStorePath }),
     }).then((runtime) => {

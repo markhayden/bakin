@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { ConfirmInput } from '@inkjs/ui'
+import { ConfirmInput, Select } from '@inkjs/ui'
 import type {
   CheckResult,
   CheckStatus,
@@ -417,6 +417,59 @@ export function OnboardingDecisionPrompt({ title, description, defaultChoice, sh
           />
         </Box>
         <Text dimColor>{defaultHint}</Text>
+      </Section>
+    </Box>
+  )
+}
+
+export interface RuntimeChoiceOption {
+  /** The adapter's id (what is stored). */
+  adapter: string
+  /** Its name as people write it. */
+  label: string
+  /** One line on what choosing it means. */
+  summary: string
+  /** Whether it is already set up on this machine. */
+  found: boolean
+}
+
+/**
+ * First run, and at least one runtime is already set up here: which one
+ * should this home use? Every supported runtime is offered; the ones found
+ * on this machine are marked, and the first found is what Enter picks.
+ */
+export function OnboardingRuntimePrompt({ options, preselected, showBrand = true, onSubmit }: {
+  options: RuntimeChoiceOption[]
+  preselected: string
+  showBrand?: boolean
+  onSubmit: (adapter: string) => void
+}) {
+  const found = options.filter((option) => option.found)
+  // The list's pointer starts on its first entry and Enter picks whatever
+  // it points at, so the preselected runtime goes first.
+  const ordered = [...options.filter((option) => option.adapter === preselected), ...options.filter((option) => option.adapter !== preselected)]
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboard" subtitle="Choose the agent runtime" meta="runtime" showBrand={showBrand} />
+      <SummaryStrip items={[
+        { label: 'found here', value: found.length, status: 'ready' },
+        { label: 'supported', value: options.length, status: 'ready' },
+      ]} />
+      <Section title="Runtime">
+        <FindingRows rows={options.map((option) => ({
+          status: option.found ? 'ok' as const : 'skip' as const,
+          label: option.label,
+          message: `${option.summary} ${option.found ? 'Found on this machine.' : 'Not found on this machine.'}`,
+        }))} />
+        <Box marginTop={1} flexDirection="column">
+          <Text bold>Which runtime should this home use?</Text>
+          <Select
+            options={ordered.map((option) => ({ label: option.found ? `${option.label} (found)` : option.label, value: option.adapter }))}
+            defaultValue={preselected}
+            onChange={onSubmit}
+          />
+        </Box>
+        <Text dimColor>Use up/down to move, Enter to choose. This is stored once; change it later with `bakin runtime use`.</Text>
       </Section>
     </Box>
   )

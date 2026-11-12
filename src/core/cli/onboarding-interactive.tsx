@@ -15,6 +15,8 @@ import {
 import {
   OnboardingDecisionPrompt,
   OnboardingIntro,
+  OnboardingRuntimePrompt,
+  type RuntimeChoiceOption,
 } from "./ui/onboarding";
 import { renderToString } from "./ui/render-to-string";
 import { modelsComponent } from "../onboarding/models";
@@ -168,6 +170,16 @@ function ask<T>(screen: (answer: (value: T) => void) => ReactElement): Promise<T
     };
     void app.waitUntilExit().then(cancelled, cancelled);
   });
+}
+
+/** Ask which runtime this home should use. Resolves with the chosen adapter id. */
+export async function promptRuntimeChoice(
+  options: RuntimeChoiceOption[],
+  preselected: string,
+): Promise<string> {
+  return await ask<string>((answer) => (
+    <OnboardingRuntimePrompt options={options} preselected={preselected} onSubmit={answer} />
+  ));
 }
 
 export async function promptMultiSelect(
