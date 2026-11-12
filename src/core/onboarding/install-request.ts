@@ -7,10 +7,11 @@
  */
 import { z } from 'zod'
 
-/** Components whose install changes something. Check-only components (runtime, credentials, budget) have nothing to install. */
+/** Components whose install changes something. Check-only components (credentials, channels, budget) have nothing to install. */
 export const INSTALLABLE_COMPONENTS = [
   'mkdir',
   'settings',
+  'runtime',
   'search',
   'search-models',
   'media',

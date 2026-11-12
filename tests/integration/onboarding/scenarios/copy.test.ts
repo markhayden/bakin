@@ -28,7 +28,7 @@ function wording(run: Awaited<ReturnType<typeof onboard>>): string {
 }
 
 describe('Pi installed, not logged in', () => {
-  test('the runtime is ok, credentials warn, and onboarding completes (pinned: flipped by task 3.3)', gap(async () => {
+  test('the runtime is ok, credentials warn, and onboarding completes', async () => {
     const home = await loggedOutPi()
     const run = await onboard(home)
     const lines = outcomes(run)
@@ -36,7 +36,10 @@ describe('Pi installed, not logged in', () => {
     expect(lines.llm?.status).toBe('warn')
     expect(run.exitCode).toBe(2)
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+    // The login is the only thing between this home and a working setup:
+    // nothing that needs the runtime was held back by it.
+    expect(Object.values(lines).filter((line) => line.reason === 'requires')).toEqual([])
+  }, TEST_TIMEOUT)
 
   test('the instructions are for Pi and never mention OpenClaw (pinned: flipped by task 4.1)', gap(async () => {
     const home = await loggedOutPi()

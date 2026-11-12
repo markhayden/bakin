@@ -27,7 +27,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'media', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'llm', 'models', 'budget', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'llm', 'search', 'search-models', 'media', 'openclaw-integration', 'plugin-assets', 'agent-sync', 'models', 'budget', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -35,7 +35,7 @@ let saveStateCalls: Array<{ components: Record<string, string>; bakinVersion: st
 let clearMarkerCalls: number
 
 /** Check-only in production: the runtime and credentials are set up outside Bakin. */
-const CHECK_ONLY = new Set<string>(['runtime', 'llm', 'channels', 'budget'])
+const CHECK_ONLY = new Set<string>(['llm', 'channels', 'budget'])
 
 /** What each real component declares it needs (the requirements test pins the real table). */
 const REQUIRES: Record<(typeof COMPONENT_NAMES)[number], readonly string[]> = {
@@ -76,15 +76,7 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
 mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
-let provisionSeedCalls = 0
-let provisionSeedImpl: (() => void) | null = null
-mock.module('../../../src/core/onboarding/runtime', () => ({
-  runtimeComponent: makeMock('runtime'),
-  provisionRuntimeForOnboarding: async () => {
-    provisionSeedCalls++
-    provisionSeedImpl?.()
-  },
-}))
+mock.module('../../../src/core/onboarding/runtime', () => ({ runtimeComponent: makeMock('runtime') }))
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
 mock.module('../../../src/core/onboarding/media', () => ({ mediaComponent: makeMock('media') }))
@@ -278,13 +270,13 @@ describe('runOnboard orchestrator', () => {
         'mkdir',
         'settings',
         'runtime',
+        'llm',
         'search',
         'search-models',
         'media',
         'openclaw-integration',
         'plugin-assets',
         'agent-sync',
-        'llm',
         'models',
         'budget',
         'channels',
@@ -492,15 +484,14 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('never provisions an empty roster: the runtime is reported as not set up yet, not as an error', async () => {
-      provisionSeedCalls = 0
       scripts.runtime.check = {
         name: 'runtime',
-        status: 'broken',
+        status: 'missing',
         message: 'Runtime adapter returned no agents',
         details: { emptyRoster: true },
       }
       const result = await runOnboard({ ...opts, checkOnly: true })
-      expect(provisionSeedCalls).toBe(0)
+      expect(scripts.runtime.installCalls).toBe(0)
       expect(scripts.runtime.checkCalls).toBe(1)
       expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ finalStatus: 'skipped', reason: 'check_only' })
       expect(result.outcomes.some((o) => o.finalStatus === 'error')).toBe(false)
@@ -536,16 +527,16 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('runtime cascade', () => {
-    it('runtime missing: only the steps that need it are skipped; independent steps still run', async () => {
+    it('runtime unreachable: only the steps that need it are skipped; independent steps still run', async () => {
       scripts.runtime.check = {
         name: 'runtime',
-        status: 'missing',
+        status: 'error',
         message: 'runtime not configured',
         remediation: 'Configure the runtime adapter',
       }
       const result = await runOnboard(opts)
       expect(scripts.runtime.checkCalls).toBe(1)
-      expect(scripts.runtime.installCalls).toBe(0) // user-managed: never installed
+      expect(scripts.runtime.installCalls).toBe(0) // nothing an install can fix
       // Independent of the runtime: checked as usual.
       for (const name of ['mkdir', 'settings', 'search', 'search-models', 'media', 'budget'] as const) {
         expect({ name, checked: scripts[name].checkCalls }).toEqual({ name, checked: 1 })
@@ -565,56 +556,44 @@ describe('runOnboard orchestrator', () => {
       expect(result.markerWritten).toBe(false)
     })
 
-    it('an empty roster is seeded via provisioning and the flow proceeds', async () => {
-      provisionSeedCalls = 0
-      scripts.runtime.check = {
-        name: 'runtime',
-        status: 'broken',
-        message: 'Runtime adapter returned no agents',
-        details: { emptyRoster: true },
-      }
-      // Provisioning seeds the main agent — the re-check comes back ok.
-      provisionSeedImpl = () => {
-        scripts.runtime.check = {
-          name: 'runtime',
-          status: 'ok',
-          message: 'test-runtime runtime adapter is available',
-        }
-      }
-      try {
-        const result = await runOnboard(opts)
-        expect(provisionSeedCalls).toBe(1)
-        expect(scripts.runtime.checkCalls).toBe(2) // broken → seed → re-check ok
-        expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('ok')
-        // Downstream components RUN — the flow was not aborted.
-        expect(scripts.search.checkCalls).toBe(1)
-        expect(result.exitCode).toBe(0)
-      } finally {
-        provisionSeedImpl = null
-      }
+    it('a runtime with no agents yet is provisioned by its install and the flow proceeds', async () => {
+      const empty = { name: 'runtime', status: 'missing' as const, message: 'Runtime adapter returned no agents', details: { emptyRoster: true } }
+      const ready = { name: 'runtime', status: 'ok' as const, message: 'test-runtime runtime adapter is available' }
+      Object.defineProperty(scripts.runtime, 'check', { get: () => scripts.runtime.installCalls > 0 ? ready : empty, configurable: true })
+      scripts.runtime.install = { name: 'runtime', status: 'installed', message: 'provisioned', durationMs: 1 }
+      const result = await runOnboard(opts)
+      expect(scripts.runtime.installCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('ok')
+      // What needs the runtime runs.
+      expect(scripts.llm.checkCalls).toBe(1)
+      expect(result.exitCode).toBe(0)
     })
 
-    it('a broken roster WITHOUT the empty marker never provisions (user-owned mess)', async () => {
-      provisionSeedCalls = 0
-      scripts.runtime.check = {
-        name: 'runtime',
-        status: 'broken',
-        message: 'Runtime roster has 1 integrity issue',
-      }
+    it('a runtime whose provisioning does not produce a usable roster blocks completion', async () => {
+      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'Runtime adapter returned no agents', details: { emptyRoster: true } }
+      scripts.runtime.install = { name: 'runtime', status: 'failed', message: 'Runtime still has no agents after provisioning', durationMs: 1 }
       const result = await runOnboard(opts)
-      expect(provisionSeedCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ finalStatus: 'error', message: 'Runtime still has no agents after provisioning' })
+      expect(result.outcomes.find((o) => o.name === 'llm')).toMatchObject({ reason: 'requires', requires: 'runtime' })
+      expect(result.exitCode).toBe(1)
+      expect(result.markerWritten).toBe(false)
+    })
+
+    it('a runtime the operator has to fix is never installed over', async () => {
+      scripts.runtime.check = { name: 'runtime', status: 'error', message: 'Runtime roster has 1 integrity issue' }
+      const result = await runOnboard(opts)
+      expect(scripts.runtime.installCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
     })
 
     it('runtime broken is an error that blocks completion', async () => {
       scripts.runtime.check = {
         name: 'runtime',
-        status: 'broken',
+        status: 'error',
         message: 'runtime config corrupt',
       }
       const result = await runOnboard(opts)
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
-      // install() is never called - runtime is inline
       expect(scripts.runtime.installCalls).toBe(0)
       // What needs the runtime never ran; what does not, did.
       expect(scripts.llm.checkCalls).toBe(0)
@@ -653,7 +632,7 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('the bootstrap phase sees the runtime outcome it has to decide on', async () => {
-      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'no runtime' }
+      scripts.runtime.check = { name: 'runtime', status: 'error', message: 'no runtime' }
       let runtimeStatus: string | undefined
       await runOnboardWith(opts, (component, options) => component.install(options, noopOp()), {
         afterBootstrap: async (bootstrap) => {
@@ -795,8 +774,7 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('emits JSON for cascaded skips from runtime', async () => {
-      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'runtime missing' }
-      scripts.runtime.install = { name: 'runtime', status: 'noop', message: 'required', durationMs: 0 }
+      scripts.runtime.check = { name: 'runtime', status: 'error', message: 'runtime missing' }
       await runOnboard({ ...opts, json: true })
       // Should emit every component: those before runtime plus downstream cascade-skips.
       expect(stdoutLines).toHaveLength(COMPONENT_NAMES.length)

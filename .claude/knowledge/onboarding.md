@@ -56,6 +56,32 @@ throw from the boundary (the operator left the wizard with Ctrl-C) stops
 onboarding there: nothing after the bootstrap runs, no marker is written,
 exit 130.
 
+## Runtime and credentials are two facts
+
+- **`runtime`** (`runtime.ts`): the adapter initializes, is reachable, and
+  its roster passes integrity. Reachability follows how the runtime's
+  agents reach Bakin's tools (`describeToolAccess().style`): an in-process
+  runtime (Pi) is reachable once it initializes; any other (OpenClaw's
+  gateway) must answer `ping()`. Credentials play no part. So Pi without a
+  login is a working runtime, and a stopped gateway is a broken one with or
+  without credentials.
+- **`llm`** (`credentials.ts`): at least one provider has usable
+  credentials. Check-only, warn-only, requires `runtime`, and runs right
+  after it.
+
+`runtime` is installable. Its check reports `error` for everything the
+operator has to fix outside Bakin (cannot initialize, cannot be reached,
+roster unreadable or inconsistent) and `missing` for the one thing
+onboarding sets up: a runtime with no agents yet. The install provisions
+(adapter-owned: Pi seeds its main agent; OpenClaw only writes tool access,
+so an empty OpenClaw roster stays the operator's to fix), validates again,
+and fails if the roster is still empty or inconsistent. It owns
+`install-state` and settles `runtime_not_ready` on failure. Nothing else in
+onboarding provisions the runtime.
+
+A home with a reachable runtime and no login therefore finishes onboarding
+with a warning (exit 2, marker written) and `bakin start` works.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

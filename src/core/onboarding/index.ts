@@ -27,10 +27,6 @@
  * nothing else (search, media and the spend check still run), and a
  * search engine that did not install skips only its models.
  *
- * The one special case left: the runtime is user-managed, so a runtime
- * that is missing or broken is an `error` (it blocks completion) rather
- * than a pointer to manual setup.
- *
  * Exit code and marker: see `exitCodeFor`. The marker is written when the
  * exit code is not 1 and the run is not `--check`.
  *
@@ -107,13 +103,14 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mkdirComponent,
   settingsComponent,
   runtimeComponent,
+  // Credentials are a fact about the runtime: checked right after it.
+  llmComponent,
   searchComponent,
   searchModelsComponent,
   mediaComponent,
   openClawIntegrationComponent,
   pluginAssetsComponent,
   agentSyncComponent,
-  llmComponent,
   modelsComponent,
   budgetComponent,
   channelsComponent,
@@ -390,79 +387,6 @@ async function runComponent(
 }
 
 /**
- * Special-case handling for runtime. It is check-only — Bakin does not
- * manage the runtime, it only detects it — and unlike the other check-only
- * components a runtime that is not ok blocks everything after it. So we
- * translate any non-ok status into an error the orchestrator cascades on.
- */
-async function runRuntimeInline(component: OnboardingComponent, opts: OnboardingOptions): Promise<ComponentOutcome> {
-  const start = Date.now()
-  let check: CheckResult
-  try {
-    check = await component.check()
-    if (check.status === 'broken' && check.details?.emptyRoster === true && opts.checkOnly) {
-      // A check never provisions. The runtime is there and simply has not
-      // been set up by Bakin yet: that is work for a real run, not an error.
-      return {
-        name: component.name,
-        finalStatus: 'skipped',
-        reason: 'check_only',
-        check,
-        message: `${check.message} — onboarding provisions the runtime (check-only mode, not provisioning)`,
-        remediation: check.remediation,
-        details: check.details,
-        durationMs: Date.now() - start,
-      }
-    }
-    if (check.status === 'broken' && check.details?.emptyRoster === true) {
-      // First-run state: the roster is empty because initialize() is
-      // write-free and nothing has provisioned yet. Onboarding IS a
-      // sanctioned provisioning call site — seed and re-check. Integrity
-      // breakage never carries the marker and is never auto-touched.
-      const { provisionRuntimeForOnboarding } = await import('./runtime')
-      await provisionRuntimeForOnboarding()
-      check = await component.check()
-    }
-  } catch (err) {
-    return {
-      name: component.name,
-      finalStatus: 'error',
-      check: {
-        name: component.name,
-        status: 'error',
-        message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
-      durationMs: Date.now() - start,
-    }
-  }
-
-  const base = {
-    name: component.name,
-    check,
-    message: check.message,
-    remediation: check.remediation,
-    details: check.details,
-    durationMs: Date.now() - start,
-  }
-
-  switch (check.status) {
-    case 'ok':
-      return { ...base, finalStatus: 'ok' }
-    case 'warn':
-      return { ...base, finalStatus: 'warn' }
-    case 'missing':
-      // A missing prerequisite isn't an "error" per se — we just can't
-      // proceed. Record as 'error' so the orchestrator writes no marker
-      // and the CLI exits 1. The remediation message is the key output.
-      return { ...base, finalStatus: 'error' }
-    case 'broken':
-    case 'error':
-      return { ...base, finalStatus: 'error' }
-  }
-}
-
-/**
  * The first requirement of `component` that did not finish, if any.
  *
  * Satisfied: the required component ended `ok` or `warn`, or does not
@@ -603,19 +527,6 @@ export async function runOnboard(
       outcomes.push(skip)
       emitOutcome(opts, skip)
       if (opts.json) emitJson(skip)
-      continue
-    }
-
-    // Runtime setup is a user-managed prerequisite. The generic path
-    // records a check-only component's setup pointer as ok, which would
-    // mark a missing runtime as ready. Handle it inline: call check()
-    // only and derive the outcome from that. What needs the runtime is
-    // skipped by its own declared requirement, nothing else.
-    if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component, opts)
-      outcomes.push(outcome)
-      emitOutcome(opts, outcome)
-      if (opts.json) emitJson(outcome)
       continue
     }
 

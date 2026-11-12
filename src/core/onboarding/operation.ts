@@ -23,6 +23,7 @@ export interface ComponentInstallBody {
 const TITLES: Record<string, string> = {
   mkdir: 'Create the Bakin home',
   settings: 'Write settings.json',
+  runtime: 'Provision the runtime',
   search: 'Install the search engine',
   'search-models': 'Download the search models',
   media: 'Install the media store',
