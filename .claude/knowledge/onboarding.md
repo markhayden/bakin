@@ -156,6 +156,22 @@ and even when the component is already installed, and the outcome is
 `skipped` / `declined`. `bakin onboard --yes --no-recommended` is the
 scripted run that sets up Bakin itself and touches nothing external.
 
+## What onboarding says
+
+Every word about setting up or logging in to a runtime comes from the
+ACTIVE runtime's entry in `RUNTIME_ADAPTER_SUPPORT`
+(`src/core/runtime-adapter-factory.ts`): `label`, `summary`, `setupHint`,
+`setupUrl`, `docsUrl` and `loginSteps`. `runtime.ts` and `credentials.ts`
+read it when a message is built, never at module load, and there is no
+"default runtime" copy to reach for (the old
+`DEFAULT_RUNTIME_ADAPTER_SUPPORT` is gone). So a home on Pi is told to run
+`pi` and type `/login`, and a home on OpenClaw is pointed at OpenClaw.
+
+`tests/architecture/onboarding-runtime-copy.test.ts` keeps it that way: no
+default-runtime copy anywhere onboarding can speak from, and no runtime
+name inside a string literal in those two components. Adding a runtime
+means adding its entry, not editing messages.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

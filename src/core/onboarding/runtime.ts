@@ -28,12 +28,20 @@
  */
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createAppServices, maybeGetAppServices } from '../app-services'
-import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
+import { getRuntimeAdapterSupport } from '../runtime-adapter-factory'
+import { getSettings } from '../settings'
 import type { OperationContext } from '@bakin/core/operations'
 import type { CheckResult, ComponentInstallOptions, InstallableComponent, InstallResult } from './types'
 
-const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
-const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
+/**
+ * Copy for the ACTIVE runtime, read when it is needed — never the default
+ * adapter's and never captured at module load: a home on Pi must not be
+ * told to go and install OpenClaw.
+ */
+function setup(): { url: string; message: string } {
+  const support = getRuntimeAdapterSupport(getSettings().runtime.adapter)
+  return { url: support.setupUrl, message: `${support.setupHint} Setup guide: ${support.setupUrl}` }
+}
 
 async function getRuntimeForOnboarding(): Promise<AgentRuntimeAdapter> {
   const existing = maybeGetAppServices()?.runtime
@@ -136,8 +144,8 @@ async function check(): Promise<CheckResult> {
       name: 'runtime',
       status: 'error',
       message: `Runtime adapter could not initialize: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: SETUP_MESSAGE,
-      details: { installUrl: SETUP_URL },
+      remediation: setup().message,
+      details: { installUrl: setup().url },
     }
   }
 
@@ -146,8 +154,8 @@ async function check(): Promise<CheckResult> {
       name: 'runtime',
       status: 'error',
       message: `${runtime.name} runtime cannot be reached (it did not answer)`,
-      remediation: SETUP_MESSAGE,
-      details: { runtime: runtime.name, installUrl: SETUP_URL },
+      remediation: setup().message,
+      details: { runtime: runtime.name, installUrl: setup().url },
     }
   }
 
@@ -160,7 +168,7 @@ async function check(): Promise<CheckResult> {
       status: 'error',
       message: `Runtime agent roster could not be read: ${err instanceof Error ? err.message : String(err)}`,
       remediation: 'Fix the configured runtime adapter, then rerun onboarding.',
-      details: { runtime: runtime.name, installUrl: SETUP_URL },
+      details: { runtime: runtime.name, installUrl: setup().url },
     }
   }
 
@@ -174,7 +182,7 @@ async function check(): Promise<CheckResult> {
       status: 'missing',
       message: 'Runtime adapter returned no agents',
       remediation: 'Run `bakin onboard` (or start the server) to provision the runtime and seed its main agent.',
-      details: { runtime: runtime.name, installUrl: SETUP_URL, emptyRoster: true },
+      details: { runtime: runtime.name, installUrl: setup().url, emptyRoster: true },
     }
   }
 
@@ -242,6 +250,3 @@ export const runtimeComponent: InstallableComponent = {
   check,
   install,
 }
-
-export const RUNTIME_SETUP_URL = SETUP_URL
-export const RUNTIME_SETUP_MESSAGE = SETUP_MESSAGE

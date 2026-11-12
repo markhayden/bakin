@@ -116,7 +116,25 @@ describe('llm.check()', () => {
     const result = await llmComponent.check()
     expect(result.status).toBe('warn')
     expect(result.message).toContain('No LLM provider')
-    expect(result.remediation).toContain('runtime adapter')
+  })
+
+  it('on Pi the way to log in is Pi\'s: its CLI and /login, and nothing about OpenClaw', async () => {
+    writeSettings({ runtime: { adapter: 'pi' } })
+    const result = await llmComponent.check()
+    expect(result.message).toContain('Pi')
+    expect(result.remediation).toContain('Log in to Pi')
+    expect(result.remediation).toContain('/login')
+    expect(result.remediation).toContain('https://pi.dev/')
+    expect(`${result.message} ${result.remediation}`).not.toMatch(/openclaw/i)
+    expect(result.details?.loginSteps).toEqual(expect.arrayContaining([expect.stringContaining('/login')]))
+  })
+
+  it('on OpenClaw the way to log in is OpenClaw\'s, and nothing about Pi', async () => {
+    writeSettings({ runtime: { adapter: 'openclaw' } })
+    const result = await llmComponent.check()
+    expect(result.remediation).toContain('Log in to OpenClaw')
+    expect(result.remediation).toContain('https://openclaw.ai/')
+    expect(`${result.message} ${result.remediation}`).not.toMatch(/\bPi\b|\/login/)
   })
 
   it('reports ok listing the configured providers', async () => {
@@ -137,9 +155,13 @@ describe('llm.check()', () => {
 })
 
 describe('llm is check-only', () => {
-  it('has nothing to install; its setup pointer names the runtime adapter', () => {
+  it('has nothing to install; its setup pointer is how to log in to the active runtime', () => {
     expect(llmComponent.install).toBeUndefined()
-    expect(llmComponent.manualSetup).toContain('runtime adapter')
+    writeSettings({ runtime: { adapter: 'pi' } })
+    expect(llmComponent.manualSetup).toContain('Log in to Pi')
+    // Read when asked, not captured at load: it follows the runtime.
+    writeSettings({ runtime: { adapter: 'openclaw' } })
+    expect(llmComponent.manualSetup).toContain('Log in to OpenClaw')
   })
 })
 
@@ -257,8 +279,11 @@ describe('channels.check() — ONE readiness engine, two modes (#908)', () => {
 })
 
 describe('channels is check-only', () => {
-  it('has nothing to install; its setup pointer names the runtime adapter', () => {
+  it('has nothing to install; its setup pointer names the active runtime', () => {
     expect(channelsComponent.install).toBeUndefined()
-    expect(channelsComponent.manualSetup).toContain('runtime adapter')
+    writeSettings({ runtime: { adapter: 'openclaw' } })
+    expect(channelsComponent.manualSetup).toContain('OpenClaw')
+    writeSettings({ runtime: { adapter: 'pi' } })
+    expect(channelsComponent.manualSetup).toContain('Pi')
   })
 })

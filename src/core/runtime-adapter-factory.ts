@@ -12,6 +12,10 @@ export interface RuntimeAdapterSupportInfo {
   summary: string
   setupUrl: string
   docsUrl: string
+  /** What to do when the runtime itself cannot be used. One sentence, no URL. */
+  setupHint: string
+  /** How to log a provider in. Bakin never handles the secret; the operator does this in the runtime. */
+  loginSteps: readonly string[]
 }
 
 const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportInfo> = {
@@ -20,12 +24,23 @@ const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportI
     summary: 'A separate gateway you install and run alongside Bakin.',
     setupUrl: 'https://makinbakin.com/docs/start/first-time-setup/',
     docsUrl: 'https://openclaw.ai/docs/',
+    setupHint: 'Install OpenClaw and start its gateway, then rerun onboarding.',
+    loginSteps: [
+      'Add a provider login in OpenClaw (its docs cover each provider).',
+      'Make sure the OpenClaw gateway is running.',
+    ],
   },
   pi: {
     label: 'Pi',
     summary: 'Runs inside Bakin; nothing else to install.',
     setupUrl: 'https://pi.dev/docs/latest/quickstart',
     docsUrl: 'https://pi.dev/docs/latest',
+    setupHint: 'Pi runs inside Bakin and needs no separate install; if it cannot start, check the Pi home it reports.',
+    loginSteps: [
+      'Open another terminal and run `pi`.',
+      'Type `/login` and pick a provider (there is no `pi login` command).',
+      'Finish the sign-in, then quit pi.',
+    ],
   },
 }
 
@@ -86,8 +101,6 @@ export function getRuntimeAdapterSupport(name: RuntimeAdapterName): RuntimeAdapt
   if (!support) throw new Error(`Unknown runtime adapter: ${name}`)
   return support
 }
-
-export const DEFAULT_RUNTIME_ADAPTER_SUPPORT = RUNTIME_ADAPTER_SUPPORT.openclaw
 
 /**
  * Which supported runtimes are set up on this machine. Each adapter owns
