@@ -11,7 +11,7 @@
   },
   "css": {
     "canonicalPath": "packages/sdk/styles.css",
-    "canonicalBytes": 193431,
+    "canonicalBytes": 193461,
     "copyCount": 1,
     "copyPaths": [
       "packages/sdk/styles.css"
@@ -280,13 +280,13 @@
       "repository": "bakin-bits-official",
       "pluginId": "projects",
       "path": "bakin-bits-official/plugins/projects/dist/client.js",
-      "bytes": 171394
+      "bytes": 179590
     },
     {
       "repository": "bakin-bits-official",
       "pluginId": "terminal",
       "path": "bakin-bits-official/plugins/terminal/dist/client.js",
-      "bytes": 908621
+      "bytes": 910280
     },
     {
       "repository": "bakin",
