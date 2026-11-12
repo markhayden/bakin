@@ -1,7 +1,8 @@
 # Spec: Projects — instant start + the "grill me" interview
 
-Status: FINAL rev 7 (2026-11-04; Codex-approved at rev 6 after six review
-rounds; rev 7 records the as-built notes below). Owner: Mark.
+Status: FINAL rev 8 (2026-11-11; Codex-approved at rev 6 after six review
+rounds; rev 7 records the as-built notes below, rev 8 the second live round —
+the interview depth in D4/D4b is superseded by its as-built note). Owner: Mark.
 Builds on `projects-revamp.md` (D7–D18 start screen + staged posture). Code
 lives in the external `bakin-bits-official` repo, `plugins/projects`
 (0.13.1 → 0.14.0); no Bakin host code changes are expected (see Assumptions).
@@ -191,7 +192,9 @@ Success for the user:
   tools, frontmatter or UI for the interview. Every brief edit is an ordinary
   plan revision (snapshot, diff, "Plan updated" dot) — the Plan tab IS the
   progress indicator.
-- **D4. Interview protocol (the prompt).** Five areas, in order, skipping
+- **D4. Interview protocol (the prompt).** *(Rev 8: six areas and a
+  relentless depth rule — see "Depth, not a handful" under As built.)* Five
+  areas, in order, skipping
   what the user already answered and following dependencies between
   decisions:
   1. **Goal** — what they want and why (one sentence they would agree with).
@@ -213,7 +216,9 @@ Success for the user:
   decision lands (a resolved section, not every reply), rewriting the body
   with `apply_plan.body` while keeping every heading. Answered questions move
   out of "Open questions"; new unknowns move in.
-- **D4b. Stopping rule.** The blocking gaps are the first four areas: goal,
+- **D4b. Stopping rule.** *(Rev 8: superseded — every area walked to the
+  bottom, fifteen to thirty questions, "anything I missed?" before the
+  draft; see As built.)* The blocking gaps are the first four areas: goal,
   what success looks like, the scope boundary, and hard constraints /
   dependencies. Once they are closed the lead drafts: fills "Plan" (approach,
   phases) and adds the steps via `checklistItems`, says "Draft plan is ready
@@ -367,6 +372,50 @@ Success for the user:
   three attempts) is an exported mutable object tests shorten; the page's
   stale window is a `kickoffStaleMs` prop (default 20 s); the start screen's
   timeout is a `createTimeoutMs` prop (default 10 s).
+
+- **Depth, not a handful (2026-11-11, Mark's second live round: "it only
+  asked like 7 questions… we want it to be more relentless. not insane but
+  the goal should be to turn all stones").** The draft prompt (bits
+  `lib/brainstorm-prompt.ts`, c2f983b + 3a0ba7c) now walks SIX areas (the
+  five above plus 6. Approach — first step, order, do-vs-hand-off, what
+  happens when it is done); every decision the plan rests on is asked and
+  every answer tested once with the follow-up a sceptical colleague would
+  raise; an answer that opens new ground is followed before returning to
+  the list; a decision is settled once asked, tested and resolved or
+  deferred on purpose, and comes back only when a later answer reopens it;
+  only trivia the plan would carry the same way either way is assumed (and
+  labelled) — a choice, a priority or a trade-off is never trivia. Stopping
+  rule: every area walked to the bottom (asked, heard, tested at least
+  once), nothing material in the brief a guess; a project of any substance
+  takes fifteen to thirty questions; a covering first message is where the
+  digging starts; one "anything I have not covered?" before drafting. A
+  request for more questions, "go deeper" or "what would you suggest"
+  re-opens the interview whatever the draft state, with the next question
+  in that same turn (a card when live, plain text over a relayed request —
+  never a promise to ask). "Relentless, not insane": no filler, no trivia,
+  never two in one turn. D4b's "blocking gaps" convergence after the draft
+  stays as the post-draft rule only.
+- **Both sides render markdown; the card keeps the question, the bubble
+  keeps the answer (same round).** `ConversationPanel` takes a consumer
+  `renderText` for user bubbles too (bakin `UserMessage renderText`, kit
+  stays markdown-free; projects passes `MarkdownContent`). A card answer
+  (`**question** → answer\n\nnote`) folds with a `displayContent` on the
+  user turn: the collapsed card shows the question and "Answered", the
+  bubble shows the answer and note without the echo; one reply answers one
+  card (the nearest whose prefix it carries).
+- **Settle keeps the live turn; an empty completion is nudged (same
+  round, host).** The live turn stays rendered until the settle refetch
+  applies (keyed `agent-<n>` like its durable twin — the cards no longer
+  flash off and on), the settle refetch is owed even when a send lands
+  mid-flight, and optimistic rows survive a refetch that predates their
+  POST. "Two turns in a row its stuck" was the model returning an empty
+  completion (`stop=stop out=4` in the Pi session, twice): the turn engine
+  now nudges once inside the same turn (same thread id — ephemeral
+  consumers re-send the whole prompt — attachments not re-sent otherwise,
+  usage summed and metered once even on the error path) and a second empty
+  completion settles as an `empty_reply` error row with Retry. The trailing
+  empty assistant message Pi records after every `ask_user` result is the
+  suspected priming and is a follow-up observation, not a fix.
 
 ## Assumptions (correct me before build)
 
