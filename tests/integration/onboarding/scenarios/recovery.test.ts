@@ -106,8 +106,14 @@ describe('another run in the way', () => {
     for (const run of [first, second]) {
       expect(run.timedOut, describeRun(run)).toBe(false)
       expect(Object.values(outcomes(run)).filter((line) => line.status === 'error')).toEqual([])
-      expect(run.exitCode).toBe(2)
+      // Each run either does the work (exit 2: warnings for what was not
+      // approved) or starts after the other already finished and says so
+      // (exit 0). Which one happens is a race; both are correct.
+      const sawItDone = run.jsonLines.some((line) => line.status === 'already_onboarded')
+      expect({ exitCode: run.exitCode, sawItDone }).toEqual(sawItDone ? { exitCode: 0, sawItDone: true } : { exitCode: 2, sawItDone: false })
     }
+    // At least one of them did the work.
+    expect([first, second].some((run) => run.exitCode === 2)).toBe(true)
     // readMarker throws on a torn write.
     expect(readMarker(home)?.components.runtime).toBe('ok')
     // And the home is consistent: a third run has nothing left to do.
