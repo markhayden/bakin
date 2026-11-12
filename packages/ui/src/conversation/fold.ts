@@ -177,7 +177,20 @@ export type TurnStatus = 'streaming' | 'complete' | 'error' | 'aborted'
 
 /** Render-ready user or agent turn produced by `foldConversation`. */
 export type ConversationTurn =
-  | { kind: 'user'; key: string; ts: string; content: string; attachments?: DisplayAttachment[] }
+  | {
+      kind: 'user'
+      key: string
+      ts: string
+      content: string
+      attachments?: DisplayAttachment[]
+      /**
+       * Derived: this message answered the question card just above it, and
+       * this is what the bubble shows — the answer and note without the
+       * `**question** → ` echo the card already carries. `content` stays the
+       * sent text (copy, retry, the agent's view).
+       */
+      displayContent?: string
+    }
   | {
       kind: 'agent'
       key: string
@@ -435,7 +448,10 @@ export function foldConversation(
   if (opts?.liveChunks) {
     const live = foldLiveChunks(opts.liveChunks)
     if (opts.liveAgentId) live.agentId = opts.liveAgentId
-    turns.push(finishAgentTurn(live, `live-${agentTurnIndex}`))
+    // Keyed as the persisted turn it becomes: when the settle refetch swaps
+    // live chunks for durable rows, React updates the turn in place instead
+    // of unmounting it.
+    turns.push(finishAgentTurn(live, `agent-${agentTurnIndex}`))
   }
 
   deriveQuestionStates(turns)
@@ -451,11 +467,16 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
   // One backward pass: track the nearest following user turn; the first open
   // card met walking backward is the newest one.
   let reply: Extract<ConversationTurn, { kind: 'user' }> | null = null
+  // A reply answers ONE card — the nearest one whose prefix it carries. An
+  // older question that happens to be a prefix of a newer one ("A" before
+  // "A** → B") must not claim the reply too and rewrite the bubble.
+  let replyClaimed = false
   let newestOpen: Extract<TurnItem, { type: 'question' }> | null = null
   for (let index = turns.length - 1; index >= 0; index--) {
     const turn = turns[index]!
     if (turn.kind === 'user') {
       reply = turn
+      replyClaimed = false
       continue
     }
     for (let i = turn.items.length - 1; i >= 0; i--) {
@@ -468,9 +489,12 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
         continue
       }
       const prefix = answerPrefix(item.question)
-      if (reply.content.startsWith(prefix)) {
+      if (!replyClaimed && reply.content.startsWith(prefix)) {
+        replyClaimed = true
         item.state = 'answered'
-        item.answer = reply.content.slice(prefix.length).split('\n\n')[0]
+        const response = reply.content.slice(prefix.length)
+        item.answer = response.split('\n\n')[0]
+        reply.displayContent = response
       } else {
         item.state = 'skipped'
       }

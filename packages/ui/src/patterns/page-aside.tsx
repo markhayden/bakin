@@ -2,6 +2,8 @@
 
 import * as React from 'react'
 
+import { ResizeHandle } from '../behaviors/resize-handle'
+import { usePersistedLeadingEdgeResize } from '../behaviors/use-persisted-leading-edge-resize'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 
@@ -30,6 +32,55 @@ const RAIL_WIDTHS: Record<PageAsideWidth, string> = {
   conversation: 'w-[var(--bakin-layout-size-rail-conversation)]',
 }
 const RAIL_STRIP_WIDTH = 'w-[var(--bakin-layout-size-rail-strip)]'
+// The same presets in px for a resizable rail's starting width — the
+// reference.size.rail* tokens at 16px root (pinned by tests/ui/patterns/page-aside-rail).
+const RAIL_DEFAULT_PX: Record<PageAsideWidth, number> = { nav: 208, session: 288, conversation: 360 }
+const RESIZABLE_WIDTH = 'w-[var(--bakin-aside-width)]'
+// Until the row is measured, the persisted width is only a preference: keep half the row for the page.
+const UNMEASURED_CAP = 'max-w-1/2'
+const RAIL_MIN_WIDTH = 200
+const RAIL_MAX_WIDTH = 720
+const ASIDE_WIDTH_STORAGE_KEY = 'bakin-aside-width'
+
+/**
+ * Width of the rail's flex row, observed so the effective maximum follows
+ * the space actually available; `null` until the first measurement (or
+ * where ResizeObserver does not exist).
+ */
+function useRowWidth(ref: React.RefObject<HTMLElement | null>, enabled: boolean): number | null {
+  const [width, setWidth] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    const row = ref.current?.parentElement
+    if (!enabled || !row || typeof ResizeObserver === 'undefined') {
+      setWidth(null)
+      return
+    }
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1]
+      if (entry) setWidth(entry.contentRect.width)
+    })
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [enabled, ref])
+  return width
+}
+
+/**
+ * Drag-to-resize for a collapsible rail: the kit grab bar on the rail's
+ * page-facing edge, keyboard-operable (arrows, Home, End), the width
+ * persisted per `storageKey`. The expanded width starts at the `width`
+ * preset and stays inside `[minWidth, maxWidth]` (200–720px by default).
+ * Once the row is measured, half of it is the ceiling (the minimum yields to
+ * it too; a CSS cap covers the first paint), so a width saved on a wide
+ * screen cannot crush the page on a narrow one — the saved preference
+ * itself is kept for a wider screen.
+ */
+export interface PageAsideResizable {
+  /** Names the surface; the width persists under it (one key per rail). */
+  storageKey: string
+  minWidth?: number
+  maxWidth?: number
+}
 
 export interface PageAsideCollapsible {
   collapsed: boolean
@@ -60,6 +111,8 @@ export type PageAsideProps = NativeAsideProps
     width?: PageAsideWidth
     /** Rail edge; `end` docks it after the content (e.g. a conversation). Only meaningful with `collapsible`. */
     side?: PageAsideSide
+    /** Let the user drag the rail's page-facing edge; only meaningful with `collapsible`. */
+    resizable?: PageAsideResizable
   }
 
 function ExpandIcon({ side }: { side: PageAsideSide }) {
@@ -113,8 +166,30 @@ export function PageAside({
   labelledBy,
   width = 'session',
   side = 'start',
+  resizable,
   ...props
 }: PageAsideProps) {
+  const collapsed = collapsible?.collapsed ?? false
+  const asideRef = React.useRef<HTMLElement>(null)
+  const resizing = Boolean(resizable) && Boolean(collapsible) && !collapsed
+  const rowWidth = useRowWidth(asideRef, resizing)
+  // Half the row is the ceiling once measured — and the floor yields to it
+  // too, so in a row too narrow for twice the minimum the rendered width,
+  // the CSS variable and the accessible values still agree (nothing to drag).
+  const effectiveMax = rowWidth === null
+    ? resizable?.maxWidth ?? RAIL_MAX_WIDTH
+    : Math.min(resizable?.maxWidth ?? RAIL_MAX_WIDTH, Math.floor(rowWidth / 2))
+  const minWidth = Math.min(resizable?.minWidth ?? RAIL_MIN_WIDTH, effectiveMax)
+  // An end rail's page-facing edge is its leading (left) edge; a start rail's is its trailing edge.
+  const resize = usePersistedLeadingEdgeResize({
+    axis: 'x',
+    edge: side === 'end' ? 'leading' : 'trailing',
+    defaultSize: RAIL_DEFAULT_PX[width],
+    minSize: minWidth,
+    maxSize: effectiveMax,
+    storageKey: resizable ? `${ASIDE_WIDTH_STORAGE_KEY}:${resizable.storageKey}` : undefined,
+    disabled: !resizable || !collapsible || collapsed,
+  })
   if (!collapsible) {
     return (
       <aside
@@ -132,25 +207,39 @@ export function PageAside({
     )
   }
 
-  const { collapsed, onCollapsedChange, collapsedMode = 'strip', expandLabel, strip } = collapsible
+  const { onCollapsedChange, collapsedMode = 'strip', expandLabel, strip } = collapsible
   const showStrip = collapsed && collapsedMode === 'strip'
+  const dragging = resize.handleProps['data-resizing']
   return (
     <aside
+      ref={asideRef}
       data-slot="page-aside"
       data-rail=""
       data-collapsed={collapsed ? '' : undefined}
       data-side={side === 'end' ? 'end' : undefined}
+      data-resizing={dragging ? '' : undefined}
       {...props}
       aria-label={label}
       aria-labelledby={labelledBy}
+      style={resizing ? { ...props.style, '--bakin-aside-width': `${resize.size}px` } as React.CSSProperties : props.style}
       className={cn(
-        'flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-bakin-border-subtle',
+        'relative flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-bakin-border-subtle',
         side === 'end' ? 'border-l' : 'border-r',
-        'transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
-        collapsed ? RAIL_STRIP_WIDTH : RAIL_WIDTHS[width],
+        // The width animates for collapse/expand, never under the pointer.
+        dragging ? 'transition-none' : 'transition-[width] duration-[var(--bakin-motion-duration-transition)] ease-bakin-standard motion-reduce:transition-none',
+        collapsed ? RAIL_STRIP_WIDTH : resizing ? cn(RESIZABLE_WIDTH, rowWidth === null && UNMEASURED_CAP) : RAIL_WIDTHS[width],
         className,
       )}
     >
+      {resizing ? (
+        <ResizeHandle
+          orientation="vertical"
+          handleProps={resize.handleProps}
+          label={label ? `Resize ${label.toLowerCase()}` : 'Resize panel'}
+          visibleAtRest
+          className={cn('absolute inset-y-0 z-10 flex w-bakin-2 cursor-col-resize', side === 'end' ? 'left-0' : 'right-0')}
+        />
+      ) : null}
       {showStrip ? (
         <div data-slot="page-aside-strip" className="flex min-h-0 flex-1 flex-col items-center gap-bakin-1 py-bakin-2">
           <Button

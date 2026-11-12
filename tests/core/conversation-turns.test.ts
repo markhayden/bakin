@@ -55,6 +55,7 @@ function makeHarness(): Harness {
   const rows = new Map<string, ConversationTurnRow[]>()
   const seenArgs: MessageArgs[] = []
   let script: () => AsyncIterable<ChatChunk> = async function* () {
+    yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
     yield { type: 'done' } as ChatChunk
   }
   const ctx = {
@@ -216,6 +217,7 @@ describe('conversation turn service', () => {
     const gate = new Promise<void>((r) => { release = r })
     h.setStream(async function* () {
       await gate
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
 
@@ -237,6 +239,7 @@ describe('conversation turn service', () => {
     const gate = new Promise<void>((r) => { release = r })
     h.setStream(async function* () {
       await gate
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
 
@@ -328,6 +331,129 @@ describe('conversation turn service', () => {
     expect(h.events.find((e) => e.event === 'test.done')).toBeUndefined()
     expect(metered).toHaveLength(0)
     expect(outcomes).toEqual([{ aborted: false, errored: true }])
+  })
+
+  test('an empty completion is nudged once inside the same turn (2026-11-11 "you there?")', async () => {
+    const h = makeHarness()
+    let calls = 0
+    h.setStream(async function* () {
+      calls += 1
+      if (calls === 1) { yield { type: 'done', usage: { input: 10, output: 4 } } as ChatChunk; return }
+      yield { type: 'text', content: 'Sorry — here is the next question.' } as ChatChunk
+      yield { type: 'done', usage: { input: 12, output: 20 } } as ChatChunk
+    })
+    const metered: unknown[] = []
+    const service = makeService(h, { hooks: { meter: async (info) => { metered.push(info.usage) } } })
+    expect(await service.start(h.ctx, 'e1', 'my answer')).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+
+    expect(h.seenArgs).toHaveLength(2)
+    expect(h.seenArgs[0]!.content).toBe('my answer')
+    expect(h.seenArgs[1]!.content).toContain('Your previous reply was empty')
+    const rows = h.rows.get('e1')!
+    expect(rows.some((r) => r.kind === 'assistant' && (r as { content: string }).content.includes('next question'))).toBe(true)
+    expect(rows.some((r) => r.kind === 'error')).toBe(false)
+    // Both completions ride ONE turn id and bill as one.
+    const turnIds = new Set(rows.filter((r) => 'turnId' in r).map((r) => (r as { turnId?: string }).turnId))
+    expect(turnIds.size).toBe(1)
+    expect(metered).toEqual([{ input: 22, output: 24 }])
+    expect(h.events.some((e) => e.event === 'test.error')).toBe(false)
+  })
+
+  test('the nudge rides the SAME thread id, and an ephemeral session gets the whole prompt again (brands)', async () => {
+    // Brands mints a UUID per threadId() call and runs ephemeral sessions: a nudge in a
+    // fresh session with only "your reply was empty" would have no document to answer about.
+    const h = makeHarness()
+    let calls = 0
+    h.setStream(async function* () {
+      calls += 1
+      if (calls === 1) { yield { type: 'done' } as ChatChunk; return }
+      yield { type: 'text', content: 'here you go' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    mkdirSync(testDir, { recursive: true })
+    const pngPath = join(testDir, 'brand.png')
+    writeFileSync(pngPath, PNG_1PX)
+    let minted = 0
+    const service = makeService(h, {
+      ephemeral: true,
+      framing: 'Answer about the brand document.',
+      threadId: (key) => `brand-doc:${key}/${++minted}`,
+    })
+    expect(await service.start(h.ctx, 'b1', 'What is the palette?', { attachments: [{ name: 'brand.png', path: pngPath, mimeType: 'image/png' }] })).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+    expect(minted).toBe(1)
+    expect(h.seenArgs).toHaveLength(2)
+    expect(h.seenArgs[1]!.threadId).toBe(h.seenArgs[0]!.threadId)
+    expect(h.seenArgs[1]!.content).toBe(`${h.seenArgs[0]!.content}\n\nYour previous reply was empty — nothing reached the user. Reply now to their last message above, as you would have.`)
+    expect(h.seenArgs[1]!.content).toContain('Answer about the brand document.')
+    expect(h.seenArgs[1]!.attachments).toHaveLength(1)
+  })
+
+  test('a consumer-composed prompt (runtimeContent) is nudged without regaining config.framing', async () => {
+    const h = makeHarness()
+    let calls = 0
+    h.setStream(async function* () {
+      calls += 1
+      if (calls === 1) { yield { type: 'done' } as ChatChunk; return }
+      yield { type: 'text', content: 'ok' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h, { framing: 'DEFAULT FRAMING' })
+    expect(await service.start(h.ctx, 'r1', 'user text', { runtimeContent: 'composed prompt' })).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+    expect(h.seenArgs[0]!.content).toBe('composed prompt')
+    expect(h.seenArgs[1]!.content).toBe('Your previous reply was empty — nothing reached the user. Reply now to their last message above, as you would have.')
+    expect(h.seenArgs[1]!.attachments).toBeUndefined()
+  })
+
+  test('a done emit that throws settles as an error without billing the completion twice', async () => {
+    const h = makeHarness()
+    h.setStream(async function* () {
+      yield { type: 'text', content: 'hi' } as ChatChunk
+      yield { type: 'done', usage: { input: 5, output: 2 } } as ChatChunk
+    })
+    const metered: unknown[] = []
+    const service = makeService(h, {
+      hooks: { meter: async (info) => { metered.push(info.usage) } },
+      payload: (key) => {
+        if (h.events.some((e) => e.event === 'test.chunk')) throw new Error('bus down')
+        return { threadKey: key }
+      },
+    })
+    expect(await service.start(h.ctx, 'm1', 'hello')).toBe('accepted')
+    await service.waitFor('m1')
+    expect(h.rows.get('m1')!.some((r) => r.kind === 'error')).toBe(true)
+    expect(metered).toEqual([{ input: 5, output: 2 }])
+  })
+
+  test('two empty completions settle as an error turn with kind empty_reply — never a silent gap', async () => {
+    const h = makeHarness()
+    h.setStream(async function* () { yield { type: 'done', usage: { input: 10, output: 4 } } as ChatChunk })
+    const metered: unknown[] = []
+    const service = makeService(h, { hooks: { meter: async (info) => { metered.push(info.usage) } } })
+    expect(await service.start(h.ctx, 'e2', 'my answer')).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.error'), { label: 'error settled' })
+    expect(h.seenArgs).toHaveLength(2)
+    const last = h.rows.get('e2')!.at(-1) as { kind: string; errorKind?: string; message: string }
+    expect(last.kind).toBe('error')
+    expect(last.errorKind).toBe('empty_reply')
+    expect(h.events.find((e) => e.event === 'test.error')!.data).toMatchObject({ kind: 'empty_reply' })
+    // Both completions were billed by the provider — the failed turn still
+    // attributes them (summed), exactly as an aborted turn would.
+    expect(metered).toEqual([{ input: 20, output: 8 }])
+  })
+
+  test('a tool-only completion is not empty — no nudge', async () => {
+    const h = makeHarness()
+    h.setStream(async function* () {
+      yield { type: 'tool', content: '', data: { phase: 'result', callId: 'c1', toolName: 'bakin_exec_ask_user', status: 'completed' } } as unknown as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h)
+    expect(await service.start(h.ctx, 'e3', 'my answer')).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+    expect(h.seenArgs).toHaveLength(1)
   })
 
   test('a stream that throws mid-iteration settles as an error turn (no typed kind)', async () => {
@@ -589,6 +715,7 @@ describe('conversation turn service', () => {
     const gate = new Promise<void>((r) => { release = r })
     h.setStream(async function* () {
       await gate
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     expect(await service.start(h.ctx, 't12', 'go')).toBe('accepted')
@@ -608,6 +735,7 @@ describe('conversation turn service', () => {
     const gate = new Promise<void>((r) => { release = r })
     h.setStream(async function* () {
       await gate
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     expect(await service.start(h.ctx, 'tq0', 'go')).toBe('accepted')
@@ -652,6 +780,7 @@ describe('conversation turn service — pending queue', () => {
     const scripts: Array<() => AsyncIterable<ChatChunk>> = []
     h.setStream(() => {
       const next = scripts.shift() ?? (async function* () {
+        yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
         yield { type: 'done' } as ChatChunk
       })
       return next()
@@ -670,7 +799,9 @@ describe('conversation turn service — pending queue', () => {
   }
 
   /** A stream gated on an external release; pushes onto `scripts`. */
-  function gatedScript(scripts: Array<() => AsyncIterable<ChatChunk>>, chunks: ChatChunk[] = []) {
+  function gatedScript(scripts: Array<() => AsyncIterable<ChatChunk>>, given: ChatChunk[] = []) {
+    // A gated turn still says something: the engine nudges an empty completion (2026-11-11).
+    const chunks = given.length ? given : [{ type: 'text', content: 'ok' } as ChatChunk]
     let release!: () => void
     const gate = new Promise<void>((r) => { release = r })
     scripts.push(async function* () {
@@ -844,6 +975,7 @@ describe('conversation turn service — pending queue', () => {
     // Busy thread: restore parks; drains when the active turn settles.
     const release = gatedScript(scripts)
     scripts.push(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     expect(await service.start(h.ctx, 'q7', 'live')).toBe('accepted')
@@ -879,6 +1011,7 @@ describe('conversation turn service — pending queue', () => {
     const releaseFirst = gatedScript(scripts)
     const releaseDrain = gatedScript(scripts)
     scripts.push(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
 
@@ -907,6 +1040,7 @@ describe('conversation turn service — pending queue', () => {
     })
     const releaseTurn = gatedScript(scripts)
     scripts.push(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
 
@@ -972,6 +1106,7 @@ describe('conversation turn service — pending queue', () => {
     const { h, service, scripts } = makeQueueHarness()
     const release = gatedScript(scripts)
     scripts.push(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     expect(await service.start(h.ctx, 'q13', 'live turn')).toBe('accepted')
@@ -994,6 +1129,7 @@ describe('conversation turn service — pending queue', () => {
     const { h, service, scripts } = makeQueueHarness()
     const release = gatedScript(scripts)
     scripts.push(async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     expect(await service.start(h.ctx, 'q10', 'first')).toBe('accepted')
@@ -1252,7 +1388,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
   test('flush precedes the next admission: queued send drains BEHIND the external rows', async () => {
     const h = makeHarness()
     const scripts: Array<() => AsyncIterable<ChatChunk>> = []
-    h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+    h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'text', content: 'ok' } as ChatChunk; yield { type: 'done' } as ChatChunk }))())
     let release!: () => void
     const gate = new Promise<void>((r) => { release = r })
     scripts.push(async function* () {
@@ -1271,7 +1407,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(contents(h.rows.get('x4'))).toEqual([
       'user:first', 'assistant:first reply',
       'assistant:check-in q', 'tool',
-      'user:follow-up',
+      'user:follow-up', 'assistant:ok',
     ])
     expect(h.seenArgs).toHaveLength(2)
   })
@@ -1342,7 +1478,7 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
       const key = `x8-${followUp}-${hops}`
       const h = makeHarness()
       const scripts: Array<() => AsyncIterable<ChatChunk>> = []
-      h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'done' } as ChatChunk }))())
+      h.setStream(() => (scripts.shift() ?? (async function* () { yield { type: 'text', content: 'ok' } as ChatChunk; yield { type: 'done' } as ChatChunk }))())
       let release!: () => void
       const gate = new Promise<void>((r) => { release = r })
       scripts.push(async function* () { await gate; yield { type: 'done' } as ChatChunk })

@@ -65,6 +65,7 @@ function scriptStreams(scripts: Array<() => AsyncIterable<ChatChunk>>, capture?:
   activated.ctx.runtime.messaging.stream = ((args: MessageArgs) => {
     capture?.push(args)
     const next = scripts.shift() ?? (async function* () {
+      yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
       yield { type: 'done' } as ChatChunk
     })
     return next()
@@ -76,6 +77,7 @@ function gated(scripts: Array<() => AsyncIterable<ChatChunk>>) {
   const gate = new Promise<void>((r) => { release = r })
   scripts.push(async function* () {
     await gate
+    yield { type: 'text', content: 'ok' } as ChatChunk // engine nudges an empty completion (2026-11-11)
     yield { type: 'done' } as ChatChunk
   })
   return () => release()

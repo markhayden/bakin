@@ -25,8 +25,10 @@ addExecTool({
   description:
     'Ask the user ONE question in a live conversation, shown as an answerable card. ' +
     'Ask only questions that materially change the outcome; one per turn. Give 2-5 mutually ' +
-    'exclusive options and set `recommended` to the option you would pick. After calling, end ' +
-    'your turn and wait for the answer. Do not use outside a conversation with the user.',
+    'exclusive options and set `recommended` to the option you would pick. The card itself always ' +
+    'adds "Not sure — help me choose" and (unless `allowOther` is false) a field for the user\'s own ' +
+    'answer, so never add your own "help me choose", "other" or "something else" option. After ' +
+    'calling, end your turn and wait for the answer. Do not use outside a conversation with the user.',
   source: 'core',
   parameters: {
     question: z.string().describe(`The question (max ${QUESTION_LIMITS.question} chars)`),
@@ -35,7 +37,7 @@ addExecTool({
       description: z.string().optional().describe(`Why/what it means (max ${QUESTION_LIMITS.description} chars)`),
     })).describe(`${QUESTION_LIMITS.minOptions}-${QUESTION_LIMITS.maxOptions} mutually exclusive options`),
     recommended: z.number().int().optional().describe('Index of the option you recommend'),
-    allowOther: z.boolean().optional().describe('Offer a free-text "Something else" answer (default true)'),
+    allowOther: z.boolean().optional().describe("Let the user type their own answer instead of picking an option (default true)"),
   },
   handler: async (params) => {
     const input = validateBakinQuestionInput(params)

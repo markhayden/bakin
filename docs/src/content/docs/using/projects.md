@@ -13,7 +13,7 @@ Nothing exists until you send. Your first message creates the project and starts
 
 ## Shaping it with the lead
 
-A new project opens on its **Conversation** tab. The lead plays brainstorm buddy: a short reflection on what you said, at most one challenge, and one question at a time as a card with options and a recommendation. Pick an option, write your own, or say you're not sure. Once the goal, the scope and what "done" means are settled, the lead drafts the plan and its steps and tells you it's ready in the Plan tab. Say "just write it" and it drafts right away.
+A new project opens on its **Conversation** tab. The lead plays brainstorm buddy: a short reflection on what you said, at most one challenge, and one question at a time as a card with options and a recommendation. Pick an option, say you're not sure, or type your own answer in the card's one text field; with an option picked, that text goes along as a note. Once the goal, the scope and what "done" means are settled, the lead drafts the plan and its steps and tells you it's ready in the Plan tab. Say "just write it" and it drafts right away.
 
 When you're ready, **Start project**. That's a hand-off: the lead takes it from there, sends steps to the [board](/docs/using/tasks/), gives each to the right agent or keeps it, and checks in as work moves. With no steps yet, its first check-in breaks the plan down. A finished project gets **Mark complete**; you can reopen or archive it later. Status only changes because you said so. Agents can't start, complete or archive a project, can't rename one you named yourself, and can't delete steps or projects.
 

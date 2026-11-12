@@ -221,7 +221,7 @@ describe('ctx.conversations guardrails (#703 review)', () => {
     })
     const turnCtx = {
       events: { emit: () => {}, on: () => () => {}, once: () => () => {} },
-      runtime: { messaging: { stream: () => (async function* () { yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } } })() } },
+      runtime: { messaging: { stream: () => (async function* () { yield { type: 'text', content: 'ok' }; yield { type: 'done', usage: { inputTokens: 1, outputTokens: 1 } } })() } },
     }
     meteredTurns.length = 0
     expect(await service.start(turnCtx as never, 'k1', 'hi')).toBe('accepted')

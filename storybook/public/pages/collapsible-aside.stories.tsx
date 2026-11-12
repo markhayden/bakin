@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect } from 'storybook/test'
+import { expect, waitFor } from 'storybook/test'
 
 import {
   ListRow,
@@ -19,7 +19,7 @@ const meta = {
     docs: {
       description: {
         component:
-          'PageAside with `collapsible` is the one collapsible-rail treatment: a full-height edge column (session lists, app navigation, a docked conversation) that collapses to the kit strip. `width` picks nav, session or conversation (360px); `side="end"` docks the rail after the content and mirrors its edge and expand affordance. `strip` mode replaces content with the kit expand affordance; `content` mode keeps children mounted at the collapsed width for icon-mode navs. Pair with `useCollapsedAside` for persisted state — never hand-roll a strip or rail widths.',
+          'PageAside with `collapsible` is the one collapsible-rail treatment: a full-height edge column (session lists, app navigation, a docked conversation) that collapses to the kit strip. `width` picks nav, session or conversation (360px); `side="end"` docks the rail after the content and mirrors its edge and expand affordance. `strip` mode replaces content with the kit expand affordance; `content` mode keeps children mounted at the collapsed width for icon-mode navs. `resizable={{ storageKey }}` adds the kit grab bar on the rail\'s page-facing edge (drag, or arrows / Home / End on the separator) with the width persisted per key. Pair with `useCollapsedAside` for persisted state — never hand-roll a strip, rail widths or a resize handle.',
       },
     },
     bakinCoverage: ['desktop', 'mobile-320', 'keyboard', 'non-color', 'reduced-motion', 'collapsed', 'landmark'],
@@ -169,6 +169,7 @@ function ConversationDockRail() {
         width="conversation"
         side="end"
         collapsible={{ collapsed, onCollapsedChange: setCollapsed, expandLabel: 'Expand project conversation' }}
+        resizable={{ storageKey: 'storybook-conversation-dock', minWidth: 280 }}
       >
         <div className="flex items-center justify-between p-bakin-2">
           <span className="text-bakin-typography-size-meta text-bakin-text-muted">Roscoe</span>
@@ -207,5 +208,23 @@ export const ConversationDock = {
     await expect(expand).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(expand)
     await expect(canvas.getByText('Got it — added that to Scope. Who runs the one-week check?')).toBeVisible()
+    // Resize from the page-facing edge: the separator is keyboard-operable and
+    // reports its width. Start from a known edge (End = max) so a width
+    // persisted by an earlier replay cannot make the round trip ambiguous.
+    const resizer = canvas.getByRole('separator', { name: 'Resize project conversation' })
+    // The cap is half the MEASURED row (44rem → 352px); before the observer's
+    // first measurement the rail still reports the 720px preset, and a slow
+    // runner reads that stale max (CI 2026-11-12: expected 720, got 352).
+    await waitFor(() => expect(resizer).toHaveAttribute('aria-valuemax', '352'))
+    const max = 352
+    resizer.focus()
+    await userEvent.keyboard('{End}')
+    await expect(resizer).toHaveAttribute('aria-valuenow', String(max))
+    await userEvent.keyboard('{ArrowRight}')
+    await expect(resizer).toHaveAttribute('aria-valuenow', String(max - 16))
+    await userEvent.keyboard('{ArrowLeft}')
+    await expect(resizer).toHaveAttribute('aria-valuenow', String(max))
+    await userEvent.keyboard('{Home}')
+    await expect(resizer).toHaveAttribute('aria-valuenow', resizer.getAttribute('aria-valuemin')!)
   },
 } satisfies Story

@@ -340,3 +340,20 @@ describe('foldConversation — persisted rows', () => {
     expect(foldConversation(rows, { liveChunks: [text('live')] }).map((t) => t.key)).toEqual(keys)
   })
 })
+
+describe('live turn key', () => {
+  it('is the key the persisted turn will carry, so the settle swap reconciles in place', () => {
+    const rows = [
+      { kind: 'user', ts: '2026-07-20T00:00:00Z', content: 'q' },
+      { kind: 'assistant', ts: '2026-07-20T00:00:01Z', turnId: 't0', content: 'first' },
+    ] as const
+    const live = foldConversation([...rows], { liveChunks: [{ type: 'text', content: 'second…' }] })
+    const settled = foldConversation([
+      ...rows,
+      { kind: 'user', ts: '2026-07-20T00:00:02Z', content: 'more' },
+      { kind: 'assistant', ts: '2026-07-20T00:00:03Z', turnId: 't1', content: 'second' },
+    ])
+    expect(live.at(-1)?.key).toBe('agent-1')
+    expect(settled.at(-1)?.key).toBe('agent-1')
+  })
+})
