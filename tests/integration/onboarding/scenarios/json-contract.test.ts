@@ -5,12 +5,11 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
 import { seedPi, storeAdapter } from '../fixtures'
-import { expectedGap, trackHomes, type OnboardingHome } from '../harness'
+import { trackHomes, type OnboardingHome } from '../harness'
 import { componentOrder, describe as describeRun, onboard, outcomes, readMarker, summary, TEST_TIMEOUT } from './kit'
 
 const homes = trackHomes()
 afterEach(() => homes.finish())
-const gap = (body: () => Promise<void>) => expectedGap(homes, body)
 
 /** Every onboarding component. The CLI must print one line for each. */
 const ALL_COMPONENTS = [
@@ -41,17 +40,19 @@ describe('without --yes, nothing recommended is approved', () => {
   }, TEST_TIMEOUT)
 })
 
-describe('one line per component and a summary (pinned: flipped by task 2.4)', () => {
-  test('a step that does not apply to this runtime still gets a line, and does not affect the exit code', gap(async () => {
+describe('one line per component and a summary', () => {
+  test('a step that does not apply to this runtime still gets a line, and does not affect the exit code', async () => {
     const home = await piHome()
     const run = await onboard(home)
     expect([...componentOrder(run)].sort(), describeRun(run)).toEqual([...ALL_COMPONENTS].sort())
     const integration = outcomes(run)['openclaw-integration']
     expect(integration?.status).toBe('skipped')
     expect(integration?.reason).toBe('not_applicable')
-  }), TEST_TIMEOUT)
+    // Lines come in component order, the summary after all of them.
+    expect(run.jsonLines.findIndex((line) => 'summary' in line)).toBe(run.jsonLines.length - 1)
+  }, TEST_TIMEOUT)
 
-  test('the last line is a summary carrying the exit code, the marker and the runtime', gap(async () => {
+  test('the last line is a summary carrying the exit code, the marker and the runtime', async () => {
     const home = await piHome()
     const run = await onboard(home)
     const last = run.jsonLines.at(-1)
@@ -61,7 +62,7 @@ describe('one line per component and a summary (pinned: flipped by task 2.4)', (
       markerWritten: readMarker(home) !== null,
       runtime: { adapter: 'pi', source: 'existing' },
     })
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })
 
 describe('skipped steps', () => {

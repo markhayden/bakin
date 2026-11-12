@@ -684,6 +684,17 @@ describe('runOnboard orchestrator', () => {
       expect(stdoutLines).toHaveLength(COMPONENT_NAMES.length)
     })
 
+    it('emits a line for a component that does not apply to the runtime, with its typed reason', async () => {
+      // openclaw-integration declares supportedAdapters; the test runtime is not one of them.
+      const result = await runOnboard({ ...opts, json: true })
+      const skipped = result.outcomes.filter((o) => o.reason === 'not_applicable')
+      const lines = stdoutLines.map((l) => JSON.parse(l) as Record<string, unknown>)
+      expect(lines).toHaveLength(COMPONENT_NAMES.length)
+      for (const outcome of skipped) {
+        expect(lines.find((l) => l.component === outcome.name)).toMatchObject({ status: 'skipped', reason: 'not_applicable' })
+      }
+    })
+
     it('does not emit JSON when json flag is false', async () => {
       await runOnboard({ ...opts, json: false })
       expect(stdoutLines).toHaveLength(0)

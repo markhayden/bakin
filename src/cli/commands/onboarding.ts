@@ -373,6 +373,12 @@ async function cmdOnboard(args: string[]): Promise<void> {
     }
     if (!result) return
 
+    if (json) {
+      // Always the last line: what the run came to.
+      const { runSummary } = await import('../../core/onboarding/summary')
+      console.log(JSON.stringify(runSummary(result)))
+    }
+
     if (!json) {
       if (isTTY) {
         console.log('')

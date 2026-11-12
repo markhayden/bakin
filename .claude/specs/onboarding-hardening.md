@@ -173,9 +173,15 @@ code   (when reason = 'unavailable'): a typed detail, e.g. 'no_runnable_model', 
 `unavailable` means the step has nothing it can do right now and it is
 nobody's refusal (today's model-plan skips). It counts like a warning.
 
-- Exit code: 1 when any outcome is `error` or skipped for `requires`;
-  otherwise 2 when any is `warn`, or skipped for
-  `declined`/`check_only`/`unavailable`; otherwise 0. `not_applicable` never affects the exit code.
+- Exit code: 1 when any outcome is `error`; otherwise 2 when any is `warn`
+  or skipped for any reason except `not_applicable`; otherwise 0.
+  `not_applicable` never affects the exit code.
+  (Amended while building task 2.4. The earlier wording also made any
+  `requires` skip exit 1. A `requires` skip always has an upstream cause:
+  behind an error the run is already 1; behind a decline, a check-only or
+  an unavailable step the run is as complete as it was allowed to be.
+  Counting it as a failure would have turned "declined search" into a
+  failed onboarding with no marker, which today finishes with exit 2.)
 - Marker: written iff exit code is not 1 and the run is not `--check`.
 - `ONBOARDING_VERSION` is not bumped (a bump would un-onboard every existing
   home on upgrade); the marker's `components` record simply gains names.

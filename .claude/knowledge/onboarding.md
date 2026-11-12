@@ -20,6 +20,18 @@ carries a typed `reason`; consumers read it (and `code`), never the message:
 | `check_only` | `--check` found work and did not do it |
 | `unavailable` | Nothing the step can do right now and nobody refused it; `code` says what is missing (`no_runnable_model`, `no_proven_model`, `existing_plan`, `no_prebuilds`) |
 
+Under `--json` every component prints exactly one line, including one that
+does not apply (`not_applicable`), and the last line is
+`{"summary":{"exitCode":…,"markerWritten":…,"runtime":{"adapter":…,"source":…}}}`
+(`src/core/onboarding/summary.ts`; `source` is `env`, `existing` or
+`default`).
+
+Exit code (`exitCodeFor` in `index.ts`): 1 when any step is `error`; else 2
+when any step is `warn` or skipped for a reason other than `not_applicable`;
+else 0. A `requires` skip never decides the code by itself: its cause is
+upstream. The marker is written when the code is not 1 and the run is not
+`--check`.
+
 An install returns `reason` (`declined` or `unavailable`) with its skip; one
 that gives none is treated as `declined`. An install that fails for a reason
 a caller must tell apart sets `code`, and the operation settles with it

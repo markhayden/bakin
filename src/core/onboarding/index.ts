@@ -446,6 +446,22 @@ async function runRuntimeInline(component: OnboardingComponent, opts: Onboarding
 }
 
 /**
+ * The run's exit code, from statuses and typed reasons alone:
+ *  - 1 when any step ended in `error`. A step skipped because it `requires`
+ *    another never decides this on its own: its cause is upstream, and only
+ *    an upstream error makes the run a failure.
+ *  - 2 when the run is as complete as it was allowed to be but not whole:
+ *    a warning, or a step skipped for any reason except `not_applicable`.
+ *  - 0 otherwise. A step that does not exist on this runtime is not
+ *    unfinished work and never affects the code.
+ */
+export function exitCodeFor(outcomes: ReadonlyArray<Pick<ComponentOutcome, 'finalStatus' | 'reason'>>): 0 | 1 | 2 {
+  if (outcomes.some((o) => o.finalStatus === 'error')) return 1
+  const unfinished = outcomes.some((o) => o.finalStatus === 'warn' || (o.finalStatus === 'skipped' && o.reason !== 'not_applicable'))
+  return unfinished ? 2 : 0
+}
+
+/**
  * Run every component's `check()` in dependency order and return the
  * results. Never touches install() — safe for doctor or CI auditing.
  */
@@ -503,6 +519,9 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       }
       outcomes.push(skip)
       opts.onOutcome?.({ name: skip.name, finalStatus: 'skipped', message: skip.message })
+      // Every component gets a line, including one that does not apply: a
+      // consumer never has to infer a step from its absence.
+      if (opts.json) emitJson(skip)
       continue
     }
 
@@ -575,10 +594,8 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
     if (opts.json) emitJson(outcome)
   }
 
-  // Aggregate exit code
-  const hasError = outcomes.some((o) => o.finalStatus === 'error')
-  const hasSkippedOrWarn = outcomes.some((o) => o.finalStatus === 'warn' || o.finalStatus === 'skipped')
-  const exitCode: 0 | 1 | 2 = hasError ? 1 : hasSkippedOrWarn ? 2 : 0
+  const exitCode = exitCodeFor(outcomes)
+  const hasError = exitCode === 1
 
   // Marker: write iff no errors and this was a real run. Warn/skipped are
   // valid end-states; a check proves nothing was set up and writes nothing.
