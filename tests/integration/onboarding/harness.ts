@@ -32,15 +32,17 @@
  *    answers 403. Git is confined to local files, so ssh/git transports are
  *    refused by git itself instead of slipping past the proxy.
  */
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess } from 'child_process'
 import { createHash } from 'crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'fs'
 import { createServer, type Server } from 'http'
+import { createServer as createNetServer } from 'net'
 import { tmpdir } from 'os'
 import { dirname, join, relative } from 'path'
 
 export const REPO_ROOT = join(import.meta.dir, '..', '..', '..')
 const CLI_ENTRY = join(REPO_ROOT, 'cli', 'bakin.ts')
+const SERVER_ENTRY = join(REPO_ROOT, 'server.ts')
 
 /** Reserved-and-never-served ports: a connect is refused immediately. */
 export const DEAD_SEARCH_URL = 'http://127.0.0.1:39998'
@@ -183,6 +185,10 @@ export async function createOnboardingHome(options: CreateHomeOptions = {}): Pro
       // the adapter agree on one agent dir inside the tree.
       PI_CODING_AGENT_DIR: join(piHome, 'agent'),
       OPENCLAW_HOME: openclawHome,
+      // The adapter runs the OpenClaw CLI from here. Only the OpenClaw
+      // fixture installs a stand-in at this path; without one, nothing on
+      // PATH resolves either.
+      OPENCLAW_PATH: join(binDir, 'openclaw'),
       ANTFLY_HOME: searchHome,
       LANG: 'en_US.UTF-8',
       NO_COLOR: '1',
@@ -461,4 +467,97 @@ export function expectedGap(homes: HomeTracker, body: () => Promise<void>): () =
       throw new Error('onboarding harness: this pinned gap now passes — turn it into a plain test in the commit that fixed it')
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Server mode
+// ---------------------------------------------------------------------------
+
+/** The suite preload swaps global fetch for a browser emulation; real sockets need Bun's. */
+const realFetch: typeof fetch = (Bun as unknown as { fetch?: typeof fetch }).fetch ?? fetch
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const probe = createNetServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
+export interface HarnessServer {
+  port: number
+  baseUrl: string
+  /** Everything the server wrote to stdout and stderr so far. */
+  logs(): string
+  /** Stop the server's process group and wait for it to exit. */
+  stop(): Promise<void>
+}
+
+/**
+ * Boot the real server from source for this home, under the same closed
+ * environment as the CLI. The CLI then finds it through the home's own
+ * `server.lock`, so `bakin onboard` runs its installs as operations on the
+ * server instead of in-process. The server's address is declared as the
+ * scenario's own endpoint; anything else it requests is recorded.
+ */
+export async function startServer(home: OnboardingHome, options: { env?: Record<string, string>; bootTimeoutMs?: number } = {}): Promise<HarnessServer> {
+  const port = await freePort()
+  // The CLI addresses its home's server as `localhost`; the harness polls 127.0.0.1.
+  home.allowEndpoint(`127.0.0.1:${port}`)
+  home.allowEndpoint(`localhost:${port}`)
+  const child: ChildProcess = spawn(process.execPath, ['--no-env-file', SERVER_ENTRY, 'serve'], {
+    cwd: REPO_ROOT,
+    env: {
+      ...home.env,
+      PORT: String(port),
+      // The scenario onboards a home that is not onboarded yet; the gate
+      // that refuses to serve such a home is not what is under test.
+      BAKIN_SKIP_ONBOARDING_CHECK: '1',
+      BAKIN_CONSOLE_FORMAT: 'json',
+      ...(options.env ?? {}),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+  })
+  let output = ''
+  let exited: { code: number | null; signal: NodeJS.Signals | null } | null = null
+  child.stdout?.setEncoding('utf-8').on('data', (chunk: string) => { output += chunk })
+  child.stderr?.setEncoding('utf-8').on('data', (chunk: string) => { output += chunk })
+  const closed = new Promise<void>((resolve) => {
+    child.once('close', (code, signal) => {
+      exited = { code, signal }
+      resolve()
+    })
+  })
+  const stop = async (): Promise<void> => {
+    if (child.pid !== undefined && !exited) {
+      killGroup(child.pid, 'SIGTERM')
+      const hard = setTimeout(() => { if (child.pid !== undefined) killGroup(child.pid, 'SIGKILL') }, 5_000)
+      await closed
+      clearTimeout(hard)
+    }
+    if (child.pid !== undefined) killGroup(child.pid, 'SIGKILL')
+  }
+
+  const baseUrl = `http://127.0.0.1:${port}`
+  const deadline = Date.now() + (options.bootTimeoutMs ?? 60_000)
+  for (;;) {
+    try {
+      const res = await realFetch(`${baseUrl}/api/operations`, { signal: AbortSignal.timeout(2_000) })
+      if (res.ok) break
+    } catch {
+      // not listening yet
+    }
+    if (exited) throw new Error(`onboarding harness: server exited before boot:\n${output.slice(-3000)}`)
+    if (Date.now() > deadline) {
+      await stop()
+      throw new Error(`onboarding harness: server did not boot within the deadline:\n${output.slice(-3000)}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  return { port, baseUrl, logs: () => output, stop }
 }
