@@ -315,6 +315,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     if (checkOnly) await composeForCheck()
+    const declinedComponents = args.includes('--no-recommended') ? [...RECOMMENDED_COMPONENTS] : []
     const opts = {
       autoApprove: baseOpts.autoApprove,
       json,
@@ -322,7 +323,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
       force,
       ...(runtimeProposal ? { runtimeProposal } : {}),
       // --no-recommended: set up Bakin itself and nothing from outside.
-      ...(args.includes('--no-recommended') ? { declinedComponents: [...RECOMMENDED_COMPONENTS] } : {}),
+      ...(declinedComponents.length > 0 ? { declinedComponents } : {}),
     }
 
     let busyFrame = 0
@@ -445,7 +446,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
             })
             askedForLogin = waited.asked
           }
-          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady, brandShown: askedForLogin || decided?.source === 'asked' })
+          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady, brandShown: askedForLogin || decided?.source === 'asked', declined: declinedComponents })
           if (selections.renderedWizardScreens || askedForLogin) busyShowsBrand = false
           startBusy()
           const { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents } = selections

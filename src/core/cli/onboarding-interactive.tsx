@@ -261,6 +261,8 @@ export async function collectOnboardingSelections(
     runtimeReady: boolean;
     /** An earlier screen of this run (the runtime question, the login step) already drew the brand. */
     brandShown?: boolean;
+    /** Components the operator declined outright (`--no-recommended`): never asked about. */
+    declined?: readonly string[];
   },
 ): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly)
@@ -277,8 +279,15 @@ export async function collectOnboardingSelections(
     status: "error",
     message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
   }));
-  const pluginCheck = await recommendedPluginsComponent.check();
-  const agentCheck = await recommendedAgentsComponent.check();
+  // A declined component is not checked (its check reaches for the catalog)
+  // and not asked about: the operator already answered.
+  const notAsked = (name: string): CheckResult => ({ name, status: "ok", message: "Declined; not asked" });
+  const pluginCheck = bootstrap.declined?.includes("recommended-plugins")
+    ? notAsked("recommended-plugins")
+    : await recommendedPluginsComponent.check();
+  const agentCheck = bootstrap.declined?.includes("recommended-agents")
+    ? notAsked("recommended-agents")
+    : await recommendedAgentsComponent.check();
   const hasWizardSteps = [
     searchCheck,
     searchModelsCheck,
