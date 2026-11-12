@@ -48,6 +48,25 @@ const SERVER_ENTRY = join(REPO_ROOT, 'server.ts')
 export const DEAD_SEARCH_URL = 'http://127.0.0.1:39998'
 export const DEAD_GATEWAY_PORT = 39997
 
+/**
+ * Where the product points when no settings file says otherwise: its own
+ * search engine and the OpenClaw gateway. On a developer machine either may
+ * be a real, running service.
+ */
+export const PRODUCT_DEFAULT_ENDPOINTS = ['127.0.0.1:3738', 'localhost:3738', '127.0.0.1:18789', 'localhost:18789'] as const
+
+/** `host:port` of a proxy record such as `GET http://127.0.0.1:18789/health` or `CONNECT host:443`. */
+function recordTarget(record: string): string {
+  const target = record.slice(record.indexOf(' ') + 1)
+  if (!target.includes('://')) return target
+  try {
+    const url = new URL(target)
+    return url.port ? url.host : `${url.hostname}:${url.protocol === 'https:' ? 443 : 80}`
+  } catch {
+    return target
+  }
+}
+
 const TRANSPILER_CACHE = join(tmpdir(), 'bakin-onboard-harness-transpiler-cache')
 
 export interface OnboardingHome {
@@ -70,8 +89,18 @@ export interface OnboardingHome {
    * `127.0.0.1:4123`. Everything else still goes to the deny proxy.
    */
   allowEndpoint(hostPort: string): void
+  /**
+   * For scenarios that start WITHOUT the settings scaffold (an absent,
+   * empty or unreadable settings file): the product then runs on its real
+   * default endpoints. Requests to those are still sent to the deny proxy
+   * and still answered 403 — nothing reaches a real service — but they are
+   * the product's own defaults, expected here, and not counted as a breach.
+   */
+  blackholeProductDefaults(): void
   /** What the recorders hold: supervisor commands run and outside requests made. */
   violations(): { commands: string[]; network: string[] }
+  /** Every request the deny proxy refused, including blackholed defaults. */
+  deniedRequests(): string[]
   /** The complete environment a child gets. Mutate to add scenario vars. */
   env: Record<string, string>
   readSettings(): Record<string, unknown>
@@ -160,6 +189,7 @@ export async function createOnboardingHome(options: CreateHomeOptions = {}): Pro
   writeCommandShims(binDir, commandRecord)
   const proxy = await startDenyProxy()
   const allowed: string[] = []
+  const blackholed = new Set<string>()
 
   const home: OnboardingHome = {
     root, bakinHome, piHome, openclawHome, searchHome, userHome, binDir, settingsPath,
@@ -169,10 +199,14 @@ export async function createOnboardingHome(options: CreateHomeOptions = {}): Pro
       home.env.NO_PROXY = allowed.join(',')
       home.env.no_proxy = home.env.NO_PROXY
     },
+    blackholeProductDefaults: () => {
+      for (const endpoint of PRODUCT_DEFAULT_ENDPOINTS) blackholed.add(endpoint)
+    },
     violations: () => ({
       commands: existsSync(commandRecord) ? readFileSync(commandRecord, 'utf-8').split('\n').filter(Boolean) : [],
-      network: [...proxy.records],
+      network: proxy.records.filter((record) => !blackholed.has(recordTarget(record))),
     }),
+    deniedRequests: () => [...proxy.records],
     env: {
       // The allowlist. Nothing is inherited: no BAKIN_URL from the test
       // preload, no developer shell state, no proxy or token variables.
@@ -459,8 +493,13 @@ export function expectedGap(homes: HomeTracker, body: () => Promise<void>): () =
     let failed = false
     try {
       await body()
-    } catch {
+    } catch (err) {
       failed = true
+      // A pinned gap must fail for the reason it pins, not for a typo in
+      // the scenario. ONBOARDING_GAP_REASONS=1 prints each one for review.
+      if (process.env.ONBOARDING_GAP_REASONS) {
+        console.error(`[pinned gap] ${err instanceof Error ? err.message : String(err)}`)
+      }
     }
     await homes.finish()
     if (!failed) {

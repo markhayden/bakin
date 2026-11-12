@@ -62,3 +62,23 @@ export function readMarker(home: OnboardingHome): Marker | null {
 export function describe(result: ChildResult): string {
   return `exit=${String(result.exitCode)} signal=${String(result.signal)} timedOut=${String(result.timedOut)}\nstdout:\n${result.stdout.slice(-2000)}\nstderr:\n${result.stderr.slice(-2000)}`
 }
+
+export interface RunSummary {
+  exitCode?: number
+  markerWritten?: boolean
+  runtime?: { adapter?: string; source?: string; refused?: string; found?: string[] }
+  [key: string]: unknown
+}
+
+/** The final `{"summary": …}` line of a run, when there is one. */
+export function summary(result: ChildResult): RunSummary | undefined {
+  for (const line of result.jsonLines) {
+    if (line.summary && typeof line.summary === 'object') return line.summary as RunSummary
+  }
+  return undefined
+}
+
+/** Every component name the run printed a line for, in order. */
+export function componentOrder(result: ChildResult): string[] {
+  return result.jsonLines.filter((line) => typeof line.component === 'string').map((line) => line.component as string)
+}

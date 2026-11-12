@@ -207,6 +207,25 @@ describe('onboarding harness: network', () => {
     expect(home.violations().network).toEqual(['GET http://127.0.0.1:9/unrelated'])
   }, TEST_TIMEOUT)
 
+  test('blackholed product defaults are denied but are not a breach; anything else still is', async () => {
+    const home = await breachableHome()
+    home.blackholeProductDefaults()
+    const result = await runInline(home, [
+      'const gateway = await fetch("http://127.0.0.1:18789/health")',
+      'const search = await fetch("http://127.0.0.1:3738/db/v1/tables")',
+      'await fetch("http://outside.invalid/")',
+      'console.log(JSON.stringify({ gateway: gateway.status, search: search.status }))',
+    ].join('\n'))
+    // Denied by the proxy: neither request reached a real service.
+    expect(result.json).toEqual({ gateway: 403, search: 403 })
+    expect(home.deniedRequests()).toEqual([
+      'GET http://127.0.0.1:18789/health',
+      'GET http://127.0.0.1:3738/db/v1/tables',
+      'GET http://outside.invalid/',
+    ])
+    expect(home.violations().network).toEqual(['GET http://outside.invalid/'])
+  }, TEST_TIMEOUT)
+
   test('a declared fixture endpoint is reached directly and not recorded', async () => {
     const home = await homes.create()
     const server = createServer((_req, res) => { res.end('fixture') })
