@@ -146,6 +146,16 @@ onboarding provisions the runtime.
 A home with a reachable runtime and no login therefore finishes onboarding
 with a warning (exit 2, marker written) and `bakin start` works.
 
+## Declining the extras
+
+`bakin onboard --no-recommended` declines the three steps that fetch from
+outside (`RECOMMENDED_COMPONENTS`: recommended plugins, recommended agents,
+capability packs). The orchestrator applies a decline before it looks at
+the component: nothing is checked, fetched or installed, even under `--yes`
+and even when the component is already installed, and the outcome is
+`skipped` / `declined`. `bakin onboard --yes --no-recommended` is the
+scripted run that sets up Bakin itself and touches nothing external.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

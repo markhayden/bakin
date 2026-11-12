@@ -653,6 +653,48 @@ describe('runOnboard orchestrator', () => {
     })
   })
 
+  describe('declined components', () => {
+    const DECLINED = ['recommended-plugins', 'recommended-agents', 'capabilities'] as const
+
+    it('a declined component is neither checked nor installed, even with autoApprove', async () => {
+      for (const name of DECLINED) {
+        scripts[name].check = { name, status: 'missing', message: `${name} missing` }
+        scripts[name].install = { name, status: 'installed', message: `${name} installed`, durationMs: 0 }
+      }
+      const result = await runOnboard({ ...opts, autoApprove: true, declinedComponents: [...DECLINED] })
+      for (const name of DECLINED) {
+        expect({ name, checked: scripts[name].checkCalls, installed: scripts[name].installCalls }).toEqual({ name, checked: 0, installed: 0 })
+        expect(result.outcomes.find((o) => o.name === name)).toMatchObject({ finalStatus: 'skipped', reason: 'declined' })
+      }
+      // Declining is a choice, not a failure: the run completes.
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('still declined when already installed: nothing is looked at', async () => {
+      // Every check would say ok; a decline does not ask.
+      const result = await runOnboard({ ...opts, declinedComponents: [...DECLINED] })
+      for (const name of DECLINED) {
+        expect(scripts[name].checkCalls).toBe(0)
+        expect(result.outcomes.find((o) => o.name === name)?.reason).toBe('declined')
+      }
+    })
+
+    it('says where to get it later and prints a line for it under --json', async () => {
+      const result = await runOnboard({ ...opts, json: true, declinedComponents: ['capabilities'] })
+      expect(result.outcomes.find((o) => o.name === 'capabilities')?.message).toContain('bakin install capabilities')
+      const line = stdoutLines.map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.component === 'capabilities')
+      expect(line).toMatchObject({ status: 'skipped', reason: 'declined' })
+    })
+
+    it('everything not declined runs as usual', async () => {
+      const result = await runOnboard({ ...opts, declinedComponents: [...DECLINED] })
+      expect(scripts.search.checkCalls).toBe(1)
+      expect(scripts.models.checkCalls).toBe(1)
+      expect(result.outcomes.filter((o) => o.reason === 'declined').map((o) => o.name)).toEqual([...DECLINED])
+    })
+  })
+
   describe('declared requirements', () => {
     it('a step that does not apply to the runtime satisfies whatever requires it', async () => {
       // openclaw-integration never applies to the test runtime; nothing waits on it.

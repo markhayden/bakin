@@ -228,7 +228,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     console.error(`bakin onboard sets up this machine's Bakin home (${getContentDir()}), but BAKIN_URL points at ${process.env.BAKIN_URL}. Unset BAKIN_URL and run it again — it uses this home's own server when one is running.`)
     process.exit(1)
   }
-  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError } = await import('../../core/onboarding/index')
+  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER, OnboardingInterruptedError, RECOMMENDED_COMPONENTS } = await import('../../core/onboarding/index')
   const { collectOnboardingSelections, OnboardingCancelledError, promptRuntimeChoice } = await import('../../core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../../core/cli/ui/onboarding')
   const { render } = await import('ink')
@@ -310,7 +310,15 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     if (checkOnly) await composeForCheck()
-    const opts = { autoApprove: baseOpts.autoApprove, json, checkOnly, force, ...(runtimeProposal ? { runtimeProposal } : {}) }
+    const opts = {
+      autoApprove: baseOpts.autoApprove,
+      json,
+      checkOnly,
+      force,
+      ...(runtimeProposal ? { runtimeProposal } : {}),
+      // --no-recommended: set up Bakin itself and nothing from outside.
+      ...(args.includes('--no-recommended') ? { declinedComponents: [...RECOMMENDED_COMPONENTS] } : {}),
+    }
 
     let busyFrame = 0
     let busyDetail: string | undefined

@@ -59,6 +59,7 @@ mock.module('../../src/core/onboarding/index', () => ({
   isOnboarded: () => onboarded,
   loadState: () => onboardingState,
   COMPONENT_ORDER: outcomes.map(outcome => ({ name: outcome.name })),
+  RECOMMENDED_COMPONENTS: ['recommended-plugins', 'recommended-agents', 'capabilities'],
 }))
 
 class OnboardingCancelledError extends Error {}

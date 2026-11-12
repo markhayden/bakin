@@ -119,6 +119,16 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   recommendedCapabilitiesComponent,
 ] as const
 
+/** The recommended extras: optional, fetched from outside, and declinable as a group (`--no-recommended`). */
+export const RECOMMENDED_COMPONENTS: readonly string[] = ['recommended-plugins', 'recommended-agents', 'capabilities']
+
+/** Where to get a declined extra later. */
+const DECLINED_HINTS: Record<string, string> = {
+  'recommended-plugins': 'install plugins any time from Explore or with `bakin install recommended-plugins`',
+  'recommended-agents': 'install agents any time from Explore or with `bakin install recommended-agents`',
+  capabilities: 'install capability packs any time from Explore or with `bakin install capabilities`',
+}
+
 /**
  * The bootstrap phase: the home, its settings and the runtime. They run
  * first and need no answers from the operator; everything after them may.
@@ -516,6 +526,23 @@ export async function runOnboard(
       bootstrapped = true
       const decided = await phases.afterBootstrap?.(outcomes)
       if (decided) opts = { ...opts, ...decided }
+    }
+
+    // Declined outright: decided before the component is looked at, so
+    // nothing is checked, fetched or installed for it.
+    if (opts.declinedComponents?.includes(component.name)) {
+      const skip: ComponentOutcome = {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'declined',
+        check: { name: component.name, status: 'ok', message: 'Declined; not checked' },
+        message: `Declined — ${DECLINED_HINTS[component.name] ?? `run \`bakin install ${component.name}\` when you want it`}.`,
+        durationMs: 0,
+      }
+      outcomes.push(skip)
+      emitOutcome(opts, skip)
+      if (opts.json) emitJson(skip)
+      continue
     }
 
     // Declared requirements: a component whose requirement did not finish

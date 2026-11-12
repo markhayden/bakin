@@ -74,6 +74,13 @@ export interface OnboardingOptions {
   /** Component ids explicitly approved by the human onboarding TUI. */
   approvedComponents?: readonly string[]
   /**
+   * Components the operator declined outright (`--no-recommended`). A
+   * declined component is neither checked nor installed — not even when
+   * `autoApprove` would otherwise select its defaults — and its outcome is
+   * `skipped` / `declined`.
+   */
+  declinedComponents?: readonly string[]
+  /**
    * The runtime a first run decided on (`decideRuntime`, `persist: true`).
    * The `settings` install commits it under `install-state` — and is run
    * for it even when the settings check is already ok, because only that
