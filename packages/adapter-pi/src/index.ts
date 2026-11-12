@@ -15,6 +15,7 @@ import './bun-static-modules'
 import { PiRuntimeAdapter, type PiRuntimeAdapterOptions } from './runtime'
 
 export { createPiHealthChecks } from './health-checks'
+export { isPiPresent } from './presence'
 
 export function createPiRuntimeAdapter(options: PiRuntimeAdapterOptions = {}): AgentRuntimeAdapter {
   return new PiRuntimeAdapter(options)
