@@ -156,6 +156,7 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
     return {
       name: 'recommended-agents',
       status: 'skipped',
+      reason: 'declined',
       message: 'No official agents selected',
       durationMs: Date.now() - start,
     }

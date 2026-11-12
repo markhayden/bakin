@@ -74,7 +74,9 @@ export function componentInstallOperation(
       // as a success or a failure (onboarding stops on it, exit 130).
       op.throwIfCancelled()
       if (result.status === 'failed') {
-        return { status: 'failed', code: component.failureCode ?? 'component_failed', message: result.message, httpStatus: 200, body: { ok: false, result } }
+        // An install may name its own failure (a refused runtime choice);
+        // otherwise the component's code, otherwise the generic one.
+        return { status: 'failed', code: result.code ?? component.failureCode ?? 'component_failed', message: result.message, httpStatus: 200, body: { ok: false, result } }
       }
       return { status: 'succeeded', code: result.status === 'skipped' ? 'skipped' : 'ok', httpStatus: 200, body: { ok: true, result } }
     },

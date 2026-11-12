@@ -127,6 +127,7 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
     return {
       name: 'capabilities',
       status: recommendedRemain ? 'skipped' : 'noop',
+      ...(recommendedRemain ? { reason: 'declined' as const } : {}),
       message: recommendedRemain
         ? 'No capability packs selected'
         : 'Recommended capability packs are already installed',

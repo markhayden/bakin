@@ -61,7 +61,7 @@ import { recommendedCapabilitiesComponent } from './recommended-capabilities'
 import { saveState, clearMarker } from './state'
 import type { OnboardingInstallOptions } from './install-request'
 import { isInstallable } from './types'
-import type { CheckResult, InstallableComponent, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
+import type { CheckResult, InstallableComponent, InstallResult, OnboardingComponent, OnboardingOptions, SkipReason } from './types'
 import type { ComponentStatus } from './state'
 
 const log = createLogger('onboarding:orchestrator')
@@ -81,7 +81,7 @@ function componentApplies(component: OnboardingComponent): boolean {
 }
 
 export { isOnboarded, loadState, saveState, clearMarker, ONBOARDING_VERSION } from './state'
-export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus } from './types'
+export type { CheckResult, InstallResult, OnboardingOptions, OnboardingComponent, InstallableComponent, CheckOnlyComponent, CheckStatus, InstallStatus, SkipReason } from './types'
 export { isInstallable } from './types'
 
 /**
@@ -143,6 +143,12 @@ export interface ComponentOutcome {
   check: CheckResult
   /** The final message to print/return to the user. */
   message: string
+  /** Why, when finalStatus is 'skipped'. Consumers read this, never the message. */
+  reason?: SkipReason
+  /** The component that was not satisfied, when reason is 'requires'. */
+  requires?: string
+  /** A typed detail when reason is 'unavailable' (e.g. `no_runnable_model`). */
+  code?: string
   /** Remediation text, populated when finalStatus is 'warn' or 'error'. */
   remediation?: string
   /** Extra details for --json output. */
@@ -176,6 +182,9 @@ function emitJson(outcome: ComponentOutcome): void {
   const line = {
     component: outcome.name,
     status: outcome.finalStatus,
+    ...(outcome.reason ? { reason: outcome.reason } : {}),
+    ...(outcome.requires ? { requires: outcome.requires } : {}),
+    ...(outcome.code ? { code: outcome.code } : {}),
     message: outcome.message,
     ...(outcome.remediation ? { remediation: outcome.remediation } : {}),
     ...(outcome.details ? { details: outcome.details } : {}),
@@ -262,6 +271,7 @@ async function runComponent(
     return {
       name: component.name,
       finalStatus: 'skipped',
+      reason: 'check_only',
       check,
       message: `${check.message} (check-only mode, not installing)`,
       remediation: check.remediation,
@@ -327,6 +337,9 @@ async function runComponent(
         return {
           name: component.name,
           finalStatus: 'skipped',
+          // An install that skips without saying why was not approved.
+          reason: install.reason ?? 'declined',
+          ...(install.code ? { code: install.code } : {}),
           check,
           message: install.message,
           remediation: check.remediation,
@@ -468,6 +481,7 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       const skip: ComponentOutcome = {
         name: component.name,
         finalStatus: 'skipped',
+        reason: 'not_applicable',
         check: { name: component.name, status: 'ok', message: 'not applicable to the configured runtime adapter' },
         message: 'not applicable to the configured runtime adapter (skipped)',
         durationMs: 0,
@@ -485,6 +499,8 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
         const skip: ComponentOutcome = {
           name: 'search-models',
           finalStatus: 'skipped',
+          reason: 'requires',
+          requires: 'search',
           check: {
             name: 'search-models',
             status: 'missing',
@@ -518,6 +534,8 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
           const skip: ComponentOutcome = {
             name: remaining.name,
             finalStatus: 'skipped',
+            reason: 'requires',
+            requires: 'runtime',
             check: {
               name: remaining.name,
               status: 'missing',

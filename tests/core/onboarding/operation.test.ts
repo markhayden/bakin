@@ -105,6 +105,17 @@ describe('componentInstallOperation', () => {
     expect(plain.outcome?.code).toBe('component_failed')
   })
 
+  it("an install's own failure code wins over the component's, and a skip keeps its typed reason in the body", async () => {
+    const refused = component({ install: async () => ({ name: 'search-models', status: 'failed', code: 'runtime_already_set', message: 'another runtime is stored', durationMs: 0 }) })
+    const failed = await settle(componentInstallOperation(refused, OPTIONS, 'cli'))
+    expect([failed.status, failed.outcome?.code]).toEqual(['failed', 'runtime_already_set'])
+
+    const unavailable = component({ install: async () => ({ name: 'search-models', status: 'skipped', reason: 'unavailable', code: 'no_runnable_model', message: 'nothing can run', durationMs: 0 }) })
+    const skipped = await settle(componentInstallOperation(unavailable, OPTIONS, 'cli'))
+    expect(skipped.status).toBe('succeeded')
+    expect(skipped.result?.body).toEqual({ ok: true, result: { name: 'search-models', status: 'skipped', reason: 'unavailable', code: 'no_runnable_model', message: 'nothing can run', durationMs: 0 } })
+  })
+
   it('an accepted cancel settles cancelled even when the installer returns a result without checking', async () => {
     let release!: () => void
     gate = new Promise((r) => { release = r })

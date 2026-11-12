@@ -62,8 +62,10 @@ describe('one line per component and a summary (pinned: flipped by task 2.4)', (
       runtime: { adapter: 'pi', source: 'existing' },
     })
   }), TEST_TIMEOUT)
+})
 
-  test('every skipped step says why in a typed reason', gap(async () => {
+describe('skipped steps', () => {
+  test('every skipped step says why in a typed reason', async () => {
     const home = await piHome()
     const run = await onboard(home)
     const skipped = Object.values(outcomes(run)).filter((line) => line.status === 'skipped')
@@ -72,11 +74,11 @@ describe('one line per component and a summary (pinned: flipped by task 2.4)', (
     for (const line of skipped) {
       expect({ component: line.component, typed: allowed.includes(String(line.reason)) }).toEqual({ component: line.component, typed: true })
     }
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })
 
-describe('a model plan with nothing to run (pinned: flipped by task 2.1)', () => {
-  test('is skipped as unavailable with a typed code; onboarding still completes', gap(async () => {
+describe('a model plan with nothing to run', () => {
+  test('is skipped as unavailable with a typed code; onboarding still completes', async () => {
     // Logged in, but the credential has no runnable model behind it.
     const home = await piHome()
     const run = await onboard(home)
@@ -86,5 +88,5 @@ describe('a model plan with nothing to run (pinned: flipped by task 2.1)', () =>
     expect(models?.code).toBe('no_runnable_model')
     expect(run.exitCode).toBe(2)
     expect(readMarker(home)).not.toBeNull()
-  }), TEST_TIMEOUT)
+  }, TEST_TIMEOUT)
 })

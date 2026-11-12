@@ -7,6 +7,24 @@ and `src/core/cli/ui/onboarding.tsx` (the terminal wizard). Spec and plan for
 the current hardening work: `.claude/specs/onboarding-hardening.md`,
 `.claude/specs/onboarding-hardening-plan.md`.
 
+## Outcomes
+
+Every component ends as `ok`, `warn`, `skipped` or `error`. A skip always
+carries a typed `reason`; consumers read it (and `code`), never the message:
+
+| `reason` | Meaning |
+|---|---|
+| `not_applicable` | The step does not exist on the active runtime |
+| `declined` | Not approved (the operator said no, or there was no `--yes`) |
+| `requires` | A step it needs did not finish; `requires` names it |
+| `check_only` | `--check` found work and did not do it |
+| `unavailable` | Nothing the step can do right now and nobody refused it; `code` says what is missing (`no_runnable_model`, `no_proven_model`, `existing_plan`, `no_prebuilds`) |
+
+An install returns `reason` (`declined` or `unavailable`) with its skip; one
+that gives none is treated as `declined`. An install that fails for a reason
+a caller must tell apart sets `code`, and the operation settles with it
+(`result.code ?? component.failureCode ?? 'component_failed'`).
+
 ## Testing onboarding
 
 Onboarding is tested by running the real CLI in a child process against a

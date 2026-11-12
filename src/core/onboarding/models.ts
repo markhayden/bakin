@@ -181,28 +181,34 @@ async function apply(runtime: AgentRuntimeAdapter, ops: PlanRecommendation['ops'
 
 async function install(opts: ComponentInstallOptions, op: OperationContext): Promise<InstallResult> {
   const start = Date.now()
-  const skip = (reason: string, message: string, status: 'skipped' | 'noop' = 'skipped'): InstallResult => {
-    op.skip('apply', reason)
-    return { name: 'models', status, message, durationMs: Date.now() - start }
+  const noop = (why: string, message: string): InstallResult => {
+    op.skip('apply', why)
+    return { name: 'models', status: 'noop', message, durationMs: Date.now() - start }
+  }
+  /** Nothing to apply right now, and nobody refused it. */
+  const unavailable = (code: string, why: string, message: string): InstallResult => {
+    op.skip('apply', why)
+    return { name: 'models', status: 'skipped', reason: 'unavailable', code, message, durationMs: Date.now() - start }
   }
   const { input, plan, persisted, problems } = await assess()
   if (input.candidates.length === 0) {
-    return skip('no runnable model', 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.')
+    return unavailable('no_runnable_model', 'no runnable model', 'No model can run here yet — add credentials for a provider, then `bakin models plan --apply`.')
   }
   if (plan.blocked) {
-    return skip('no proven model', `No model change recommended: ${plan.blocked}`)
+    return unavailable('no_proven_model', 'no proven model', `No model change recommended: ${plan.blocked}`)
   }
   if (plan.ops.length === 0) {
     const caveat = problems.length > 0 ? ` Needs attention: ${problems.join('; ')}.` : ''
-    return skip('already on the plan', `Already on the recommended plan: ${describe(plan)}.${caveat}`, 'noop')
+    return noop('already on the plan', `Already on the recommended plan: ${describe(plan)}.${caveat}`)
   }
   if (persisted) {
     // Never auto-apply over an existing plan — the operator repairs it.
     const why = problems.length > 0 ? `needs attention (${problems.join('; ')})` : 'is in place'
-    return skip('a plan exists', `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`)
+    return unavailable('existing_plan', 'a plan exists', `Your model plan ${why} — review with \`bakin models plan\`; onboarding never changes an existing plan.`)
   }
   if (!opts.autoApprove && opts.approvedComponents?.includes('models') !== true) {
-    return skip('not approved', `Recommended plan not approved (${describe(plan)}) — pick models on the Models page or run \`bakin models plan --apply\`.`)
+    op.skip('apply', 'not approved')
+    return { name: 'models', status: 'skipped', reason: 'declined', message: `Recommended plan not approved (${describe(plan)}) — pick models on the Models page or run \`bakin models plan --apply\`.`, durationMs: Date.now() - start }
   }
 
   op.stage('apply', describe(plan))
