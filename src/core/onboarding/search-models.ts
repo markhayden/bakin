@@ -34,6 +34,7 @@ function setup() {
 
 export const searchModelsComponent: InstallableComponent = {
   name: 'search-models',
+  requires: ['search'],
   get plan() { return setup().models.plan },
   resources: ['search-engine'],
   check: () => setup().models.check().then((result) => ({ ...result, name: 'search-models' })),

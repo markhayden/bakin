@@ -50,6 +50,7 @@ function correctLegacySettingsUrl(): string | null {
 
 export const searchComponent: InstallableComponent = {
   name: 'search',
+  requires: ['settings'],
   // The adapter declares its stages; core never names them (D17).
   get plan() { return setup().setup.dependency.plan },
   resources: ['search-engine'],

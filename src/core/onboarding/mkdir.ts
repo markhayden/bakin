@@ -90,6 +90,8 @@ export const mkdirComponent: InstallableComponent = {
   // a throwaway home to prove the signed, hardened binary can flock(2).
   resources: ['install-state'],
   name: 'mkdir',
+  requires: [],
+  usableWhenMissing: true,
   check,
   install,
 }

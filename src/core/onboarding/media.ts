@@ -105,6 +105,7 @@ export const mediaComponent: InstallableComponent = {
   plan: MEDIA_PLAN,
   resources: ['media-store'],
   name: 'media',
+  requires: ['mkdir'],
   check,
   install,
 }

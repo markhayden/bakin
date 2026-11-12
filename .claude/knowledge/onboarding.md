@@ -37,6 +37,35 @@ that gives none is treated as `declined`. An install that fails for a reason
 a caller must tell apart sets `code`, and the operation settles with it
 (`result.code ?? component.failureCode ?? 'component_failed'`).
 
+## What stops what
+
+Each component declares `requires`: the components it cannot run without
+(`src/core/onboarding/types.ts`; the table is pinned by
+`tests/core/onboarding/requirements.test.ts`). A requirement is satisfied
+when that component ended `ok` or `warn`, or does not apply to the active
+runtime. Otherwise the dependent is skipped with reason `requires`, names
+what it was waiting for, and is never checked or installed.
+
+| Component | Requires |
+|---|---|
+| mkdir | — |
+| settings | mkdir |
+| runtime | settings |
+| search | settings |
+| search-models | search |
+| media | mkdir |
+| budget | settings |
+| llm, openclaw-integration, plugin-assets, agent-sync, models, channels, recommended-plugins, recommended-agents, capabilities | runtime |
+
+So a runtime that cannot be reached skips only the steps that need one;
+search, its models, media and the spend check still run. There are no
+hand-written cascades left.
+
+Under `--check` nothing is installed, so `mkdir` and `settings` also declare
+`usableWhenMissing`: a check that merely finds them `missing` does not block
+what comes after (built-in defaults make the rest checkable). A `broken`
+one still does.
+
 ## Checks change nothing
 
 `bakin onboard --check` and `bakin check <x>` create no file, run no

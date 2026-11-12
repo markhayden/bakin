@@ -108,6 +108,8 @@ export const settingsComponent: InstallableComponent = {
   plan: { stages: [{ id: 'write', kind: 'installing', label: 'Write settings.json' }], pointOfNoReturn: 'start' },
   resources: [],
   name: 'settings',
+  requires: ['mkdir'],
+  usableWhenMissing: true,
   check,
   install,
 }

@@ -204,6 +204,7 @@ export async function provisionRuntimeForOnboarding(): Promise<void> {
 export const runtimeComponent: CheckOnlyComponent = {
   // The runtime is user-managed: Bakin detects it, never installs it.
   name: 'runtime',
+  requires: ['settings'],
   manualSetup: SETUP_MESSAGE,
   check,
 }

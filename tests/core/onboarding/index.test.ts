@@ -37,14 +37,24 @@ let clearMarkerCalls: number
 /** Check-only in production: the runtime and credentials are set up outside Bakin. */
 const CHECK_ONLY = new Set<string>(['runtime', 'llm', 'channels', 'budget'])
 
+/** What each real component declares it needs (the requirements test pins the real table). */
+const REQUIRES: Record<(typeof COMPONENT_NAMES)[number], readonly string[]> = {
+  mkdir: [], settings: ['mkdir'], runtime: ['settings'], llm: ['runtime'], search: ['settings'], 'search-models': ['search'],
+  media: ['mkdir'], 'openclaw-integration': ['runtime'], 'plugin-assets': ['runtime'], 'agent-sync': ['runtime'], models: ['runtime'],
+  budget: ['settings'], channels: ['runtime'], 'recommended-plugins': ['runtime'], 'recommended-agents': ['runtime'], capabilities: ['runtime'],
+}
+const USABLE_WHEN_MISSING = new Set<string>(['mkdir', 'settings'])
+
 function makeMock(name: (typeof COMPONENT_NAMES)[number]): OnboardingComponent {
   const check = async () => {
     scripts[name].checkCalls++
     return scripts[name].check
   }
-  if (CHECK_ONLY.has(name)) return { name, manualSetup: `Set up ${name} outside Bakin.`, check }
+  const needs = { requires: REQUIRES[name], ...(USABLE_WHEN_MISSING.has(name) ? { usableWhenMissing: true } : {}) }
+  if (CHECK_ONLY.has(name)) return { name, ...needs, manualSetup: `Set up ${name} outside Bakin.`, check }
   return {
     name,
+    ...needs,
     plan: { stages: [{ id: 'run', kind: 'installing', label: name }], pointOfNoReturn: 'start' },
     resources: [],
     check,
@@ -526,35 +536,31 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('runtime cascade', () => {
-    it('runtime missing halts the flow and skips every downstream component', async () => {
+    it('runtime missing: only the steps that need it are skipped; independent steps still run', async () => {
       scripts.runtime.check = {
         name: 'runtime',
         status: 'missing',
         message: 'runtime not configured',
         remediation: 'Configure the runtime adapter',
       }
-      // install() is never called for runtime - the orchestrator runs
-      // it inline, skipping install because runtime setup is user-managed.
       const result = await runOnboard(opts)
-      // mkdir and settings still run (before runtime in the order)
-      expect(scripts.mkdir.checkCalls).toBe(1)
-      expect(scripts.settings.checkCalls).toBe(1)
       expect(scripts.runtime.checkCalls).toBe(1)
-      expect(scripts.runtime.installCalls).toBe(0) // never called
-      // Everything downstream is NOT run - check is never called on them
-      expect(scripts.search.checkCalls).toBe(0)
-      expect(scripts['search-models'].checkCalls).toBe(0)
-      expect(scripts['plugin-assets'].checkCalls).toBe(0)
-      expect(scripts.llm.checkCalls).toBe(0)
-      expect(scripts.channels.checkCalls).toBe(0)
-      // All components still appear in outcomes
+      expect(scripts.runtime.installCalls).toBe(0) // user-managed: never installed
+      // Independent of the runtime: checked as usual.
+      for (const name of ['mkdir', 'settings', 'search', 'search-models', 'media', 'budget'] as const) {
+        expect({ name, checked: scripts[name].checkCalls }).toEqual({ name, checked: 1 })
+        expect(result.outcomes.find((o) => o.name === name)?.finalStatus).toBe('ok')
+      }
+      // Need the runtime: never checked, and each says what it was waiting for.
+      for (const name of ['llm', 'plugin-assets', 'agent-sync', 'models', 'channels', 'recommended-plugins', 'recommended-agents', 'capabilities'] as const) {
+        expect({ name, checked: scripts[name].checkCalls }).toEqual({ name, checked: 0 })
+        expect(result.outcomes.find((o) => o.name === name)).toMatchObject({ finalStatus: 'skipped', reason: 'requires', requires: 'runtime' })
+      }
       expect(result.outcomes).toHaveLength(COMPONENT_NAMES.length)
-      // Runtime is error (missing prerequisite), downstream all skipped
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
-      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
-      expect(result.outcomes.find((o) => o.name === 'channels')?.finalStatus).toBe('skipped')
-      expect(result.outcomes.find((o) => o.name === 'channels')).toMatchObject({ reason: 'requires', requires: 'runtime' })
-      // Per spec: runtime missing is a hard stop - exit 1, no marker
+      // A dependent carries the remediation of what it was waiting for.
+      expect(result.outcomes.find((o) => o.name === 'channels')?.remediation).toBe('Configure the runtime adapter')
+      // An unreachable runtime blocks completion: exit 1, no marker.
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
     })
@@ -600,7 +606,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
     })
 
-    it('runtime broken halts the flow with error status', async () => {
+    it('runtime broken is an error that blocks completion', async () => {
       scripts.runtime.check = {
         name: 'runtime',
         status: 'broken',
@@ -610,8 +616,9 @@ describe('runOnboard orchestrator', () => {
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
       // install() is never called - runtime is inline
       expect(scripts.runtime.installCalls).toBe(0)
-      // Downstream components never ran
-      expect(scripts.search.checkCalls).toBe(0)
+      // What needs the runtime never ran; what does not, did.
+      expect(scripts.llm.checkCalls).toBe(0)
+      expect(scripts.search.checkCalls).toBe(1)
       // Error -> exit 1, no marker
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
@@ -621,6 +628,54 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
   // Search -> search-models cascade: model downloads need the search adapter binary.
   // ---------------------------------------------------------------------------
+
+  describe('declared requirements', () => {
+    it('a step that does not apply to the runtime satisfies whatever requires it', async () => {
+      // openclaw-integration never applies to the test runtime; nothing waits on it.
+      const result = await runOnboard(opts)
+      expect(result.outcomes.filter((o) => o.reason === 'requires')).toEqual([])
+    })
+
+    it('requirements chain: when the home cannot be created nothing after it runs', async () => {
+      scripts.mkdir.check = { name: 'mkdir', status: 'missing', message: 'no home' }
+      scripts.mkdir.install = { name: 'mkdir', status: 'failed', message: 'ENOTDIR', durationMs: 0 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === 'mkdir')?.finalStatus).toBe('error')
+      expect(result.outcomes.find((o) => o.name === 'settings')).toMatchObject({ reason: 'requires', requires: 'mkdir' })
+      expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ reason: 'requires', requires: 'settings' })
+      expect(result.outcomes.find((o) => o.name === 'llm')).toMatchObject({ reason: 'requires', requires: 'runtime' })
+      expect(scripts.runtime.checkCalls).toBe(0)
+      expect(result.exitCode).toBe(1)
+      expect(result.markerWritten).toBe(false)
+    })
+
+    it('under --check a missing home or settings file does not block the checks after it', async () => {
+      scripts.mkdir.check = { name: 'mkdir', status: 'missing', message: 'no home' }
+      scripts.settings.check = { name: 'settings', status: 'missing', message: 'no settings' }
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(result.outcomes.find((o) => o.name === 'mkdir')).toMatchObject({ finalStatus: 'skipped', reason: 'check_only' })
+      expect(result.outcomes.find((o) => o.name === 'settings')).toMatchObject({ finalStatus: 'skipped', reason: 'check_only' })
+      expect(scripts.runtime.checkCalls).toBe(1)
+      expect(scripts.search.checkCalls).toBe(1)
+      expect(scripts.media.checkCalls).toBe(1)
+      expect(result.outcomes.filter((o) => o.reason === 'requires')).toEqual([])
+    })
+
+    it('under --check a BROKEN settings file still blocks what needs it', async () => {
+      scripts.settings.check = { name: 'settings', status: 'broken', message: 'not JSON' }
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(result.outcomes.find((o) => o.name === 'runtime')).toMatchObject({ reason: 'requires', requires: 'settings' })
+      expect(scripts.runtime.checkCalls).toBe(0)
+      // media only needs the home, which is fine.
+      expect(scripts.media.checkCalls).toBe(1)
+    })
+
+    it('under --check a step that is not usable-when-missing still blocks its dependents', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'engine not installed' }
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(result.outcomes.find((o) => o.name === 'search-models')).toMatchObject({ reason: 'requires', requires: 'search' })
+    })
+  })
 
   describe('search -> search-models cascade', () => {
     it('skips search-models when search failed to install', async () => {
@@ -632,10 +687,28 @@ describe('runOnboard orchestrator', () => {
       expect(scripts['search-models'].checkCalls).toBe(0)
       expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'search-models')).toMatchObject({ reason: 'requires', requires: 'search' })
-      expect(result.outcomes.find((o) => o.name === 'search-models')?.message).toContain('search adapter binary is required')
+      expect(result.outcomes.find((o) => o.name === 'search-models')?.message).toContain('needs search')
       // plugin-assets and credentials still run; they do not depend on search.
       expect(scripts['plugin-assets'].checkCalls).toBe(1)
       expect(scripts.llm.checkCalls).toBe(1)
+    })
+
+    it('a search that only warns still satisfies search-models', async () => {
+      scripts.search.check = { name: 'search', status: 'warn', message: 'search degraded' }
+      const result = await runOnboard(opts)
+      expect(scripts['search-models'].checkCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('ok')
+    })
+
+    it('a declined search skips search-models without failing the run', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'skipped', reason: 'declined', message: 'not approved', durationMs: 0 }
+      const result = await runOnboard(opts)
+      expect(result.outcomes.find((o) => o.name === 'search-models')).toMatchObject({ finalStatus: 'skipped', reason: 'requires', requires: 'search' })
+      expect(scripts['search-models'].checkCalls).toBe(0)
+      // As complete as the operator allowed: exit 2, marker written.
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
     })
 
     it('runs search-models when search is ok', async () => {

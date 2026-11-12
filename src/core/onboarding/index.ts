@@ -1,11 +1,11 @@
 /**
  * Onboarding orchestrator — public API for `bakin onboard` and doctor.
  *
- * runOnboard() walks every component in a fixed dependency order:
- *
- *   mkdir -> settings -> runtime -> search -> search-models -> openclaw-integration -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins -> recommended-agents
+ * runOnboard() walks every component in the fixed order of COMPONENT_ORDER.
  *
  * For each component:
+ *   0. If one of the components it declares in `requires` did not finish,
+ *      skip it (reason `requires`) without checking or installing it.
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
  *   2. If it reports `missing` or `broken`:
  *        - In --check mode: record as `skipped`, never install
@@ -20,21 +20,19 @@
  *        skipped           → 'skipped'
  *        failed            → 'error'
  *
- * Special cases baked into the flow:
- *   - Runtime missing/broken is a hard stop: the orchestrator records
- *     the runtime status, marks every downstream component as 'skipped'
- *     with a "runtime required" message, and returns without writing
- *     the marker. Exit code 1.
- *   - Search adapter missing that cascades into search-models: if search's
- *     post-install status is not 'ok', search-models is force-skipped with
- *     the reason "search adapter binary required." No point shelling to a binary that
- *     doesn't exist.
+ * What stops what is declared, never hard-coded: each component lists the
+ * components it `requires`. A requirement is satisfied by `ok`, `warn` or
+ * "does not apply to this runtime"; anything else skips the dependent. So
+ * a runtime that cannot be reached skips the steps that need a runtime and
+ * nothing else (search, media and the spend check still run), and a
+ * search engine that did not install skips only its models.
  *
- * Marker-write rule (matches the spec and Mark's sign-off):
- *   - exitCode 0 (all ok) → write marker
- *   - exitCode 2 (any warn/skipped, no errors) → write marker
- *   - exitCode 1 (any error/failed) → do NOT write marker. The user
- *     must fix the broken component and rerun.
+ * The one special case left: the runtime is user-managed, so a runtime
+ * that is missing or broken is an `error` (it blocks completion) rather
+ * than a pointer to manual setup.
+ *
+ * Exit code and marker: see `exitCodeFor`. The marker is written when the
+ * exit code is not 1 and the run is not `--check`.
  *
  * checkAll() is the read-only equivalent: it calls every component's
  * `check()` and returns the results, never running install. Used by
@@ -446,6 +444,36 @@ async function runRuntimeInline(component: OnboardingComponent, opts: Onboarding
 }
 
 /**
+ * The first requirement of `component` that did not finish, if any.
+ *
+ * Satisfied: the required component ended `ok` or `warn`, or does not
+ * apply to the active runtime. Under `--check` a required component that
+ * declares `usableWhenMissing` also satisfies its dependents when its
+ * check merely found it `missing`.
+ */
+function unmetRequirement(
+  component: OnboardingComponent,
+  outcomes: readonly ComponentOutcome[],
+  opts: OnboardingOptions,
+): ComponentOutcome | null {
+  for (const name of component.requires) {
+    const required = outcomes.find((o) => o.name === name)
+    // Not run yet means the order is wrong; the requirements test pins that.
+    if (!required) continue
+    if (required.finalStatus === 'ok' || required.finalStatus === 'warn') continue
+    if (required.finalStatus === 'skipped' && required.reason === 'not_applicable') continue
+    if (
+      opts.checkOnly
+      && required.reason === 'check_only'
+      && required.check.status === 'missing'
+      && COMPONENT_ORDER.find((c) => c.name === name)?.usableWhenMissing === true
+    ) continue
+    return required
+  }
+  return null
+}
+
+/**
  * The run's exit code, from statuses and typed reasons alone:
  *  - 1 when any step ended in `error`. A step skipped because it `requires`
  *    another never decides this on its own: its cause is upstream, and only
@@ -525,66 +553,36 @@ export async function runOnboard(opts: OnboardingOptions, installComponent: Comp
       continue
     }
 
-    // Cascade skip: if search is not ok, search-models has nothing to pull with.
-    // Skip it before even calling check().
-    if (component.name === 'search-models') {
-      const search = outcomes.find((o) => o.name === 'search')
-      if (search && search.finalStatus !== 'ok') {
-        const skip: ComponentOutcome = {
-          name: 'search-models',
-          finalStatus: 'skipped',
-          reason: 'requires',
-          requires: 'search',
-          check: {
-            name: 'search-models',
-            status: 'missing',
-            message: 'Skipped: search adapter binary is required to pull Termite models',
-          },
-          message: 'Skipped: search adapter binary is required to pull Termite models',
-          remediation: 'Install the configured search adapter first via `bakin install search`, then rerun onboarding.',
-          durationMs: 0,
-        }
-        outcomes.push(skip)
-        emitOutcome(opts, skip)
-        if (opts.json) emitJson(skip)
-        continue
+    // Declared requirements: a component whose requirement did not finish
+    // is skipped before it is checked, and says which one.
+    const unmet = unmetRequirement(component, outcomes, opts)
+    if (unmet) {
+      const skip: ComponentOutcome = {
+        name: component.name,
+        finalStatus: 'skipped',
+        reason: 'requires',
+        requires: unmet.name,
+        check: { name: component.name, status: 'missing', message: `Skipped: needs ${unmet.name}, which did not finish` },
+        message: `Skipped: needs ${unmet.name}, which did not finish`,
+        remediation: unmet.remediation,
+        durationMs: 0,
       }
+      outcomes.push(skip)
+      emitOutcome(opts, skip)
+      if (opts.json) emitJson(skip)
+      continue
     }
 
     // Runtime setup is a user-managed prerequisite. The generic path
     // records a check-only component's setup pointer as ok, which would
     // mark a missing runtime as ready. Handle it inline: call check()
-    // only, derive the outcome from that, and cascade-skip downstream if
-    // anything other than ok.
+    // only and derive the outcome from that. What needs the runtime is
+    // skipped by its own declared requirement, nothing else.
     if (component.name === 'runtime') {
       const outcome = await runRuntimeInline(component, opts)
       outcomes.push(outcome)
       emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
-      if (outcome.finalStatus !== 'ok') {
-        log.warn('Runtime is not ready; aborting remaining onboarding steps')
-        for (let j = i + 1; j < COMPONENT_ORDER.length; j++) {
-          const remaining = COMPONENT_ORDER[j]
-          const skip: ComponentOutcome = {
-            name: remaining.name,
-            finalStatus: 'skipped',
-            reason: 'requires',
-            requires: 'runtime',
-            check: {
-              name: remaining.name,
-              status: 'missing',
-              message: 'Skipped: runtime is a prerequisite and is not ready',
-            },
-            message: 'Skipped: runtime is a prerequisite and is not ready',
-            remediation: outcome.remediation,
-            durationMs: 0,
-          }
-          outcomes.push(skip)
-          emitOutcome(opts, skip)
-          if (opts.json) emitJson(skip)
-        }
-        break
-      }
       continue
     }
 

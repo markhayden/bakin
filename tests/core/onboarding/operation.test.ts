@@ -40,6 +40,7 @@ let gate: Promise<void> = Promise.resolve()
 function component(over: Partial<InstallableComponent> = {}): InstallableComponent {
   return {
     name: 'search-models',
+    requires: [],
     plan: {
       stages: [
         { id: 'download', kind: 'downloading', label: 'Download models' },

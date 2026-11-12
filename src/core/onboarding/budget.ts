@@ -33,5 +33,6 @@ export const budgetComponent: CheckOnlyComponent = {
   // Limits are opt-in: the check is always ok, so there is nothing to set up.
   manualSetup: 'Set a limit in Spend (or `bakin budget set`) once you know what normal looks like.',
   name: 'budget',
+  requires: ['settings'],
   check: checkBudget,
 }

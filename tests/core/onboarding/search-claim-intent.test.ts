@@ -69,6 +69,7 @@ mock.module('../../../src/core/search-adapter-factory', () => ({
 function readyComponent(name: string): OnboardingComponent {
   return {
     name,
+    requires: [],
     plan: { stages: [{ id: 'run', kind: 'installing', label: name }], pointOfNoReturn: 'start' },
     resources: [],
     check: async () => ({ name, status: 'ok', message: 'Ready' }),

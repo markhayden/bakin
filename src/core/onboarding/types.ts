@@ -92,6 +92,22 @@ interface ComponentBase {
    * integration component is meaningless on the in-process Pi runtime.
    */
   readonly supportedAdapters?: readonly RuntimeAdapterName[]
+  /**
+   * The components this one cannot run without, by name. Each must come
+   * earlier in COMPONENT_ORDER. A requirement is satisfied when that
+   * component finished `ok` or `warn`, or does not apply to the active
+   * runtime; otherwise this component is skipped with reason `requires`
+   * and never checked or installed.
+   */
+  readonly requires: readonly string[]
+  /**
+   * Under `--check` nothing is installed, so a component that only reports
+   * `missing` would block everything after it. Set this when the built-in
+   * defaults make its dependents checkable before it exists (the home
+   * directory tree, the settings file): a `missing` check then satisfies
+   * dependents. A `broken` or failed one never does.
+   */
+  readonly usableWhenMissing?: boolean
   check(): Promise<CheckResult>
 }
 

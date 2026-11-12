@@ -31,7 +31,7 @@ function wasInterrupted(run: { exitCode: number | null; signal: NodeJS.Signals |
 }
 
 describe('a component install fails', () => {
-  test('that step is an error, later steps still run, and a rerun completes', async () => {
+  test('that step is an error, what needs it is skipped and says so, and a rerun completes', async () => {
     const home = await piHome()
     // A file where the directory tree must go: `mkdir` cannot succeed.
     writeFileSync(join(home.bakinHome, 'assets'), 'in the way')
@@ -41,9 +41,12 @@ describe('a component install fails', () => {
     expect(lines.mkdir?.status, describeRun(failed)).toBe('error')
     expect(failed.exitCode).toBe(1)
     expect(readMarker(home)).toBeNull()
-    // The failure did not stop the steps after it.
-    expect(lines.runtime?.status).toBe('ok')
-    expect(lines.llm?.status).toBe('ok')
+    // Everything needs the home, directly or through a step that does:
+    // each is skipped and names the step it was waiting for.
+    expect(lines.settings).toMatchObject({ status: 'skipped', reason: 'requires', requires: 'mkdir' })
+    expect(lines.runtime).toMatchObject({ status: 'skipped', reason: 'requires', requires: 'settings' })
+    expect(lines.llm).toMatchObject({ status: 'skipped', reason: 'requires', requires: 'runtime' })
+    expect(Object.values(lines).filter((line) => line.status === 'error').map((line) => line.component)).toEqual(['mkdir'])
 
     rmSync(join(home.bakinHome, 'assets'))
     const rerun = await onboard(home)

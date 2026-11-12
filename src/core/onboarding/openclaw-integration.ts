@@ -112,6 +112,7 @@ export const openClawIntegrationComponent: InstallableComponent = {
   resources: [],
   supportedAdapters: ['openclaw'],
   name: 'openclaw-integration',
+  requires: ['runtime'],
   check,
   install,
 }
