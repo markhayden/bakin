@@ -197,6 +197,29 @@ presses real keys through Ink's input handling (what the keys do). Add a
 key test for any screen that takes input: the runtime screen once rendered
 correctly while Enter on its preselected entry did nothing.
 
+## The setup checklist
+
+`src/core/onboarding/setup-checklist.ts`. What is still worth doing after
+onboarding, in the order someone would do it. It adds no probing of its
+own: every item projects something an existing engine already answers,
+never message text.
+
+| Item | Source | done | todo | unknown | left out |
+|---|---|---|---|---|---|
+| Log in to the runtime | `llm` check | a provider is logged in | none is (detail: the runtime's login steps) | the check throws or errors | never |
+| Search | `search` check and its `applicable` flag | check ok | missing, broken or warn (`bakin install search`) | throws or errors | nothing on this machine to set up (external endpoint, temporary home) |
+| Channels | `channels` check's reported state | connected, or configured and waiting for the server | disabled, missing token or guild, failed (Settings → Channels) | throws, errors, or reports no state | the runtime delivers natively |
+| `<capability>` key, one per installed capability | capability readiness, secrets | every required key present | a required key is missing (Settings → Integrations & Keys) | manifest invalid; readiness throws | no required key |
+| Model plan | `models` check | ok | no plan and something can run, or a plan that needs attention (`bakin models plan --apply`) | throws or errors | nothing can run yet (the login item covers it) |
+
+Two notes carry no state: "Start Bakin" (only when no server runs for the
+home) and "Browse Explore". Spend limits and brands are never listed; both
+are opt-in.
+
+`buildSetupChecklist(sources)` is pure and unit-tested per item and state;
+`getSetupChecklist()` asks the engines. Adding an item means adding a
+source and a projection, not a probe.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without
