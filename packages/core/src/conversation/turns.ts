@@ -762,11 +762,14 @@ async function runTurn(
     // reflection that led up to it (attention toasts read this preview).
     let pendingQuestion: string | undefined
     let sawTool = false
+    // Once per turn: per-turn thread schemes (brands mints a UUID per call)
+    // must land the nudge below in the SAME session as the first pass.
+    const threadId = config.threadId(key, agentId)
     const consume = async (turnContent: string, withAttachments: boolean) => {
     for await (const rawChunk of ctx.runtime.messaging.stream({
       agentId,
       content: turnContent,
-      threadId: config.threadId(key, agentId),
+      threadId,
       signal: controller.signal,
       ...(config.ephemeral ? { ephemeral: true } : {}),
       ...(withAttachments && prepared.length
@@ -811,15 +814,26 @@ async function runTurn(
     }
     }
     const empty = () => !controller.signal.aborted && !assistantText.trim() && !sawTool
-    await consume((runtimeContent ?? (config.framing ? `${content}\n\n${config.framing}` : content)) + noteSuffix, true)
+    // A consumer-composed prompt (`runtimeContent`) already carries its own
+    // framing; only the default composition appends `config.framing`.
+    const framed = runtimeContent === undefined && Boolean(config.framing)
+    const firstContent = (runtimeContent ?? (framed ? `${content}\n\n${config.framing}` : content)) + noteSuffix
+    await consume(firstContent, true)
     if (empty()) {
       // The model answered with nothing — no text, no tool call (seen live
       // 2026-11-11: the lead "missed" two interview answers in a row until
       // the user typed "you there?"). Nudge once inside the SAME turn, the
       // way the user would; a second empty completion is an honest error
-      // row with a retry, never a silent gap.
+      // row with a retry, never a silent gap. An ephemeral session keeps no
+      // history, so the nudge there re-sends the whole prompt (attachments
+      // included) with the nudge appended; a durable session gets the nudge
+      // alone, under the same framing the first pass had.
       log.warn(`[${config.name}] empty completion for ${key}; nudging once`, { agentId, turnId })
-      await consume(config.framing ? `${EMPTY_REPLY_NUDGE}\n\n${config.framing}` : EMPTY_REPLY_NUDGE, false)
+      if (config.ephemeral) {
+        await consume(`${firstContent}\n\n${EMPTY_REPLY_NUDGE}`, true)
+      } else {
+        await consume(framed ? `${EMPTY_REPLY_NUDGE}\n\n${config.framing}` : EMPTY_REPLY_NUDGE, false)
+      }
       if (empty()) throw new StreamTurnError('The agent returned an empty reply twice', 'empty_reply')
     }
 

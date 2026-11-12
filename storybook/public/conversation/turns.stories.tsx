@@ -227,10 +227,14 @@ function agentTurnsOf(rows: ConversationMessage[], live?: ConversationMessage): 
 function QuestionCardStates() {
   const [sent, setSent] = useState('Nothing sent yet')
   const open = agentTurnsOf([questionRow('q_story00000000002', 'open')])[0]!
-  const answered = agentTurnsOf([
+  // The answered exchange is the folded pair: the card keeps the question, the
+  // user's bubble keeps the answer (+ note), rendered by the consumer's renderer.
+  const answeredExchange = foldConversation([
     questionRow('q_story00000000003', 'answered'),
-    { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: formatQuestionAnswer(askedQuestion, { kind: 'option', index: 0 }) },
-  ])[0]!
+    { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: `${formatQuestionAnswer(askedQuestion, { kind: 'option', index: 0 })}\n\nlast year only` },
+  ])
+  const answered = answeredExchange.find((turn): turn is Extract<ConversationTurn, { kind: 'agent' }> => turn.kind === 'agent')!
+  const answerBubble = answeredExchange.find((turn): turn is Extract<ConversationTurn, { kind: 'user' }> => turn.kind === 'user')!
   const skipped = agentTurnsOf([
     questionRow('q_story00000000004', 'skipped'),
     { kind: 'user', ts: '2026-07-20T12:00:09.000Z', content: 'Let us talk about the budget first.' },
@@ -261,10 +265,11 @@ function QuestionCardStates() {
           <section aria-labelledby="question-settled-heading" className="bakin-conversation-story__section">
             <header>
               <h2 id="question-settled-heading">Settled and in-flight</h2>
-              <p>The transcript decides the state: an answer collapses the card, any other reply marks it skipped, and a still-streaming turn holds input.</p>
+              <p>The transcript decides the state: an answer collapses the card to its question and the user's bubble carries the answer and note (through the consumer's text renderer, like any message), any other reply marks the card skipped, and a still-streaming turn holds input.</p>
             </header>
             <div className="bakin-conversation-story__transcript">
               <AgentTurn agent={mainAgent} turn={answered} />
+              <UserMessage turn={answerBubble} renderText={(content) => <span data-rendered-by="consumer">{content}</span>} />
               <AgentTurn agent={mainAgent} turn={skipped} />
               <AgentTurn agent={mainAgent} turn={streaming} onAnswerQuestion={setSent} />
             </div>
@@ -306,5 +311,12 @@ export const QuestionCards = {
     await expect(canvas.getByRole('status', { name: 'Sent answer' }))
       .toHaveTextContent(`→ ${askedQuestion.options[0]!.label}`)
     await expect(canvas.getByText('Skipped')).toBeVisible()
+    // Answered: the card keeps only the question; the bubble has the answer and note,
+    // without the "**question** →" echo, through the consumer's renderer.
+    await expect(canvas.getByText('Answered')).toBeVisible()
+    const bubble = canvas.getByLabelText('Your message')
+    await expect(bubble).toHaveTextContent(`${askedQuestion.options[0]!.label} last year only`)
+    await expect(bubble).not.toHaveTextContent('→')
+    await expect(bubble.querySelector('[data-rendered-by="consumer"]')).not.toBeNull()
   },
 } satisfies Story

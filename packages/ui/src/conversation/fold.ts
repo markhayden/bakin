@@ -467,11 +467,16 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
   // One backward pass: track the nearest following user turn; the first open
   // card met walking backward is the newest one.
   let reply: Extract<ConversationTurn, { kind: 'user' }> | null = null
+  // A reply answers ONE card — the nearest one whose prefix it carries. An
+  // older question that happens to be a prefix of a newer one ("A" before
+  // "A** → B") must not claim the reply too and rewrite the bubble.
+  let replyClaimed = false
   let newestOpen: Extract<TurnItem, { type: 'question' }> | null = null
   for (let index = turns.length - 1; index >= 0; index--) {
     const turn = turns[index]!
     if (turn.kind === 'user') {
       reply = turn
+      replyClaimed = false
       continue
     }
     for (let i = turn.items.length - 1; i >= 0; i--) {
@@ -484,7 +489,8 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
         continue
       }
       const prefix = answerPrefix(item.question)
-      if (reply.content.startsWith(prefix)) {
+      if (!replyClaimed && reply.content.startsWith(prefix)) {
+        replyClaimed = true
         item.state = 'answered'
         const response = reply.content.slice(prefix.length)
         item.answer = response.split('\n\n')[0]

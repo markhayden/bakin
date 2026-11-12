@@ -360,6 +360,53 @@ describe('conversation turn service', () => {
     expect(h.events.some((e) => e.event === 'test.error')).toBe(false)
   })
 
+  test('the nudge rides the SAME thread id, and an ephemeral session gets the whole prompt again (brands)', async () => {
+    // Brands mints a UUID per threadId() call and runs ephemeral sessions: a nudge in a
+    // fresh session with only "your reply was empty" would have no document to answer about.
+    const h = makeHarness()
+    let calls = 0
+    h.setStream(async function* () {
+      calls += 1
+      if (calls === 1) { yield { type: 'done' } as ChatChunk; return }
+      yield { type: 'text', content: 'here you go' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    mkdirSync(testDir, { recursive: true })
+    const pngPath = join(testDir, 'brand.png')
+    writeFileSync(pngPath, PNG_1PX)
+    let minted = 0
+    const service = makeService(h, {
+      ephemeral: true,
+      framing: 'Answer about the brand document.',
+      threadId: (key) => `brand-doc:${key}/${++minted}`,
+    })
+    expect(await service.start(h.ctx, 'b1', 'What is the palette?', { attachments: [{ name: 'brand.png', path: pngPath, mimeType: 'image/png' }] })).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+    expect(minted).toBe(1)
+    expect(h.seenArgs).toHaveLength(2)
+    expect(h.seenArgs[1]!.threadId).toBe(h.seenArgs[0]!.threadId)
+    expect(h.seenArgs[1]!.content).toBe(`${h.seenArgs[0]!.content}\n\nYour previous reply was empty — nothing reached the user. Reply now to their last message above, as you would have.`)
+    expect(h.seenArgs[1]!.content).toContain('Answer about the brand document.')
+    expect(h.seenArgs[1]!.attachments).toHaveLength(1)
+  })
+
+  test('a consumer-composed prompt (runtimeContent) is nudged without regaining config.framing', async () => {
+    const h = makeHarness()
+    let calls = 0
+    h.setStream(async function* () {
+      calls += 1
+      if (calls === 1) { yield { type: 'done' } as ChatChunk; return }
+      yield { type: 'text', content: 'ok' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    const service = makeService(h, { framing: 'DEFAULT FRAMING' })
+    expect(await service.start(h.ctx, 'r1', 'user text', { runtimeContent: 'composed prompt' })).toBe('accepted')
+    await waitUntil(() => h.events.some((e) => e.event === 'test.done'), { label: 'turn settled' })
+    expect(h.seenArgs[0]!.content).toBe('composed prompt')
+    expect(h.seenArgs[1]!.content).toBe('Your previous reply was empty — nothing reached the user. Reply now to their last message above, as you would have.')
+    expect(h.seenArgs[1]!.attachments).toBeUndefined()
+  })
+
   test('two empty completions settle as an error turn with kind empty_reply — never a silent gap', async () => {
     const h = makeHarness()
     h.setStream(async function* () { yield { type: 'done', usage: { input: 10, output: 4 } } as ChatChunk })

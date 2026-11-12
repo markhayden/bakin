@@ -18,7 +18,7 @@ mock.module('@/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import '../rtl-settle'
+import { actRender } from '../rtl-settle'
 
 import {
   AgentTurn,
@@ -376,9 +376,9 @@ describe('UserMessage', () => {
     expect(img?.getAttribute('src')).toBe('/api/plugins/chat/x/attachments/shot.png')
   })
 
-  it('renders the content through renderText as markdown when the consumer supplies one', () => {
+  it('renders the content through renderText as markdown when the consumer supplies one', async () => {
     const calls: Array<[string, string]> = []
-    const { container } = render(
+    const { container } = await actRender(() => render(
       <UserMessage
         turn={userTurn({ content: '**bold** idea' })}
         renderText={(content, format) => {
@@ -386,23 +386,23 @@ describe('UserMessage', () => {
           return <strong data-rendered>{content}</strong>
         }}
       />,
-    )
+    ))
     expect(calls).toEqual([['**bold** idea', 'markdown']])
     expect(container.querySelector('[data-rendered]')?.textContent).toBe('**bold** idea')
     // A rendered body owns its whitespace; the pre-wrap fallback is for raw text only.
     expect(container.querySelector('.whitespace-pre-wrap')).toBeNull()
   })
 
-  it('falls back to safe pre-wrapped text without a renderer', () => {
-    const { container } = render(<UserMessage turn={userTurn({ content: 'line one\nline two' })} />)
+  it('falls back to safe pre-wrapped text without a renderer', async () => {
+    const { container } = await actRender(() => render(<UserMessage turn={userTurn({ content: 'line one\nline two' })} />))
     expect(container.querySelector('.whitespace-pre-wrap')?.textContent).toBe('line one\nline two')
   })
 })
 
 describe('Conversation', () => {
-  it('hands the same renderText to user messages and agent turns', () => {
+  it('hands the same renderText to user messages and agent turns', async () => {
     const seen: string[] = []
-    render(
+    await actRender(() => render(
       <Conversation
         turns={[
           userTurn({ key: 'u', content: '- pasted list' }),
@@ -413,7 +413,7 @@ describe('Conversation', () => {
           return <span>{content}</span>
         }}
       />,
-    )
+    ))
     expect(seen).toContain('- pasted list')
     expect(seen).toContain('reply')
   })

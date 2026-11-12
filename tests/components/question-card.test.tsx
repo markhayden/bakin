@@ -250,6 +250,22 @@ describe('QuestionCard', () => {
     cleanup()
   })
 
+  it('a reply answers only the nearest card whose prefix it carries (an older question that prefixes a newer one never rewrites the bubble)', () => {
+    const older: ConversationMessage = {
+      ...questionRow, callId: 'c0', metadata: { bakinQuestion: { ...Q, id: 'q_0123456789abcde0', question: 'Which inbox' } },
+    }
+    const newer: ConversationMessage = {
+      ...questionRow, callId: 'c1', metadata: { bakinQuestion: { ...Q, id: 'q_0123456789abcde1', question: 'Which inbox** → Personal Gmail' } },
+    }
+    renderConversation([older, newer, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: '**Which inbox** → Personal Gmail** → Yes' }])
+    const cards = Array.from(document.querySelectorAll('[data-conv-question]'))
+    expect(cards.map(c => c.getAttribute('data-state'))).toEqual(['skipped', 'answered'])
+    const bubble = document.querySelector('[data-conv-turn-group][data-kind="user"] [aria-label="Your message"]')
+    expect(bubble?.textContent).toContain('Yes')
+    expect(bubble?.textContent).not.toContain('Personal Gmail')
+    cleanup()
+  })
+
   it('a reply that is not a card answer keeps its full bubble', () => {
     renderConversation([questionRow, { kind: 'user', ts: '2026-10-25T10:00:03.000Z', content: 'let us talk budget first' }])
     expect(document.querySelector('[data-conv-turn-group][data-kind="user"]')?.textContent).toContain('let us talk budget first')

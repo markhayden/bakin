@@ -139,8 +139,13 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
   // A settled turn keeps its live chunks on screen until the refetch that
   // carries its durable rows applies — clearing them first left one network
   // round trip where the whole turn (and its question card) vanished, then
-  // remounted (2026-11-11 "the questions flash off and on").
-  const clearLiveOnLoadRef = useRef(false)
+  // remounted (2026-11-11 "the questions flash off and on"). The ref holds
+  // the load sequence from which a load may drop the retained chunks (a load
+  // that STARTED before the settle would swap stale rows in for them), and
+  // null once nothing is retained: the next turn (a send, or a queued turn's
+  // first chunk) starts from an empty live turn and is never cleared by the
+  // previous turn's refetch settling after it.
+  const retainedLiveFromLoadSeqRef = useRef<number | null>(null)
 
   const loadTranscript = useCallback(async () => {
     if (!threadKey) {
@@ -151,6 +156,15 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     }
     const sendSeqAtStart = sendSeqRef.current
     const loadSeq = ++loadSeqRef.current
+    // This load carries the settled turn's durable rows (or was meant to):
+    // the retained live turn goes with its outcome, whatever that is.
+    const settlesRetained = () =>
+      retainedLiveFromLoadSeqRef.current !== null && loadSeq >= retainedLiveFromLoadSeqRef.current
+    const dropRetained = () => {
+      if (!settlesRetained() || activeKeyRef.current !== threadKey) return
+      retainedLiveFromLoadSeqRef.current = null
+      setLiveChunks(null)
+    }
     let body: ConversationThreadLoad<Meta> | null = null
     try {
       body = await optionsRef.current.load(threadKey)
@@ -158,29 +172,28 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       // A throwing load (network blip, server restart) keeps the current
       // view; the next settle/switch retries. Never an unhandled rejection.
       // A settled turn still stops looking live — stale text beats a turn
-      // that streams forever.
-      if (clearLiveOnLoadRef.current && activeKeyRef.current === threadKey) {
-        clearLiveOnLoadRef.current = false
-        setLiveChunks(null)
-      }
+      // that streams forever (its question card would stay disabled).
+      dropRetained()
       return
     }
     // Re-check AFTER the load resolves too — a slow response for the
     // previous thread could land post-switch and render the wrong transcript.
     if (activeKeyRef.current !== threadKey) return
-    if (!body) return
+    if (!body) {
+      // Gone, or a non-OK transcript response the consumer maps to null:
+      // same settlement as a throw, never a retained turn that looks live.
+      dropRetained()
+      return
+    }
     if (sendSeqRef.current !== sendSeqAtStart) return
     if (loadSeq < appliedLoadSeqRef.current) return
     appliedLoadSeqRef.current = loadSeq
     setMeta(body.meta ?? null)
     setMessages(body.messages)
     setQueued(body.queued ?? [])
-    if (clearLiveOnLoadRef.current) {
-      // Same batch as the rows that replace it: the live turn is swapped for
-      // its durable twin in one render, never a frame without it.
-      clearLiveOnLoadRef.current = false
-      setLiveChunks(null)
-    }
+    // Same batch as the rows that replace it: the live turn is swapped for
+    // its durable twin in one render, never a frame without it.
+    dropRetained()
     if (body.streaming) {
       setStreaming(true)
       const seed = body.streamingText
@@ -195,7 +208,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     setMessages([])
     setMeta(null)
     setLiveChunks(null)
-    clearLiveOnLoadRef.current = false
+    retainedLiveFromLoadSeqRef.current = null
     setStreaming(false)
     setSendError(null)
     setQueued([])
@@ -215,8 +228,13 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     const chunk = payload.chunk as RuntimeChatChunk | undefined
     if (!chunk?.type) return
     setStreaming(true)
+    // A chunk after a settle belongs to the NEXT turn (a queued follow-up the
+    // server started): it starts its own live turn instead of growing the
+    // retained one, and the settled turn's refetch no longer owns the clear.
+    const fresh = retainedLiveFromLoadSeqRef.current !== null
+    retainedLiveFromLoadSeqRef.current = null
     setLiveChunks((prev) => {
-      const chunks = prev ?? []
+      const chunks = fresh ? [] : (prev ?? [])
       // Coalesce consecutive same-format text deltas so a long turn stays a
       // handful of chunks instead of hundreds; folding/rendering policy
       // itself lives in foldConversation.
@@ -237,9 +255,10 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
     // `appended` that lands before React re-renders must still refetch (the
     // settle load may have read storage before the flush).
     streamingRef.current = false
-    // The live chunks stay until the settle refetch applies (loadTranscript
-    // clears them in the same batch as the rows).
-    clearLiveOnLoadRef.current = true
+    // The live chunks stay until the settle refetch (the next load, or any
+    // later one) applies — loadTranscript clears them in the same batch as
+    // the rows.
+    retainedLiveFromLoadSeqRef.current = loadSeqRef.current + 1
     // The settle refetch IS the newest truth — bump the seq so it applies
     // even if an older send's guard would otherwise block a stale load.
     sendSeqRef.current += 1
@@ -318,6 +337,7 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
           },
         ])
         setStreaming(true)
+        retainedLiveFromLoadSeqRef.current = null
         setLiveChunks([])
       }
       return
@@ -331,6 +351,9 @@ export function useConversationThread<Meta = unknown, Attachment = unknown>(
       : { kind: 'user', ts: new Date().toISOString(), content }
     setMessages((prev) => [...prev, row])
     setStreaming(true)
+    // This turn owns the live state now: a previous turn's settle refetch
+    // landing (or failing) after this point must not clear it.
+    retainedLiveFromLoadSeqRef.current = null
     setLiveChunks([])
     let res: { ok: boolean; status?: number; error?: string }
     try {
