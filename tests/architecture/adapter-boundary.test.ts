@@ -25,8 +25,11 @@ const WORKFLOW_DEFAULTS_RE = /(^|\/)plugins\/[^/]+\/defaults\/workflows\/[^/]+\.
 // runtime-agnostic), so the provider-boundary rules below exempt it. All
 // other rules (sqlite/flow_runs/discord endpoints) still apply to keep the
 // rig honest.
+// scripts/onboard-rig.ts is the onboarding rig: it builds a throwaway home
+// for EVERY runtime and fingerprints the real ones to prove it left them
+// alone, so it names their paths by design.
 const isDevRig = (rel: string) =>
-  rel === 'scripts/instance.ts' || rel.startsWith('scripts/instance/')
+  rel === 'scripts/instance.ts' || rel.startsWith('scripts/instance/') || rel === 'scripts/onboard-rig.ts'
 
 const DENYLIST = [
   {

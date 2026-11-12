@@ -1,0 +1,124 @@
+/**
+ * `bakin onboard --check` performs no writes (spec §6). Snapshots cover
+ * every home a run can resolve: the Bakin home, the Pi home, the OpenClaw
+ * home and HOME, excluding logs/.
+ */
+import { afterEach, describe, expect, test } from 'bun:test'
+import { existsSync, rmSync } from 'fs'
+import { join } from 'path'
+
+import { seedOpenClaw, seedPi, storeAdapter, type OpenClawFixture } from '../fixtures'
+import { diffTrees, expectedGap, snapshotTree, trackHomes, type OnboardingHome, type TreeSnapshot } from '../harness'
+import { describe as describeRun, onboard, outcomes, readMarker, TEST_TIMEOUT } from './kit'
+
+const homes = trackHomes()
+const gateways: OpenClawFixture[] = []
+
+afterEach(async () => {
+  for (const gateway of gateways.splice(0)) await gateway.stop()
+  await homes.finish()
+})
+
+const gap = (body: () => Promise<void>) => expectedGap(homes, async () => {
+  try {
+    await body()
+  } finally {
+    for (const gateway of gateways.splice(0)) await gateway.stop()
+  }
+})
+
+const WATCHED = ['bakinHome', 'piHome', 'openclawHome', 'userHome'] as const
+
+function snapshotAll(home: OnboardingHome): Record<string, TreeSnapshot> {
+  return Object.fromEntries(WATCHED.map((key) => [key, snapshotTree(home[key])]))
+}
+
+async function expectCheckWritesNothing(home: OnboardingHome): Promise<void> {
+  const before = snapshotAll(home)
+  const run = await onboard(home, ['--check'])
+  expect(run.timedOut, describeRun(run)).toBe(false)
+  expect(Object.keys(outcomes(run)).length).toBeGreaterThan(0)
+  const after = snapshotAll(home)
+  for (const key of WATCHED) {
+    expect({ home: key, diff: diffTrees(before[key]!, after[key]!) }).toEqual({ home: key, diff: { added: [], removed: [], changed: [] } })
+  }
+}
+
+async function piHome(): Promise<OnboardingHome> {
+  const home = await homes.create()
+  seedPi(home, { auth: true })
+  storeAdapter(home, 'pi')
+  return home
+}
+
+describe('--check writes nothing', () => {
+  test('on a fresh home whose runtime cannot be reached', async () => {
+    // Nothing stored and nothing seeded: the checks stop at the runtime.
+    const home = await homes.create()
+    await expectCheckWritesNothing(home)
+  }, TEST_TIMEOUT)
+
+  test('on a fresh Pi home (pinned: flipped by task 2.3)', gap(async () => {
+    await expectCheckWritesNothing(await piHome())
+  }), TEST_TIMEOUT)
+
+  test('on a fresh OpenClaw home (pinned: flipped by task 2.3)', gap(async () => {
+    const home = await homes.create()
+    gateways.push(await seedOpenClaw(home))
+    storeAdapter(home, 'openclaw')
+    await expectCheckWritesNothing(home)
+  }), TEST_TIMEOUT)
+
+  test('on an onboarded home with its usage and ledger stores (pinned: flipped by task 2.3)', gap(async () => {
+    const home = await piHome()
+    await onboard(home)
+    expect(readMarker(home)).not.toBeNull()
+    expect(existsSync(join(home.bakinHome, 'usage.db'))).toBe(true)
+    await expectCheckWritesNothing(home)
+  }), TEST_TIMEOUT)
+
+  test('on an onboarded home with no usage or ledger store (pinned: flipped by task 2.3)', gap(async () => {
+    const home = await piHome()
+    await onboard(home)
+    for (const name of ['usage.db', 'usage.db-shm', 'usage.db-wal', 'bakin.db', 'bakin.db-shm', 'bakin.db-wal']) {
+      rmSync(join(home.bakinHome, name), { force: true })
+    }
+    await expectCheckWritesNothing(home)
+  }), TEST_TIMEOUT)
+
+  test('on a home whose settings still hold a legacy search password (pinned: flipped by task 2.3)', gap(async () => {
+    const home = await piHome()
+    const settings = home.readSettings()
+    const search = settings.search as { settings: Record<string, unknown> }
+    // Normal composition moves this into the secret store and rewrites
+    // settings.json; a check must leave both alone.
+    home.writeSettings({ ...settings, search: { ...search, settings: { ...search.settings, auth: { username: 'legacy', password: 'not-a-real-password' } } } })
+    await expectCheckWritesNothing(home)
+  }), TEST_TIMEOUT)
+
+  test('never writes, clears or replaces the marker (pinned: flipped by task 2.3)', gap(async () => {
+    const fresh = await piHome()
+    await onboard(fresh, ['--check'])
+    expect(readMarker(fresh)).toBeNull()
+
+    const onboarded = await piHome()
+    await onboard(onboarded)
+    const marker = readMarker(onboarded)
+    await onboard(onboarded, ['--check'])
+    expect(readMarker(onboarded)).toEqual(marker)
+  }), TEST_TIMEOUT)
+})
+
+describe('--check --force (pinned: flipped by task 2.3)', () => {
+  test('is a usage error: nothing is checked and nothing is cleared', gap(async () => {
+    const home = await piHome()
+    await onboard(home)
+    const marker = readMarker(home)
+    const run = await onboard(home, ['--check', '--force'])
+    expect(run.exitCode, describeRun(run)).toBe(1)
+    expect(outcomes(run)).toEqual({})
+    expect(run.stderr).toContain('--check')
+    expect(run.stderr).toContain('--force')
+    expect(readMarker(home)).toEqual(marker)
+  }), TEST_TIMEOUT)
+})

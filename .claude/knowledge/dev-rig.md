@@ -175,6 +175,13 @@ Discord token transiently in `docker exec` argv, and Codex `auth.json` + device
 key + **Pi `auth.json`** in cleartext under gitignored `dev/` homes until `reset`.
 Exclude `dev/openclaw-home/`, `dev/pi-home*/` from backups.
 
+## Onboarding rig
+
+`bun run onboard:rig` is a separate, much smaller rig: it runs the real
+`bakin onboard` wizard against a throwaway home in a closed environment, for
+exercising first-run setup repeatedly. It shares nothing with `bun run
+instance`; see `.claude/knowledge/onboarding.md` § The local rig.
+
 ## Known limitations
 
 - Pi `/login` inside sandbox needs a real TTY (`docker compose exec -it`); if the
