@@ -111,6 +111,12 @@ no shims, no migrations for old UI state. Delete what is replaced.
 
 ### P2 — Projects UX (Bits `plugins/projects`)
 
+> **2026-11-04:** D7, D8 and D14 are superseded by
+> `projects-grill-start.md` — the create answers after the write and the
+> first turn starts detached behind one fenced start protocol (D8 → D1), the
+> chips are complete prompts (D7 → D2), and the draft-stage posture is a
+> shaping interview over a seeded brief (D14 → D3–D6). The rest of P2 stands.
+
 - **D7. No modal.** `new-project-dialog.tsx` is deleted. "New project" routes
   to `/projects/new`, the **start screen**: heading "What kind of project is on
   your mind?", sub-copy "A rough idea is enough — we'll shape it together.",
