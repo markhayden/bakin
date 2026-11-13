@@ -74,6 +74,11 @@ export async function completeIntroduction(agentId: string, answers: Introductio
   return { ok: true }
 }
 
+/** The person said hello: the offer has done its job. */
+export function recordHello(now: () => Date = () => new Date()): void {
+  updateDecisions((current) => ({ ...current, saidHello: { at: now().toISOString() } }))
+}
+
 export function skipIntroduction(now: () => Date = () => new Date()): void {
   updateDecisions((current) => ({ ...current, introduction: { status: 'skipped', at: now().toISOString() } }))
 }

@@ -25,12 +25,12 @@ export interface StartChatDeps {
 
 const JSON_POST = { method: 'POST', headers: { 'Content-Type': 'application/json' } } as const
 
-export async function startChat(agentId: string, content: string, deps: StartChatDeps = {}): Promise<StartChatResult> {
+export async function startChat(agentId: string, content: string, deps: StartChatDeps & { title?: string } = {}): Promise<StartChatResult> {
   const request = deps.fetch ?? pluginFetch
   const saveDraft = deps.saveDraft ?? writeComposerDraft
   let chatId: string
   try {
-    const created = await request('chat', 'chats', { ...JSON_POST, body: JSON.stringify({ agentId }) })
+    const created = await request('chat', 'chats', { ...JSON_POST, body: JSON.stringify({ agentId, ...(deps.title ? { title: deps.title } : {}) }) })
     if (!created.ok) return { chatId: null, sent: false }
     const body = await created.json() as { chat?: { id?: unknown } }
     if (typeof body.chat?.id !== 'string') return { chatId: null, sent: false }

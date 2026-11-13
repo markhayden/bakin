@@ -45,7 +45,7 @@ export interface HomeFacts {
   mainAgent: MainAgentFacts | null
   credentials: CredentialFact
   model: ModelFact
-  decisions: Pick<HomeDecisions, 'introduction'>
+  decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>
   starters: StarterReadiness
 }
 
@@ -101,6 +101,15 @@ export function starterBlockedBy(starter: Starter, readiness: StarterReadiness):
   if (needs.imageProvider && !readiness.imageProvider) return 'image-provider'
   if (needs.agent && !readiness.agents.includes(needs.agent)) return 'agent'
   return null
+}
+
+/**
+ * Whether to offer "Say hello": the introduction was completed here and the
+ * person has not said hello yet. A skipped introduction offers nothing, and
+ * neither does a home whose agent was named somewhere else.
+ */
+export function offersHello(decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>): boolean {
+  return decisions.introduction?.status === 'completed' && decisions.saidHello === undefined
 }
 
 /** The starters this home can run, in curated order. */

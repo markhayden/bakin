@@ -22,6 +22,8 @@ export interface HomeStateResponse {
   starters: HomeStarter[]
   /** The personality presets the introduction offers. */
   personalities: HomePersonality[]
+  /** Offer "Say hello": the introduction was completed and no hello has been sent. */
+  hello: boolean
 }
 
 export interface HomePersonality {

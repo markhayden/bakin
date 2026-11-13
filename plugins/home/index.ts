@@ -15,9 +15,9 @@ import { getOperationRegistry } from '../../src/core/operations'
 import { setOperatorName } from '../../src/core/team-context'
 import { HOME_CONTENT } from './lib/content'
 import { introductionAnswersSchema } from './lib/decisions'
-import { completeIntroduction, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
+import { completeIntroduction, recordHello, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
 import { gatherHomeFacts } from './lib/readiness'
-import { availableStarters, homeState } from './lib/state'
+import { availableStarters, homeState, offersHello } from './lib/state'
 import type { HomeStateResponse } from './types'
 
 const log = createLogger('home')
@@ -39,6 +39,7 @@ const stateResponse = z.object({
     needsAttachment: z.boolean(),
   })),
   personalities: z.array(z.object({ id: z.string(), label: z.string(), sample: z.string() })),
+  hello: z.boolean(),
 })
 
 const okResponse = z.object({ ok: z.literal(true) })
@@ -83,6 +84,7 @@ const routes = [
             needsAttachment: starter.needs.attachment === true,
           })),
           personalities: HOME_CONTENT.personalities.map(({ id, label, sample }) => ({ id, label, sample })),
+          hello: offersHello(facts.decisions),
         }
         return Response.json(body)
       } catch (err) {
@@ -119,6 +121,18 @@ const routes = [
         log.error('introduction route failed', err instanceof Error ? err : new Error(String(err)))
         return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
+    },
+  }),
+
+  defineRoute({
+    path: '/hello',
+    method: 'POST',
+    summary: 'Record that the person said hello',
+    description: 'Called after the first hello was sent, so Home stops offering it. The message itself is an ordinary chat message the person sent.',
+    responses: { 200: okResponse },
+    handler: async () => {
+      recordHello()
+      return Response.json({ ok: true })
     },
   }),
 

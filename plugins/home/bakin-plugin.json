@@ -22,6 +22,11 @@
       },
       {
         "method": "POST",
+        "path": "/hello",
+        "summary": "Record that the person said hello"
+      },
+      {
+        "method": "POST",
         "path": "/introduction",
         "summary": "Introduce the main agent"
       },

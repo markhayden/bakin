@@ -45,6 +45,8 @@ const decisionsSchema = z.object({
     // renamed agent with no personality and the introduction gone.
     z.object({ status: z.literal('pending'), at: isoInstant, answers: introductionAnswersSchema }),
   ]).optional(),
+  /** The person sent their first hello after the introduction; the offer is not shown again. */
+  saidHello: z.object({ at: isoInstant }).optional(),
 }).passthrough()
 
 export type HomeDecisions = z.infer<typeof decisionsSchema>

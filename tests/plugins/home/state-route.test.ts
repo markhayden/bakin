@@ -176,6 +176,25 @@ describe('POST /introduction/skip', () => {
   })
 })
 
+describe('saying hello', () => {
+  const ANSWERS = { agentName: 'Nova', personality: { kind: 'preset' as const, id: 'warm' }, userName: 'Mark' }
+
+  it('is offered once the introduction is completed, and not after the hello is recorded', async () => {
+    expect((await state()).hello).toBe(false)
+    await callRoute(findRoute(activated.routes, 'POST', '/introduction')!, activated.ctx, { body: ANSWERS })
+    expect((await state()).hello).toBe(true)
+    const res = await callRoute(findRoute(activated.routes, 'POST', '/hello')!, activated.ctx)
+    expect(res.status).toBe(200)
+    expect((await state()).hello).toBe(false)
+    expect(readDecisions().introduction?.status).toBe('completed')
+  })
+
+  it('is not offered after a skip: nobody was introduced', async () => {
+    await callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
+    expect((await state()).hello).toBe(false)
+  })
+})
+
 describe('GET /state — what the introduction needs', () => {
   it('offers the four personalities, each with a sample line, and never the personality text itself', async () => {
     const body = await state()
