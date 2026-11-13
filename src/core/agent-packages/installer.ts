@@ -71,6 +71,7 @@ import { installManifestRequirements } from './requirements-installer'
 import { withoutSharedArtifacts } from './uninstaller'
 import { binPlatformKey } from './bin-installer'
 import { getSettings } from '../settings'
+import { getModelEligibility } from '../model-eligibility'
 import { INSTALL_STAGES } from './operation-plans'
 
 const log = createLogger('agent-pkg:install')
@@ -133,6 +134,13 @@ export interface InstallResult {
   dependencies: { packageId: string; kind: Manifest['kind']; version: string }[]
   /** Skipped projection targets (.userEdited). */
   skipped: { target: string; reason: 'userEdited' }[]
+  /**
+   * The package named a model this home is KNOWN to be unable to run, so the
+   * new agent was created without one and inherits the home's default. A
+   * brand-new home otherwise went straight to a critical Health incident
+   * for a model nobody chose (#1055).
+   */
+  modelFallback?: { declared: string; reason: string }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -241,6 +249,23 @@ async function createRuntimeAgent(input: AdapterCreateAgentInput): Promise<void>
   })
 }
 
+/**
+ * Why the package's own model cannot run on this home, or null when it can
+ * or nobody can say. Only a KNOWN "cannot run" (not in the catalog, no
+ * credentials, runtime-unavailable, rejected) changes the install: unknown
+ * evidence, or an eligibility read that fails, leaves the author's choice.
+ */
+async function cannotRunHere(model: string): Promise<string | null> {
+  try {
+    const report = await getModelEligibility(getAppServices().runtime, { extraIds: [model] })
+    const verdict = report.byModel.get(model)?.eligibility
+    return verdict?.status === 'ineligible' ? verdict.detail : null
+  } catch (err) {
+    log.warn('Could not judge a package model; keeping it', { model, error: String(err) })
+    return null
+  }
+}
+
 async function removeRuntimeAgent(agentId: string): Promise<void> {
   await getAppServices().runtime.agents.remove(agentId)
 }
@@ -347,6 +372,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
   const depFetched: FetchedSource[] = []
   const projected: { resolvedId: string; result: ProjectorResult }[] = []
   let createdAgent = false
+  let modelFallback: InstallResult['modelFallback']
   let adopted = false
   let agentId: string | undefined
   const finalInstallDirs: string[] = [] // for cleanup-on-failure
@@ -549,6 +575,12 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     if (manifest.kind === 'agent' && mode === 'fresh') {
       op?.stage(INSTALL_STAGES.agent, manifest.id)
       const input = manifestToCreateAgent(manifest)
+      const reason = input.model ? await cannotRunHere(input.model) : null
+      if (input.model && reason) {
+        modelFallback = { declared: input.model, reason }
+        log.warn('Package model cannot run here; the agent inherits the default', { agentId: manifest.id, ...modelFallback })
+        delete input.model
+      }
       await createRuntimeAgent(input)
       createdAgent = true
 
@@ -680,6 +712,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
       ...(agentId ? { agentId, state: parentEntry.state } : {}),
       ...(adopted ? { adopted: true } : {}),
       ...(createdAgent ? { createdAgent: true } : {}),
+      ...(modelFallback ? { modelFallback } : {}),
       lessonsEnabled: parentEntry.lessonsEnabled ?? [],
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }, 'cli')
@@ -698,6 +731,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
         version: r.manifest.version,
       })),
       skipped: parentResult.skipped,
+      ...(modelFallback ? { modelFallback } : {}),
     }
   } catch (err) {
     if (createdAgent && agentId) {

@@ -33,6 +33,8 @@ mock.module('../../../src/core/agent-packages/agent-state', () => ({
   getAgentState: async (agentId: string) => ({ agentId, state: states[agentId] ?? 'absent' }),
 }))
 
+/** Agents whose package model this home cannot run: the installer left it off. */
+let modelFallbacks: Record<string, { declared: string; reason: string }> = {}
 mock.module('../../../src/core/agent-packages/installer', () => ({
   installPackage: async (opts: { source: string; installAs?: string; adopt?: boolean }) => {
     installCalls.push(opts)
@@ -43,6 +45,7 @@ mock.module('../../../src/core/agent-packages/installer', () => ({
       adopted: opts.adopt === true,
       dependencies: [],
       skipped: [],
+      ...(modelFallbacks[opts.installAs ?? ''] ? { modelFallback: modelFallbacks[opts.installAs ?? ''] } : {}),
     }
   },
 }))
@@ -53,6 +56,7 @@ describe('recommended agents onboarding component', () => {
   beforeEach(async () => {
     states = {}
     installCalls.length = 0
+    modelFallbacks = {}
     vi.resetModules()
     const mod = await import('../../../src/core/onboarding/recommended-agents')
     recommendedAgentsComponent = mod.recommendedAgentsComponent
@@ -86,5 +90,28 @@ describe('recommended agents onboarding component', () => {
       installAs: 'pixel',
       adopt: true,
     }])
+  })
+
+  it('says which agent runs on the home default because its own model cannot run here (#1055)', async () => {
+    modelFallbacks = { enrich: { declared: 'openai/gpt-5.4-mini', reason: 'no credentials for openai' } }
+
+    const result = await installInOperation(recommendedAgentsComponent, {
+      autoApprove: false,
+      allowServiceClaim: false,
+      selectedRecommendedAgentIds: ['pixel', 'enrich'],
+    })
+
+    expect(result.status).toBe('installed')
+    expect(result.message).toBe("Installed official agent packages: installed pixel, enrich. enrich uses this home's default model (its own, openai/gpt-5.4-mini, cannot run here: no credentials for openai).")
+  })
+
+  it('says nothing about models when every package model can run', async () => {
+    const result = await installInOperation(recommendedAgentsComponent, {
+      autoApprove: false,
+      allowServiceClaim: false,
+      selectedRecommendedAgentIds: ['enrich'],
+    })
+
+    expect(result.message).toBe('Installed official agent package: installed enrich')
   })
 })
