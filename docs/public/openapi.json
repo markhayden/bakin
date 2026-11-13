@@ -35445,6 +35445,83 @@
         "x-bakin-full-path": "/api/plugins/home/hello"
       }
     },
+    "/api/plugins/home/tour": {
+      "get": {
+        "operationId": "home.get.tour",
+        "summary": "The tour of Bakin",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "slides": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "icon": {
+                            "type": "string",
+                            "enum": [
+                              "MessageSquare",
+                              "CheckSquare",
+                              "Users",
+                              "FolderOpen",
+                              "CalendarClock",
+                              "HeartPulse"
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "first": {
+                            "type": "string"
+                          },
+                          "href": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "icon",
+                          "body",
+                          "first",
+                          "href"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "slides"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "The slides of the tour Home offers: one per area, each with what it is for, one thing to do there first, and its page. Curated content; the same for every home.",
+        "x-bakin-full-path": "/api/plugins/home/tour"
+      }
+    },
     "/api/plugins/home/suggestions/{id}/dismiss": {
       "post": {
         "operationId": "home.post.suggestions-id-dismiss",

@@ -8,6 +8,7 @@
  * `feedback/handoff-card.stories.tsx` for logging in,
  * `lists/list-rows.stories.tsx` (DenseRows: a row with its trailing
  * `ListRowActions`) for "Do more with Bakin",
+ * `overlays/dialog.stories.tsx` for the tour (`tour.tsx`),
  * and the conversation kit's `Composer` for the prompt. The
  * introduction is `introduction.tsx`.
  */
@@ -20,6 +21,7 @@ import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState }
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
 import { Introduction } from './introduction'
+import { Tour, TOUR_PARAM, TOUR_START } from './tour'
 import type { HomeLogin, HomeStarter, HomeState, HomeStateResponse, HomeSuggestion } from '../types'
 
 const STATE_TIMEOUT_MS = 15_000
@@ -323,6 +325,7 @@ function HomePageInner() {
   // Reopening needs an agent to introduce; a home that cannot read its roster shows that instead.
   const reopened = introduce === '1' && state !== undefined && state.name !== 'unavailable' && state.name !== 'meet-agent'
   const closeIntroduction = useCallback(() => { setIntroduce('') }, [setIntroduce])
+  const [tour, setTour] = useQueryState(TOUR_PARAM)
   const lookAgain = useCallback(() => { void refresh() }, [refresh])
   // Put away in another tab or on another device: this one follows.
   usePluginEvent('home.suggestions_changed', lookAgain)
@@ -359,6 +362,12 @@ function HomePageInner() {
         ) : (
           <UnavailableView state={state} />
         )}
+        {state && !reopened && (state.name === 'ready' || state.name === 'needs-login') ? (
+          <p className="text-bakin-text-muted">
+            New to Bakin? <PluginLink to={`/?${TOUR_PARAM}=${TOUR_START}`}>Take a two-minute tour</PluginLink> of what is where.
+          </p>
+        ) : null}
+        <Tour slideId={tour ?? ''} onSlide={setTour} />
         {data?.introductionSkipped && state && !reopened && (state.name === 'ready' || state.name === 'needs-login') ? (
           <p className="text-bakin-text-muted">
             You skipped the introduction. <PluginLink to={INTRODUCE_PATH}>Meet {state.agent.name}</PluginLink> whenever you like.

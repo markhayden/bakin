@@ -12,7 +12,10 @@ query string.
 **Phase 2 (plan PRs 4 and 5):** the suggestions engine, its "Not now"
 route, the setup checklist's HTTP route, the "Do more with Bakin" section
 on a ready Home, and the count on the sidebar's "Make Bakin Yours" card.
-Phase 3 (the tour) is not built.
+
+
+**Phase 3, in progress:** the tour (plan PR 6) is built. Pages
+introducing themselves (PR 7) are not.
 
 ## The rule
 
@@ -218,6 +221,31 @@ emits so every open browser follows.
 Capability readiness is read ONCE per state read (`evidence()` in
 `lib/readiness.ts`) and feeds both starters and suggestions.
 
+## The tour
+
+Six slides, one per area (Chat, Tasks, Team, Assets, Schedule, Health),
+as curated data in `home-content.json` (`tour`): the area's name and
+sidebar icon, two or three sentences on what it is for, one thing to try
+first, and its page. A test holds each slide to the label, icon and
+address the area's own manifest gives its nav item, so a renamed page
+fails here instead of leaving a stale slide. `GET /api/plugins/home/tour`
+serves them; the page fetches them only when the tour is open.
+
+- **Offered, never opened.** A ready Home and one waiting on a login
+  show "Take a two-minute tour". Nothing opens it automatically and
+  nothing is stored about it: the offer stays.
+- **The slide is in the URL** (`/?tour=<slide id>`; any other value is
+  the first slide), so a slide can be linked to and a reload keeps the
+  place. Moving between slides replaces the history entry, as all URL
+  state does: the browser's Back leaves the tour.
+- **Plain kit Dialog** (`components/tour.tsx`): "N of 6", Back, "Next:
+  <area>", and Done on the last slide, which hands back to Home. Each
+  slide links to its page.
+- **Text and an icon.** The spec's low-fidelity illustrations (D12) and
+  a dedicated multi-slide pattern were both ask-first; this is the
+  fallback for each. Slides that cannot be loaded toast and close, never
+  an empty dialog.
+
 ## Decisions
 
 `~/.bakin/plugin-data/home/decisions.json` (`lib/decisions.ts`). Today:
@@ -238,7 +266,8 @@ conversation kit's `Composer`, and for the introduction
 `primitives/radio-group.stories.tsx` and `feedback/alert.stories.tsx`
 (also the hello offer). Suggestions are `lists/list-rows.stories.tsx`
 rows with a trailing `ListRowActions` (the `DenseRows` anatomy, always
-visible). Home's fixture
+visible). The tour is `overlays/dialog.stories.tsx`
+(`ControlledFocusReturn`). Home's fixture
 (`plugins/home/tests/ui.fixture.tsx`) is enrolled in the conformance suite.
 
 ## Tests
@@ -247,7 +276,8 @@ visible). Home's fixture
 the suggestions engine (every condition, unknown evidence, the thirty
 days), the routes, the introduction's writes (a failure injected at each step),
 start-chat, and the page (ready, hello, the introduction, reopening,
-logging in, suggestions). `tests/hooks/use-suggestion-count.test.tsx` and
+logging in, suggestions, the tour). `tour.test.ts` holds the slides to
+the sidebar. `tests/hooks/use-suggestion-count.test.tsx` and
 `tests/components/sidebar-promo.test.tsx` cover the sidebar's count. `tests/hooks/use-terminal-handoff.test.tsx` and
 `tests/plugins/health/handoff-return.test.tsx` cover the shared handoff.
 `tests/core/team-context-operator.test.ts` covers the person's name in

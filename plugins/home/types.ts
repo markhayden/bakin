@@ -62,3 +62,12 @@ export interface HomePersonality {
 
 export type { IntroductionAnswers } from './lib/decisions'
 export type { IntroductionResult, IntroductionStep } from './lib/introduction'
+
+/** One slide of the tour: an area of Bakin. */
+export type { TourSlide } from './lib/content'
+
+/** `GET /api/plugins/home/tour`. */
+export interface HomeTourResponse {
+  ok: true
+  slides: import('./lib/content').TourSlide[]
+}

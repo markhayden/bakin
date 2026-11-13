@@ -349,3 +349,13 @@ describe('do more with Bakin', () => {
     expect(existsSync(decisionsPath())).toBe(false)
   })
 })
+
+describe('GET /tour', () => {
+  it('serves the six slides, each with its page', async () => {
+    const res = await callRoute(findRoute(activated.routes, 'GET', '/tour')!, activated.ctx)
+    expect(res.status).toBe(200)
+    const slides = (res.body as unknown as { slides: Array<{ id: string; href: string; first: string }> }).slides
+    expect(slides.map((slide) => slide.id)).toEqual(['chat', 'tasks', 'team', 'assets', 'schedule', 'health'])
+    expect(slides[1]).toMatchObject({ href: '/tasks' })
+  })
+})

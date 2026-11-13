@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 185773
+    "bytes": 186380
   },
   "sdkUiBundles": [
     {
@@ -322,7 +322,7 @@
       "repository": "bakin",
       "pluginId": "home",
       "path": "plugins/home/dist/client.js",
-      "bytes": 13857
+      "bytes": 22206
     },
     {
       "repository": "bakin",
