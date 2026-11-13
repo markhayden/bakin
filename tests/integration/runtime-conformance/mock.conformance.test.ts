@@ -89,7 +89,7 @@ beforeEach(() => {
       const fresh = createMockRuntimeAdapter()
       return {
         homeDir: freshHome,
-        initialize: () => fresh.initialize({ contentDir: freshHome }),
+        initialize: () => fresh.initialize({ contentDir: freshHome, readOnly: true }),
       }
     },
   }

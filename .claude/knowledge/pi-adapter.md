@@ -12,7 +12,7 @@ Pi is a minimal single-session coding harness — it has no agent roster, channe
 |---|---|
 | `home.ts` | `getPiHome()`: `PI_HOME` env → `~/.pi` (Bakin-side convention; SDK constructors always get EXPLICIT paths, never env/defaults) |
 | `registry.ts` | Agent roster CRUD, atomic serialized writes, path-safe ids, loud corrupt-file failure |
-| `main-agent.ts` | Seeds `main` (orchestrator) at `provisionToolAccess()` when the registry is empty — `initialize()` is write-free by conformance pin (read-only consumers like `bakin check` and the switch dry-run initialize without mutating `~/.pi`) |
+| `main-agent.ts` | Seeds `main` (orchestrator) at `provisionToolAccess()` when the registry is empty — a read-only `initialize()` (`readOnly: true`) is write-free by conformance pin (read-only consumers like `bakin check` and the switch dry-run initialize without mutating `~/.pi`; an ordinary initialize lets the Pi SDK create its empty `auth.json` and `models-store.json` when its stores first open, and is always followed by provisioning, #1048) |
 | `agents.ts` | agents.* contract: identity, workspace file CRUD (traversal-guarded), `workspaceFileStats` (canonical/skill/memory) |
 | `sessions.ts` | threadId → session-file map (`bakin-threads.json`), per-thread turn mutex, sessions.list/get/storeStats |
 | `messaging.ts` | send/stream: session assembly, event→ChatChunk mapping, usage delta, abort, terminal-failure detection, Pi extension policy (#626) |
