@@ -134,6 +134,8 @@ Conventional commits with scope:
 - `refactor(core): extract settings module`
 - `test(workflows): add gate approval test`
 
+**No AI attribution.** Commit messages and pull request descriptions carry no `Co-Authored-By:` line for an AI assistant and no "Generated with …" footer. `.claude/settings.json` turns both off for Claude Code (`attribution`); this rule covers every other tool.
+
 ## Testing Rules — CRITICAL
 
 **Every test file MUST mock the content-dir resolver AND the OpenClaw home resolver to use temp directories.** Tests that touch storage, assets, tasks, agent packages, or any plugin MUST NOT read from or write to `~/.bakin/` or `~/.openclaw/`. Leaked test data into either production directory has caused real incidents.
