@@ -21,7 +21,8 @@
       ],
       "source": "github:markhayden/bakin-bits-official#agents/pixel",
       "ref": null,
-      "trust": "official"
+      "trust": "official",
+      "defaultSelected": true
     },
     {
       "id": "rolo",
@@ -62,7 +63,8 @@
       ],
       "source": "github:markhayden/bakin-bits-official#agents/jessica",
       "ref": null,
-      "trust": "official"
+      "trust": "official",
+      "defaultSelected": true
     },
     {
       "id": "patch",
@@ -412,7 +414,7 @@
       "dependencies": [
         "git"
       ],
-      "defaultSelected": false
+      "defaultSelected": true
     },
     {
       "id": "explore",

@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from 'ink'
 import { ConfirmInput, Select } from '@inkjs/ui'
+import { useEffect, useState, type ReactElement } from 'react'
 import type {
   CheckResult,
   CheckStatus,
@@ -10,6 +11,7 @@ import type {
 import type { SetupChecklist } from '../../onboarding/setup-checklist'
 import type { OnboardingState } from '../../onboarding/state'
 import {
+  BakinHeader,
   FindingRows,
   NextActions,
   ProgressMeter,
@@ -283,7 +285,7 @@ export function OnboardingFinalStatus({ outcomes, exitCode }: {
   return <NextActions actions={actions} />
 }
 
-export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS, completed, totalSteps = 1, showBrand = true }: {
+export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS, completed, totalSteps = 1, showBrand = true, finished = false }: {
   label?: string
   detail?: string
   frame?: number
@@ -295,6 +297,8 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
   }>
   totalSteps?: number
   showBrand?: boolean
+  /** The run is over: the summary that follows repeats every row, so only the brand stays. */
+  finished?: boolean
 }) {
   const safeDetails = details.length > 0 ? details : ONBOARDING_BUSY_DETAILS
   const spinnerFrame = ONBOARDING_SPINNER_FRAMES[frame % ONBOARDING_SPINNER_FRAMES.length]
@@ -314,8 +318,10 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
   const attention = warnings + skipped + blocked
   const percent = Math.round((currentStep / boundedTotalSteps) * 100)
 
+  if (finished) return showBrand ? <BakinHeader /> : null
+
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={showBrand ? 0 : 1}>
       <ScreenHeader title="Onboard" subtitle="Interactive setup in progress" meta={`step ${currentStep} of ${boundedTotalSteps}`} showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'complete', value: completed?.filter(item => item.status === 'complete').length ?? 0, status: 'ok' },
@@ -592,4 +598,41 @@ function formatOnboardingMessage(message: string): string {
     .replace(/^All (\d+) Termite models present at (.+)$/, '$1 Termite models ready: $2')
     .replace(/^0 plugin assets to install \(no plugin ships defaults\/runtime-skills\/\)$/, 'No plugin assets to install')
     .replace(/^0 agent-package projections \(no agent or pack installed yet\)$/, 'No agent-package projections yet')
+}
+
+/** What an answered screen leaves behind: one row, or nothing. */
+export type PromptReceipt<T> = (value: T) => FindingRow | null;
+
+/**
+ * One wizard screen and what it becomes once answered. The whole screen is
+ * on the terminal only while it is waiting; the answer replaces it with a
+ * single row, so a finished run reads as a short list of decisions and not
+ * as every screen stacked on the last. A screen that carried the brand
+ * leaves the brand behind too.
+ */
+export function PromptFrame<T>({ screen, receipt, showBrand = false, onSettled }: {
+  screen: (answer: (value: T) => void) => ReactElement;
+  receipt: PromptReceipt<T>;
+  showBrand?: boolean;
+  onSettled: (value: T) => void;
+}) {
+  const [answer, setAnswer] = useState<{ value: T } | null>(null);
+  useEffect(() => {
+    if (answer) onSettled(answer.value);
+  }, [answer, onSettled]);
+
+  if (!answer) {
+    return (
+      <Box flexDirection="column" marginTop={showBrand ? 0 : 1}>
+        {screen((value) => setAnswer({ value }))}
+      </Box>
+    );
+  }
+  const row = receipt(answer.value);
+  return (
+    <Box flexDirection="column">
+      {showBrand ? <BakinHeader /> : null}
+      {row ? <FindingRows rows={[row]} /> : null}
+    </Box>
+  );
 }

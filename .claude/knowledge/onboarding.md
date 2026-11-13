@@ -197,6 +197,38 @@ presses real keys through Ink's input handling (what the keys do). Add a
 key test for any screen that takes input: the runtime screen once rendered
 correctly while Enter on its preselected entry did nothing.
 
+## How the wizard reads on screen
+
+A terminal run is a short list of answered steps with one open question
+below it, never every screen stacked on the last.
+
+- **One brand per run.** Whichever screen comes first carries it (the
+  runtime question, the login step, the wizard intro or the progress view);
+  nothing after it draws it again.
+- **Answered screens collapse.** Every question is shown through
+  `PromptFrame` (`src/core/cli/ui/onboarding.tsx`): the full screen while it
+  waits, one receipt row once answered (`OK  Runtime  Pi`). A login recheck
+  leaves nothing; a skipped login leaves a warning row.
+- **The intro only opens a run.** `OnboardingIntro` is printed when the
+  wizard is the first thing on screen, not after a runtime question or
+  login step.
+- **The progress view collapses on a finished run**, because the summary
+  repeats every row. A cancelled or interrupted run keeps what it reached.
+- **Checklists lead with the box.** `MultiSelect`
+  (`src/core/cli/ui/multi-select.tsx`, Bakin's own, no third-party list)
+  draws `[✔]` / `[ ]` at the start of each row and `[-]` for an item that
+  is already installed. Keys act on the latest state, so a fast
+  down-then-space lands on the right row.
+- **The progress line** (`operationStatusLine`) names the operation, the
+  stage unless it only repeats the title, the item in hand with its place
+  in the list, and a percentage from the stage's bytes or the item's. A
+  download with nothing to measure yet says it can take a few minutes.
+
+What is pre-selected in the plugin and agent checklists is the catalog's
+`defaultSelected` (`packages/host/src/data/curated-catalog.json`), and the
+same set is what `--yes` installs: Messaging, Projects and Terminal;
+Pixel, Jessica and H'enrich.
+
 ## The setup checklist
 
 `src/core/onboarding/setup-checklist.ts`. What is still worth doing after

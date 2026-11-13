@@ -1,6 +1,5 @@
-import { MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
-import { Box, Text } from 'ink'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { Box, Text, useInput } from 'ink'
+import { useEffect, useRef } from 'react'
 import { Section } from './tui'
 import { CLI_COLORS } from './style-tokens'
 
@@ -73,33 +72,16 @@ export interface MultiSelectProps {
   showTitle?: boolean
 }
 
-const multiSelectTheme = extendTheme(defaultTheme, {
-  components: {
-    MultiSelect: {
-      styles: {
-        focusIndicator: () => ({ color: CLI_COLORS.info }),
-        selectedIndicator: () => ({ color: CLI_COLORS.info }),
-        label: ({ isFocused }: { isFocused: boolean }) => ({
-          color: isFocused ? CLI_COLORS.info : undefined,
-        }),
-      },
-    },
-  },
-})
-
-function optionLabel(item: MultiSelectItem): string {
-  const name = `[${item.label}]`
-  return item.description ? `${name} ${item.description}` : name
+/** The box in front of a row: checked, unchecked, or not a choice here. */
+function checkbox(item: MultiSelectItem, selectedIds: ReadonlySet<string>): string {
+  if (item.disabled) return '[-]'
+  return selectedIds.has(item.id) ? '[\u2714]' : '[ ]'
 }
 
-function sameSelectedIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false
-  for (const id of a) {
-    if (!b.has(id)) return false
-  }
-  return true
-}
-
+/**
+ * A checklist. Every row starts with its box, so what is selected reads
+ * down the left edge; the pointer marks the row the keys act on.
+ */
 export function MultiSelect({
   title,
   items,
@@ -109,50 +91,49 @@ export function MultiSelect({
   marginTop = 0,
   showTitle = true,
 }: MultiSelectProps) {
-  const stateRef = useRef(state)
-  const onChangeRef = useRef(onChange)
-  const enabledItems = useMemo(() => items.filter(item => !item.disabled), [items])
-  const disabledItems = useMemo(() => items.filter(item => item.disabled), [items])
-  const options = useMemo(() => enabledItems.map(item => ({
-    value: item.id,
-    label: optionLabel(item),
-  })), [enabledItems])
-  const defaultValue = useMemo(() => [...state.selectedIds], [state.selectedIds])
-
+  // Keys can arrive faster than React re-renders (a quick down-then-space):
+  // each one acts on the state the last one left, not on the last render's.
+  const latest = useRef(state)
   useEffect(() => {
-    stateRef.current = state
-    onChangeRef.current = onChange
-  }, [onChange, state])
-
-  const handleChange = useCallback((selectedIds: string[]) => {
-    const selectedIdsSet = new Set(selectedIds)
-    const current = stateRef.current
-    if (sameSelectedIds(current.selectedIds, selectedIdsSet)) return
-    onChangeRef.current({ ...current, selectedIds: selectedIdsSet })
-  }, [])
+    latest.current = state
+  }, [state])
+  const apply = (action: MultiSelectAction) => {
+    latest.current = updateMultiSelectState(latest.current, items, action)
+    onChange(latest.current)
+  }
+  useInput((input, key) => {
+    if (key.upArrow) apply({ type: 'up' })
+    else if (key.downArrow) apply({ type: 'down' })
+    else if (input === ' ') apply({ type: 'toggle' })
+    else if (key.return) onSubmit(items.filter(item => !item.disabled && latest.current.selectedIds.has(item.id)).map(item => item.id))
+  })
 
   const body = (
     <>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column">
-        <ThemeProvider theme={multiSelectTheme}>
-          <InkMultiSelect
-            options={options}
-            defaultValue={defaultValue}
-            visibleOptionCount={Math.max(5, Math.min(8, options.length || 5))}
-            onChange={handleChange}
-            onSubmit={onSubmit}
-          />
-        </ThemeProvider>
-        {disabledItems.length > 0 ? (
-          <Box flexDirection="column" marginTop={1}>
-            {disabledItems.map(item => (
-              <Text key={item.id} color="gray">
-                {optionLabel(item)}{item.note ? ` (${item.note})` : ''}
-              </Text>
-            ))}
-          </Box>
-        ) : null}
+        {items.map((item, index) => {
+          const focused = !item.disabled && index === state.focusIndex
+          const selected = !item.disabled && state.selectedIds.has(item.id)
+          return (
+            <Box key={item.id} gap={1}>
+              <Box flexShrink={0}>
+                <Text color={focused ? CLI_COLORS.info : undefined}>{focused ? '\u276f' : ' '}</Text>
+              </Box>
+              <Box flexShrink={0}>
+                <Text color={selected ? CLI_COLORS.info : undefined} dimColor={!selected}>{checkbox(item, state.selectedIds)}</Text>
+              </Box>
+              <Box flexShrink={0}>
+                <Text bold={!item.disabled} color={focused ? CLI_COLORS.info : undefined} dimColor={item.disabled}>{item.label}</Text>
+              </Box>
+              <Box flexShrink={1}>
+                <Text dimColor wrap="wrap">
+                  {[item.description, item.disabled && item.note ? `(${item.note})` : ''].filter(Boolean).join(' ')}
+                </Text>
+              </Box>
+            </Box>
+          )
+        })}
       </Box>
     </>
   )

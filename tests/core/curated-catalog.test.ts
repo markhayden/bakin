@@ -56,8 +56,8 @@ describe('shipped curated-catalog.json', () => {
     for (const plugin of installable) {
       expect(plugin.source).toBe(`github:markhayden/bakin-bits-official#plugins/${plugin.id}`)
       expect(plugin.trust).toBe('official')
-      // Terminal grants agents shell access, so it is listed but opt-in; the rest are pre-selected.
-      expect(plugin.defaultSelected).toBe(plugin.id !== 'terminal')
+      // Every official plugin is pre-selected, Terminal included.
+      expect(plugin.defaultSelected).toBe(true)
     }
   })
 
