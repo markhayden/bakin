@@ -1,7 +1,7 @@
 import type { AgentRuntimeAdapter, RuntimeCompatibility } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
 import { createOpenClawHealthChecks, createOpenClawRuntimeAdapter, isOpenClawPresent } from '@bakin/adapter-openclaw'
-import { createPiHealthChecks, createPiRuntimeAdapter, isPiPresent } from '@bakin/adapter-pi'
+import { createPiHealthChecks, createPiRuntimeAdapter, isPiPresent, PI_CLI_INSTALL_HINT } from '@bakin/adapter-pi'
 import { withModelAvailabilityObservation } from './model-availability'
 import type { RuntimeAdapterName } from './settings'
 
@@ -37,7 +37,7 @@ const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportI
     docsUrl: 'https://pi.dev/docs/latest',
     setupHint: 'Pi runs inside Bakin and needs no separate install; if it cannot start, check the Pi home it reports.',
     loginSteps: [
-      'Open another terminal and run `pi`.',
+      `Open another terminal and run \`pi\`. ${PI_CLI_INSTALL_HINT}`,
       'Type `/login` and pick a provider (there is no `pi login` command).',
       'Finish the sign-in, then quit pi.',
     ],

@@ -35,7 +35,7 @@ A runtime needs a provider login before agents can run a turn. Bakin never handl
 
 If nobody is logged in, onboarding shows the steps and waits. Log in from another terminal, come back and press Enter. Or press `s` to finish without a login: Bakin starts fine and agents run once you log in.
 
-- **Pi:** run `pi`, type `/login`, and pick a provider. There is no `pi login` command.
+- **Pi:** run `pi`, type `/login`, and pick a provider. There is no `pi login` command. Pi itself runs inside Bakin, but logging in uses the `pi` command line tool: install it with `npm install -g @earendil-works/pi-coding-agent`, which needs Node 22.19 or newer.
 - **OpenClaw:** add a provider login in OpenClaw and make sure its gateway is running. See the [OpenClaw docs](https://openclaw.ai/docs/).
 
 ## Confirm it worked

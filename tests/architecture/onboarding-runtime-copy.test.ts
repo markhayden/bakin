@@ -53,3 +53,23 @@ describe('onboarding copy comes from the active runtime', () => {
     expect(hits).toEqual([])
   })
 })
+
+describe('Pi login steps state the Pi command line tool\'s own requirements', () => {
+  it('the Node floor in the install step is the one the pinned Pi package declares', () => {
+    // The step tells a new user what Node they need to install `pi`. That
+    // number belongs to the Pi package, so a Pi bump that raises it must
+    // change the step with it.
+    const entry = Bun.resolveSync('@earendil-works/pi-coding-agent', join(ROOT, 'packages', 'adapter-pi'))
+    const packageRoot = entry.slice(0, entry.lastIndexOf('pi-coding-agent') + 'pi-coding-agent'.length)
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf-8')) as { name: string; bin?: Record<string, string>; engines?: { node?: string } }
+    const floor = /^>=(\d+\.\d+)\.0$/.exec(manifest.engines?.node ?? '')?.[1]
+    expect(floor).toBeDefined()
+    expect(manifest.bin).toHaveProperty('pi')
+
+    // Pi's facts live in the Pi adapter; the factory only composes them into the step.
+    const requirements = readFileSync(join(ROOT, 'packages', 'adapter-pi', 'src', 'cli-requirements.ts'), 'utf-8')
+    expect(requirements).toContain(`PI_CLI_PACKAGE = '${manifest.name}'`)
+    expect(requirements).toContain(`PI_CLI_MIN_NODE = '${floor}'`)
+    expect(readFileSync(join(ROOT, FACTORY), 'utf-8')).toContain('${PI_CLI_INSTALL_HINT}')
+  })
+})
