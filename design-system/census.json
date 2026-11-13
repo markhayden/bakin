@@ -309,7 +309,7 @@
         "Route"
       ],
       "exportStatus": "not-applicable",
-      "classification": "visual-surface",
+      "classification": "non-visual-alias",
       "evidence": [
         {
           "type": "route-definition",
@@ -333,7 +333,7 @@
         "Route"
       ],
       "exportStatus": "not-applicable",
-      "classification": "non-visual-alias",
+      "classification": "visual-surface",
       "evidence": [
         {
           "type": "route-definition",
