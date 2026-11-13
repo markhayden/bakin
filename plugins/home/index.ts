@@ -204,12 +204,14 @@ const routes = [
     description: '"Not now": records the time, and Home stops showing that suggestion for thirty days. It comes back afterwards if it still applies. 404 for an id that is not a suggestion.',
     params: z.object({ id: z.string() }),
     responses: { 200: okResponse, 404: errorResponse },
-    handler: async (_req, _ctx, { params }) => {
+    handler: async (_req, ctx, { params }) => {
       if (!HOME_CONTENT.suggestions.some((suggestion) => suggestion.id === params.id)) {
         return Response.json({ ok: false, error: `No suggestion "${params.id}"` }, { status: 404 })
       }
       const at = new Date().toISOString()
       updateDecisions((current) => ({ ...current, dismissedSuggestions: { ...current.dismissedSuggestions, [params.id]: { at } } }))
+      // Every open browser counts suggestions in its sidebar: tell them the count moved.
+      ctx.events.emit('home.suggestions_changed', { id: params.id })
       return Response.json({ ok: true })
     },
   }),

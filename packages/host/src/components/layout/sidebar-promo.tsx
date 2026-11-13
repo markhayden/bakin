@@ -6,16 +6,25 @@ import { cn } from '@makinbakin/sdk/utils'
 interface SidebarPromoProps {
   collapsed: boolean
   pathname: string
+  /**
+   * How many suggestions Home has for this home. With any, the card counts
+   * them and leads to Home's "Do more with Bakin"; with none it is the plain
+   * way into Explore.
+   */
+  count?: number
   onNavigate?: () => void
 }
 
-export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoProps) {
+export function SidebarPromo({ collapsed, pathname, count = 0, onNavigate }: SidebarPromoProps) {
   const active = pathname === '/explore' || pathname.startsWith('/explore/')
+  const suggesting = count > 0
+  const destination = suggesting ? { to: '/', hash: 'do-more' } as const : { to: '/explore' } as const
+  const counted = `${count} ${count === 1 ? 'suggestion' : 'suggestions'}`
 
   if (!collapsed) {
     return (
       <Link
-        to="/explore"
+        {...destination}
         onClick={onNavigate}
         data-testid="sidebar-promo"
         aria-current={active ? 'page' : undefined}
@@ -25,10 +34,12 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
       >
         <Text as="span" weight="semibold" className="block">Make Bakin Yours</Text>
         <Text as="span" size="meta" tone="muted" className="mt-bakin-1 block">
-          Do more with Bakin—discover agent kits, plugins &amp; more.
+          {suggesting
+            ? `${counted} for getting more out of Bakin.`
+            : <>Do more with Bakin—discover agent kits, plugins &amp; more.</>}
         </Text>
         <Badge tone="accent" variant="link" size="sm" className="mt-2.5">
-          Browse add-ons
+          {suggesting ? 'See what you can add' : 'Browse add-ons'}
           <ArrowUpRight aria-hidden="true" />
         </Badge>
       </Link>
@@ -37,10 +48,10 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
 
   const link = (
     <Link
-      to="/explore"
+      {...destination}
       onClick={onNavigate}
       data-testid="sidebar-promo"
-      aria-label="Make Bakin Yours"
+      aria-label={suggesting ? `Make Bakin Yours, ${counted}` : 'Make Bakin Yours'}
       aria-current={active ? 'page' : undefined}
       className={cn('mb-1.5 flex h-9 items-center justify-center rounded-bakin-control border transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-bakin-focus-ring', active
           ? 'border-bakin-signal-accent/55 bg-bakin-signal-accent/15 text-bakin-signal-accent'
@@ -53,7 +64,7 @@ export function SidebarPromo({ collapsed, pathname, onNavigate }: SidebarPromoPr
   return (
     <Tooltip>
       <TooltipTrigger render={link} />
-      <TooltipContent side="right" sideOffset={8}>Make Bakin Yours</TooltipContent>
+      <TooltipContent side="right" sideOffset={8}>{suggesting ? `Make Bakin Yours: ${counted}` : 'Make Bakin Yours'}</TooltipContent>
     </Tooltip>
   )
 }

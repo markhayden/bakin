@@ -214,7 +214,7 @@ Top-level nav items may declare one of three host-defined sections:
 
 Omit `section` to place a custom destination under **Mix-ins**. Section names are closed: plugins cannot create arbitrary headings. `section` is top-level only; children stay with their parent and the manifest parser rejects a section on a child.
 
-Within a defined section, Bakin's official destinations lead in the product's fixed order. Custom destinations follow, sorted by `order` (default `100`), then label, then ID. Mix-ins uses the same custom ordering and disappears when empty. Chat and Tasks are host-owned primary destinations; Make Bakin Yours, Runtime, and Settings are host-owned utilities. Plugins cannot place items in either reserved region.
+Within a defined section, Bakin's official destinations lead in the product's fixed order. Custom destinations follow, sorted by `order` (default `100`), then label, then ID. Mix-ins uses the same custom ordering and disappears when empty. Home, Chat and Tasks are host-owned primary destinations; Make Bakin Yours, Runtime, and Settings are host-owned utilities. Plugins cannot place items in either reserved region.
 
 ```json
 {

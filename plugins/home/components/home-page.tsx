@@ -6,19 +6,21 @@
  * every non-ready state, `lists/list-rows.stories.tsx` (InteractiveRows)
  * for starters, `feedback/alert.stories.tsx` (action) for the first hello,
  * `feedback/handoff-card.stories.tsx` for logging in,
+ * `lists/list-rows.stories.tsx` (DenseRows: a row with its trailing
+ * `ListRowActions`) for "Do more with Bakin",
  * and the conversation kit's `Composer` for the prompt. The
  * introduction is `introduction.tsx`.
  */
-import { Suspense, useCallback, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { Composer } from '@makinbakin/sdk/conversation'
-import { handoffReturnChannel, toast, useHandoffReturn, usePluginJsonFetch, useTerminalHandoff } from '@makinbakin/sdk/hooks'
+import { handoffReturnChannel, toast, useHandoffReturn, usePluginEvent, usePluginJsonFetch, useTerminalHandoff } from '@makinbakin/sdk/hooks'
 import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
-import { HandoffCard, ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { HandoffCard, ListRow, ListRowActions, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
 import { Introduction } from './introduction'
-import type { HomeLogin, HomeStarter, HomeState, HomeStateResponse } from '../types'
+import type { HomeLogin, HomeStarter, HomeState, HomeStateResponse, HomeSuggestion } from '../types'
 
 const STATE_TIMEOUT_MS = 15_000
 /** How many starters Home offers at once. */
@@ -35,9 +37,65 @@ function titleFor(state: HomeState | undefined, introducing: boolean): string {
   return 'Home'
 }
 
+/** Where the sidebar's count links: `/#do-more`. */
+const DO_MORE_ID = 'do-more'
+
+interface SuggestionsProps {
+  suggestions: HomeSuggestion[]
+  /** One was put away: Home should look again. */
+  onChanged: () => void
+}
+
+/** "Do more with Bakin": what this home could add, each with the one step that adds it. */
+function Suggestions({ suggestions, onChanged }: SuggestionsProps) {
+  const [putting, setPutting] = useState<string | null>(null)
+  const section = useRef<HTMLElement>(null)
+
+  // Arriving from the sidebar's count: the section loads after the page does.
+  useEffect(() => {
+    if (window.location.hash === `#${DO_MORE_ID}`) section.current?.scrollIntoView({ block: 'start' })
+  }, [])
+
+  const notNow = useCallback(async (suggestion: HomeSuggestion) => {
+    setPutting(suggestion.id)
+    try {
+      const res = await pluginFetch('home', `suggestions/${encodeURIComponent(suggestion.id)}/dismiss`, { method: 'POST' })
+      if (!res.ok) throw new Error(`dismiss answered ${res.status}`)
+      onChanged()
+    } catch {
+      toast("That couldn't be put away. Try again.", 'error')
+    } finally {
+      setPutting(null)
+    }
+  }, [onChanged])
+
+  return (
+    <section ref={section} id={DO_MORE_ID} aria-labelledby="home-do-more" className="flex scroll-mt-bakin-4 flex-col gap-bakin-3">
+      <h2 id="home-do-more" className="text-bakin-text-muted">Do more with Bakin</h2>
+      <ListRows variant="bordered" aria-labelledby="home-do-more">
+        {suggestions.map((suggestion) => (
+          <ListRow key={suggestion.id} className="flex flex-wrap items-center gap-bakin-2" data-suggestion={suggestion.id}>
+            <span className="min-w-0 flex-1 basis-80">
+              <span className="block font-bakin-typography-weight-semibold">{suggestion.title}</span>
+              <span className="block text-bakin-text-muted">{suggestion.payoff}</span>
+            </span>
+            <ListRowActions aria-label={suggestion.title} className="gap-bakin-1">
+              <Button size="xs" variant="ghost" disabled={putting !== null} onClick={() => { void notNow(suggestion) }}>Not now</Button>
+              <Button size="xs" variant="outline" render={<PluginLink to={suggestion.action.href} />}>{suggestion.action.label}</Button>
+            </ListRowActions>
+          </ListRow>
+        ))}
+      </ListRows>
+    </section>
+  )
+}
+
 interface ReadyViewProps {
   agent: { id: string; name: string }
   starters: HomeStarter[]
+  suggestions: HomeSuggestion[]
+  /** A suggestion was put away: Home should look again. */
+  onSuggestionsChanged: () => void
   /** The introduction just finished and nobody has said hello yet. */
   hello: boolean
   /** The hello offer was used or put away: Home should look again. */
@@ -53,7 +111,7 @@ async function recordHello(): Promise<void> {
   }
 }
 
-function ReadyView({ agent, starters, hello, onHelloSettled }: ReadyViewProps) {
+function ReadyView({ agent, starters, suggestions, onSuggestionsChanged, hello, onHelloSettled }: ReadyViewProps) {
   const router = useRouter()
   const [sending, setSending] = useState(false)
   // A second submit while the first is still creating its chat must not make a second chat.
@@ -144,6 +202,7 @@ function ReadyView({ agent, starters, hello, onHelloSettled }: ReadyViewProps) {
           </ListRows>
         </section>
       ) : null}
+      {suggestions.length > 0 ? <Suggestions suggestions={suggestions} onChanged={onSuggestionsChanged} /> : null}
     </div>
   )
 }
@@ -265,6 +324,8 @@ function HomePageInner() {
   const reopened = introduce === '1' && state !== undefined && state.name !== 'unavailable' && state.name !== 'meet-agent'
   const closeIntroduction = useCallback(() => { setIntroduce('') }, [setIntroduce])
   const lookAgain = useCallback(() => { void refresh() }, [refresh])
+  // Put away in another tab or on another device: this one follows.
+  usePluginEvent('home.suggestions_changed', lookAgain)
   // Back from the sign-in (the Terminal route, or their own shell): look again, once.
   useHandoffReturn(HOME_CONSUMER, lookAgain)
 
@@ -292,7 +353,7 @@ function HomePageInner() {
         ) : state.name === 'meet-agent' ? (
           <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
-          <ReadyView agent={state.agent} starters={data.starters} hello={data.hello} onHelloSettled={() => { void refresh() }} />
+          <ReadyView agent={state.agent} starters={data.starters} suggestions={data.suggestions} onSuggestionsChanged={lookAgain} hello={data.hello} onHelloSettled={() => { void refresh() }} />
         ) : state.name === 'needs-login' ? (
           <LoginView agent={state.agent} login={data.login} starters={data.starters} onCheck={lookAgain} checking={loading} />
         ) : (

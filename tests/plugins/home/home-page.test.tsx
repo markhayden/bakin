@@ -6,7 +6,7 @@
  * composer is a stand-in that exposes exactly its `onSend` contract.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { actRender } from '../../rtl-settle'
 import type { ReactNode } from 'react'
 
@@ -90,7 +90,7 @@ const STARTERS = [
   { id: 'brainstorm', title: 'Brainstorm ideas', description: 'Think out loud', prompt: 'Brainstorm with me.', needsAttachment: false },
   { id: 'summarize-document', title: 'Summarize a document', description: 'Attach a file', prompt: 'Please summarize the attached document.', needsAttachment: true },
 ]
-type Shown = Omit<HomeStateResponse, 'personalities' | 'hello' | 'introductionSkipped' | 'suggestions' | 'suggestionCount'> & { hello?: boolean; introductionSkipped?: boolean }
+type Shown = Omit<HomeStateResponse, 'personalities' | 'hello' | 'introductionSkipped' | 'suggestions' | 'suggestionCount'> & { hello?: boolean; introductionSkipped?: boolean; suggestions?: HomeStateResponse['suggestions']; suggestionCount?: number }
 const ready = (starters = STARTERS): Shown => ({ ok: true, state: { name: 'ready', agent: { id: 'main', name: 'Nova' } }, starters })
 const show = async (data: Shown | null, over: Partial<typeof response> = {}) => {
   response = { data: data ? { hello: false, introductionSkipped: false, suggestions: [], suggestionCount: 0, ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
@@ -504,5 +504,54 @@ describe('Home: logging in', () => {
     expect(screen.getByText('Add a provider login in OpenClaw.')).toBeTruthy()
     expect(screen.queryByText('Start the sign-in')).toBeNull()
     expect(screen.getByRole('link', { name: 'OpenClaw docs' })).toBeTruthy()
+  })
+})
+
+describe('Home: do more with Bakin', () => {
+  const SUGGESTIONS = [
+    { id: 'web-search', title: 'Let your agents search the web', payoff: 'Research with current facts and sources.', action: { label: 'Add web search', href: '/explore?tab=capabilities&item=skill-pack:web-search-brave' } },
+    { id: 'add-agent', title: 'Add a specialist to your team', payoff: 'A researcher, a developer or an image artist.', action: { label: 'Browse agents', href: '/explore?tab=agents' } },
+  ]
+  const suggesting = (): Shown => ({ ...ready(), suggestions: SUGGESTIONS, suggestionCount: 2 })
+  const section = () => screen.queryByRole('region', { name: 'Do more with Bakin' })
+
+  it('is not there when nothing is suggested', async () => {
+    await show(ready())
+    expect(section()).toBeNull()
+  })
+
+  it('lists each suggestion with what it gives and one link that does it', async () => {
+    await show(suggesting())
+    const rows = within(section()!).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    expect(within(rows[0]!).getByText('Let your agents search the web')).toBeTruthy()
+    expect(within(rows[0]!).getByText('Research with current facts and sources.')).toBeTruthy()
+    expect(within(rows[0]!).getByRole('link', { name: 'Add web search' }).getAttribute('href')).toBe('/explore?tab=capabilities&item=skill-pack:web-search-brave')
+    expect(within(rows[1]!).getByRole('link', { name: 'Browse agents' }).getAttribute('href')).toBe('/explore?tab=agents')
+    // The section is where the sidebar's count lands.
+    expect(section()!.id).toBe('do-more')
+  })
+
+  it('"Not now" puts that one away on the server, and Home looks again', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    await show(suggesting())
+    const row = within(section()!).getAllByRole('listitem')[1]!
+    await act(async () => { fireEvent.click(within(row).getByRole('button', { name: 'Not now' })) })
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toEqual([{ path: 'suggestions/add-agent/dismiss', body: null }])
+  })
+
+  it('a "Not now" that could not be saved says so, and the suggestion stays', async () => {
+    answers = [{ status: 500, body: { ok: false, error: 'disk full' } }]
+    await show(suggesting())
+    await act(async () => { fireEvent.click(within(section()!).getAllByRole('button', { name: 'Not now' })[0]!) })
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("That couldn't be put away. Try again.", 'error'))
+    expect(refresh).not.toHaveBeenCalled()
+    expect(within(section()!).getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('is not shown while logging in or meeting the agent, whatever the response carries', async () => {
+    await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: [], suggestions: SUGGESTIONS, suggestionCount: 2 })
+    expect(section()).toBeNull()
   })
 })

@@ -18,7 +18,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   resetOpenClawHome: () => {},
 }))
 mock.module('@tanstack/react-router', () => ({
-  Link: ({ to, ...props }: ComponentProps<'a'> & { to: string }) => <a href={to} {...props} />,
+  Link: ({ to, hash, ...props }: ComponentProps<'a'> & { to: string; hash?: string }) => <a href={hash ? `${to}#${hash}` : to} {...props} />,
 }))
 
 import { SidebarPromo } from '../../packages/host/src/components/layout/sidebar-promo'
@@ -50,5 +50,29 @@ describe('SidebarPromo', () => {
     await actRender(() => render(<SidebarPromo collapsed pathname="/workflows" />))
     expect(screen.getByRole('link', { name: 'Make Bakin Yours' }).getAttribute('href')).toBe('/explore')
     expect(screen.queryByText('Browse add-ons')).toBeNull()
+  })
+
+  it('with suggestions it counts them and leads to where Home lists them', async () => {
+    await actRender(() => render(<SidebarPromo collapsed={false} pathname="/tasks" count={3} />))
+    const link = screen.getByRole('link', { name: /Make Bakin Yours/ })
+    expect(link.getAttribute('href')).toBe('/#do-more')
+    expect(link.textContent).toContain('3 suggestions for getting more out of Bakin.')
+    expect(screen.getByText('See what you can add')).toBeTruthy()
+    expect(screen.queryByText('Browse add-ons')).toBeNull()
+  })
+
+  it('one suggestion is "1 suggestion", and none is the plain Explore card', async () => {
+    const view = await actRender(() => render(<SidebarPromo collapsed={false} pathname="/tasks" count={1} />))
+    expect(screen.getByRole('link').textContent).toContain('1 suggestion for getting more out of Bakin.')
+    view.unmount()
+    await actRender(() => render(<SidebarPromo collapsed={false} pathname="/tasks" count={0} />))
+    expect(screen.getByRole('link').getAttribute('href')).toBe('/explore')
+    expect(screen.getByText('Browse add-ons')).toBeTruthy()
+  })
+
+  it('collapsed, the count is in the name a screen reader hears', async () => {
+    await actRender(() => render(<SidebarPromo collapsed pathname="/tasks" count={2} />))
+    const link = screen.getByRole('link', { name: 'Make Bakin Yours, 2 suggestions' })
+    expect(link.getAttribute('href')).toBe('/#do-more')
   })
 })
