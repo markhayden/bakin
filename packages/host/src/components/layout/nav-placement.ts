@@ -14,7 +14,7 @@ export interface SidebarNavModel {
   sections: SidebarNavSection[]
 }
 
-const PRIMARY_IDS = ['chat', 'tasks'] as const
+const PRIMARY_IDS = ['home', 'chat', 'tasks'] as const
 const RESERVED_IDS = new Set<string>([...PRIMARY_IDS, 'explore'])
 
 const SECTION_DEFINITIONS: ReadonlyArray<{ id: SidebarSectionId; label: string }> = [

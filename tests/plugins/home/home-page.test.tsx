@@ -386,7 +386,7 @@ describe('Home: the introduction can be reopened', () => {
 
   it('a skipped introduction leaves a quiet way back on Home; one that was never skipped does not', async () => {
     await show({ ...ready(), introductionSkipped: true })
-    expect(screen.getByRole('link', { name: 'Meet Nova' }).getAttribute('href')).toBe('/home?introduce=1')
+    expect(screen.getByRole('link', { name: 'Meet Nova' }).getAttribute('href')).toBe('/?introduce=1')
     cleanup()
     await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Main' } }, starters: [], introductionSkipped: true })
     expect(screen.getByRole('link', { name: 'Meet Main' })).toBeTruthy()

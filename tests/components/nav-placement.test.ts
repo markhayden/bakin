@@ -31,16 +31,17 @@ const item = (id: string, extra: Partial<NavItem> = {}): NavItem => ({
 })
 
 describe('buildSidebarNavModel', () => {
-  it('extracts Chat and Tasks in fixed order and reserves Explore for the host promotion', () => {
+  it('extracts Home, Chat and Tasks in fixed order and reserves Explore for the host promotion', () => {
     const custom = item('custom')
     const model = buildSidebarNavModel([
       item('tasks', { order: 999 }),
       item('explore'),
       custom,
       item('chat', { order: -999 }),
+      item('home', { href: '/', order: 500 }),
     ])
 
-    expect(model.primary.map((navItem) => navItem.id)).toEqual(['chat', 'tasks'])
+    expect(model.primary.map((navItem) => navItem.id)).toEqual(['home', 'chat', 'tasks'])
     expect(model.sections).toEqual([
       { id: 'mix-ins', label: 'Mix-ins', items: [custom] },
     ])

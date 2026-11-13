@@ -37,6 +37,15 @@
         "summary": "Skip the introduction"
       }
     ],
+    "nav": [
+      {
+        "id": "home",
+        "label": "Home",
+        "icon": "House",
+        "href": "/",
+        "order": 1
+      }
+    ],
     "slots": [
       "page:/home"
     ]

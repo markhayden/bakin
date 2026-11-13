@@ -43,7 +43,7 @@ const stateOf = async (server: HarnessServer): Promise<StateBody> => {
 describe('Home on a fresh Pi home', () => {
   test('the server serves the page, and the main agent has not been introduced', async () => {
     const { server } = await served({ auth: true })
-    const page = await realFetch(`${server.baseUrl}/home`)
+    const page = await realFetch(`${server.baseUrl}/`)
     expect(page.status).toBe(200)
     expect(page.headers.get('content-type') ?? '').toContain('text/html')
 

@@ -293,7 +293,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
             </DropdownMenuItem>
             {agentId === mainAgentId ? (
               // Home owns the introduction; this is a link to it, by its URL.
-              <DropdownMenuItem onClick={() => router.push('/home?introduce=1')}>
+              <DropdownMenuItem onClick={() => router.push('/?introduce=1')}>
                 <Sparkles aria-hidden="true" />
                 Redo the introduction
               </DropdownMenuItem>

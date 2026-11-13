@@ -24,9 +24,9 @@ const STATE_TIMEOUT_MS = 15_000
 /** How many starters Home offers at once. */
 const STARTER_LIMIT = 6
 
-/** `/home?introduce=1`: the person asked to go through the introduction (again). */
+/** `/?introduce=1`: the person asked to go through the introduction (again). */
 const INTRODUCE_PARAM = 'introduce'
-const INTRODUCE_PATH = `/home?${INTRODUCE_PARAM}=1`
+const INTRODUCE_PATH = `/?${INTRODUCE_PARAM}=1`
 
 function titleFor(state: HomeState | undefined, introducing: boolean): string {
   if (state?.name === 'meet-agent' || introducing) return 'Meet your main agent'
