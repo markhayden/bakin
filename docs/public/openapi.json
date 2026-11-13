@@ -31,6 +31,9 @@
       "name": "Health"
     },
     {
+      "name": "Home"
+    },
+    {
       "name": "Images"
     },
     {
@@ -34872,6 +34875,194 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/health/doctor/repair/:requestId/verify"
+      }
+    },
+    "/api/plugins/home/state": {
+      "get": {
+        "operationId": "home.get.state",
+        "summary": "What Home shows now",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "state": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "const": "unavailable"
+                            },
+                            "reason": {
+                              "type": "string",
+                              "enum": [
+                                "runtime_unreachable",
+                                "model_cannot_run"
+                              ]
+                            },
+                            "detail": {
+                              "type": "string"
+                            },
+                            "href": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "reason",
+                            "href"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "const": "meet-agent"
+                            },
+                            "agent": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "agent"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "const": "needs-login"
+                            },
+                            "agent": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "agent"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "const": "ready"
+                            },
+                            "agent": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "agent"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    },
+                    "starters": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "prompt": {
+                            "type": "string"
+                          },
+                          "needsAttachment": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "description",
+                          "prompt",
+                          "needsAttachment"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "state",
+                    "starters"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "The Home state (unavailable, meet-agent, needs-login or ready) and the starters this home can run, derived from the runtime, credentials, the main agent and capability readiness. Read-only: it never writes and never starts a turn.",
+        "x-bakin-full-path": "/api/plugins/home/state"
       }
     },
     "/api/plugins/images/profiles": {

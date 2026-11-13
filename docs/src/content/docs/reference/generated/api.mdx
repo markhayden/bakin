@@ -464,7 +464,7 @@ curl -sS \
   -X POST \
   'http://localhost:3737/api/runtime/onboarding/install' \
   -H 'Content-Type: application/json' \
-  --data '{"component":"mkdir","options":{"autoApprove":true,"approvedComponents":["value"],"selectedRecommendedPluginIds":["value"],"selectedRecommendedAgentIds":["value"],"allowServiceClaim":true}}'
+  --data '{"component":"mkdir","options":{"autoApprove":true,"approvedComponents":["value"],"selectedRecommendedPluginIds":["value"],"selectedRecommendedAgentIds":["value"],"runtimeAdapter":"value","allowServiceClaim":true}}'
 ```
 </OpenApiReference>
 
@@ -1395,6 +1395,17 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/health/usage-snapshot'
+```
+</OpenApiReference>
+
+## Home
+
+<OpenApiReference tag="Home" summary />
+
+<OpenApiReference operationId="home.get.state">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/home/state'
 ```
 </OpenApiReference>
 
@@ -2516,5 +2527,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>
