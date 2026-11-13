@@ -11,7 +11,7 @@
  * The sequence was assembled by hand across eight recovery steps in the
  * 2026-07-21 field incident; the verb exists so nobody does that again.
  */
-import { ENGINE_RESET_STAGES } from '@bakin/core/adapters/search'
+import { ENGINE_RESET_STAGES, SEARCH_UNINSTALL_STAGES } from '@bakin/core/adapters/search'
 import {
   OperationRejectedError,
   type OperationContext,
@@ -152,6 +152,53 @@ export function searchResetOperation(origin: OperationOrigin): StartOperationInp
         return { status: 'failed', code: 'reset_failed', message, httpStatus: 200, body: { ok: false, message, reindex } }
       }
       return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, message: reset.message, reindex } }
+    },
+  }
+}
+
+export const SEARCH_UNINSTALL_PLAN: OperationPlan = { stages: [...SEARCH_UNINSTALL_STAGES], pointOfNoReturn: 'start' }
+
+export interface SearchUninstallResult {
+  ok: boolean
+  message: string
+}
+
+/**
+ * `bakin uninstall search` (#1049): the reverse of `bakin install search`,
+ * for retiring or moving a home. Owns `search-engine`, so it waits for a
+ * reindex, reset or engine install in flight instead of pulling the engine
+ * out from under it. What may be removed, and for whom, is the adapter's
+ * call (ownership, external endpoints); this only refuses an adapter that
+ * installs nothing.
+ */
+export function searchUninstallOperation(input: { origin: OperationOrigin; removeData: boolean; removeEngine: boolean }): StartOperationInput<SearchUninstallResult> {
+  const adapterSetup = () => {
+    const settings = getSettings()
+    return { adapter: settings.search.adapter, setup: getSearchAdapterSetup(settings.search.adapter, undefined, settings.search.settings) }
+  }
+  return {
+    kind: 'search:uninstall',
+    owner: 'core',
+    origin: input.origin,
+    title: 'Uninstall the search service',
+    href: '/health',
+    fingerprint: `search:uninstall:${input.removeData ? 'data' : ''}:${input.removeEngine ? 'engine' : ''}`,
+    resources: ['search-engine'],
+    plan: SEARCH_UNINSTALL_PLAN,
+    validate: () => {
+      const { adapter, setup } = adapterSetup()
+      if (!setup.uninstall) {
+        const message = `The '${adapter}' search adapter installs nothing on this machine.`
+        throw new OperationRejectedError(409, { ok: false, message } satisfies SearchUninstallResult)
+      }
+    },
+    run: async (op): Promise<OperationOutcome<SearchUninstallResult>> => {
+      const result = await adapterSetup().setup.uninstall!({ op, removeData: input.removeData, removeEngine: input.removeEngine })
+      if (result.status === 'failed') {
+        return { status: 'failed', code: 'uninstall_failed', message: result.message, httpStatus: 200, body: { ok: false, message: result.message } }
+      }
+      log.warn('search service uninstalled', { removeData: input.removeData, removeEngine: input.removeEngine, outcome: result.status })
+      return { status: 'succeeded', code: 'ok', httpStatus: 200, body: { ok: true, message: result.message } }
     },
   }
 }

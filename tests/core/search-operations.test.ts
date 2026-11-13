@@ -26,6 +26,9 @@ let supportsReset = true
 let resetStatus: 'installed' | 'failed' = 'installed'
 let tablesOutcome: Array<{ table: string; result: string; indexed?: number; error?: string }> = []
 const resetCalls: string[] = []
+let supportsUninstall = true
+let uninstallStatus: 'installed' | 'noop' | 'failed' = 'installed'
+const uninstallCalls: Array<{ removeData: boolean; removeEngine: boolean }> = []
 mock.module('../../src/core/settings', () => ({
   getSettings: () => ({ search: { adapter: 'fake', settings: { enabled: searchEnabled } } }),
 }))
@@ -40,6 +43,16 @@ mock.module('../../src/core/search-adapter-factory', () => ({
         return { name: 'reset', status: resetStatus, message: resetStatus === 'installed' ? 'Engine reset clean and responding.' : 'Engine reset failed: unit refused to stop', durationMs: 1 }
       },
     } : {}),
+    ...(supportsUninstall ? {
+      uninstall: async (opts: { op: OperationContext; removeData: boolean; removeEngine: boolean }) => {
+        uninstallCalls.push({ removeData: opts.removeData, removeEngine: opts.removeEngine })
+        opts.op.stage('stop')
+        opts.op.stage('service')
+        opts.op.skip('data', 'kept')
+        opts.op.skip('engine', 'kept')
+        return { name: 'uninstall', status: uninstallStatus, message: uninstallStatus === 'failed' ? 'Search service belongs to /other, not /here.' : 'Stopped the service and removed its registration.', durationMs: 1 }
+      },
+    } : {}),
   }),
 }))
 const rebuild = mock(async (_table: string | undefined, _opts: unknown, report?: { op: OperationContext; stageId: string }) => {
@@ -49,7 +62,7 @@ const rebuild = mock(async (_table: string | undefined, _opts: unknown, report?:
 mock.module('../../src/core/search-registry', () => ({ rebuildRegisteredTables: rebuild }))
 
 import { createOperationRegistry, holdNow, OperationRejectedError } from '@bakin/core/operations'
-import { REINDEX_PLAN, SEARCH_RESET_PLAN, reindexOperation, searchResetOperation, type SearchResetResult } from '../../src/core/search-operations'
+import { REINDEX_PLAN, SEARCH_RESET_PLAN, SEARCH_UNINSTALL_PLAN, reindexOperation, searchResetOperation, searchUninstallOperation, type SearchResetResult } from '../../src/core/search-operations'
 import { waitUntil } from '../helpers/wait'
 
 let registry: ReturnType<typeof createOperationRegistry>
@@ -59,6 +72,9 @@ beforeEach(() => {
   resetStatus = 'installed'
   tablesOutcome = [{ table: 'bakin_tasks', result: 'migrated', indexed: 3 }, { table: 'bakin_assets', result: 'unchanged', indexed: 2 }]
   resetCalls.length = 0
+  supportsUninstall = true
+  uninstallStatus = 'installed'
+  uninstallCalls.length = 0
   rebuild.mockClear()
   registry = createOperationRegistry({ bootId: () => 'b', publish: () => {}, quietCheckIntervalMs: 0 })
 })
@@ -175,5 +191,53 @@ describe('reindex', () => {
     expect(view.status).toBe('failed')
     expect(view.outcome).toMatchObject({ code: 'tables_parked' })
     expect(view.result).toEqual({ httpStatus: 200, body: { ok: false, errors: 1, parked: 0, total: 2, tables: tablesOutcome } })
+  })
+})
+
+describe('search uninstall as an operation (#1049)', () => {
+  const start = (input: { removeData?: boolean; removeEngine?: boolean } = {}) =>
+    registry.start(searchUninstallOperation({ origin: 'cli', removeData: input.removeData === true, removeEngine: input.removeEngine === true }))
+
+  it('declares the four stages, owns search-engine, and passes what was asked to the adapter', async () => {
+    expect(SEARCH_UNINSTALL_PLAN.stages.map((stage) => stage.id)).toEqual(['stop', 'service', 'data', 'engine'])
+    const input = searchUninstallOperation({ origin: 'cli', removeData: true, removeEngine: false })
+    expect(input.resources).toEqual(['search-engine'])
+    const view = await registry.await((await start({ removeData: true })).operationId)
+    expect(view.status).toBe('succeeded')
+    expect(view.result?.body).toEqual({ ok: true, message: 'Stopped the service and removed its registration.' })
+    expect(uninstallCalls).toEqual([{ removeData: true, removeEngine: false }])
+  })
+
+  it('an adapter refusal is a failed operation in the adapter\'s own words', async () => {
+    uninstallStatus = 'failed'
+    const view = await registry.await((await start()).operationId)
+    expect(view.status).toBe('failed')
+    expect(view.outcome).toMatchObject({ code: 'uninstall_failed', message: 'Search service belongs to /other, not /here.' })
+  })
+
+  it('nothing to remove is a success that says so, never a failure', async () => {
+    uninstallStatus = 'noop'
+    const view = await registry.await((await start()).operationId)
+    expect(view.status).toBe('succeeded')
+  })
+
+  it('an adapter that installs nothing is refused before anything starts', async () => {
+    supportsUninstall = false
+    const refused = await start().catch((err: unknown) => err)
+    expect(refused).toBeInstanceOf(OperationRejectedError)
+    expect((refused as OperationRejectedError).body).toEqual({ ok: false, message: "The 'fake' search adapter installs nothing on this machine." })
+    expect(uninstallCalls).toEqual([])
+  })
+
+  it('waits for whoever holds the engine instead of pulling it out from under them', async () => {
+    let release!: () => void
+    const held = holdNow(['search-engine'], { title: 'Reindex search' }, () => new Promise<void>((resolve) => { release = resolve }))
+    const { operationId } = await start()
+    await waitUntil(() => registry.get(operationId)?.waitingFor !== undefined, { label: 'the uninstall is waiting on the holder' })
+    expect(registry.get(operationId)!.waitingFor!.holderTitle).toBe('Reindex search')
+    expect(uninstallCalls).toEqual([])
+    release()
+    await held
+    expect((await registry.await(operationId)).status).toBe('succeeded')
   })
 })

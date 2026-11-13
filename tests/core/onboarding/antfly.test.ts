@@ -33,7 +33,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { ENGINE_RESET_STAGES } from '@bakin/core/adapters/search'
+import { ENGINE_RESET_STAGES, SEARCH_UNINSTALL_STAGES } from '@bakin/core/adapters/search'
 import { createMemoryResourceAcquirer, createOperationRegistry, type OperationView } from '@bakin/core/operations'
 import {
   ANTFLY_ENGINE_PLAN,
@@ -943,6 +943,106 @@ describe('the engine reset as operation stages (#895)', () => {
   it('refuses to run outside an owner of search-engine', async () => {
     const { resetAntflyEngineData } = await import('../../../packages/adapter-antfly/src/installer')
     await expect(resetAntflyEngineData(noopOpWithout('search-engine'), undefined, DEFAULT_SETTINGS, serviceIo)).rejects.toThrow(/requires search-engine/)
+  })
+})
+
+describe('uninstall: the reverse of the install (#1049)', () => {
+  const plan = { plan: { stages: [...SEARCH_UNINSTALL_STAGES], pointOfNoReturn: 'start' as const }, resources: ['search-engine' as const] }
+  const uninstall = async (options: { removeData?: boolean; removeEngine?: boolean } = {}, settings = DEFAULT_SETTINGS) => {
+    const { uninstallAntflySearch } = await import('../../../packages/adapter-antfly/src/installer')
+    return withOperationView(plan, (op) => uninstallAntflySearch({ op, removeData: options.removeData === true, removeEngine: options.removeEngine === true }, undefined, settings, serviceIo))
+  }
+  const stageStates = (view: OperationView) => Object.fromEntries(view.stages.map((stage) => [stage.id, stage.status]))
+  /** A home whose service this home registered and is running, with index data and an engine on disk. */
+  const claimedHome = async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mkdirSync(join(launchdPlistPath(serviceIo), '..'), { recursive: true })
+    writeFileSync(launchdPlistPath(serviceIo), renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, servicePaths(), { modelReady: () => false }), servicePaths().logFile))
+    loaded = true
+    mkdirSync(servicePaths().dataDir, { recursive: true })
+    writeFileSync(join(servicePaths().dataDir, 'table.db'), 'derived index data')
+    commands.length = 0
+  }
+
+  it('stops the service and removes the registration this home owns; data and the engine are kept', async () => {
+    await claimedHome()
+    const { value, view } = await uninstall()
+    expect(value).toMatchObject({ status: 'installed', message: 'Stopped the service and removed its registration.' })
+    expect(stageStates(view)).toEqual({ stop: 'done', service: 'done', data: 'skipped', engine: 'skipped' })
+    expect(commands.some((command) => command.includes('bootout'))).toBe(true)
+    expect(loaded).toBe(false)
+    expect(existsSync(launchdPlistPath(serviceIo))).toBe(false)
+    expect(existsSync(join(servicePaths().dataDir, 'table.db'))).toBe(true)
+    expect(existsSync(managedBinary)).toBe(true)
+  })
+
+  it('--data and --engine delete this home\'s index data and the shared engine home, after the stop', async () => {
+    await claimedHome()
+    const { value, view } = await uninstall({ removeData: true, removeEngine: true })
+    expect(value.status).toBe('installed')
+    expect(stageStates(view)).toEqual({ stop: 'done', service: 'done', data: 'done', engine: 'done' })
+    expect(existsSync(servicePaths().dataDir)).toBe(false)
+    expect(existsSync(antflyHomeDir)).toBe(false)
+    expect(value.message).toContain(servicePaths().dataDir)
+  })
+
+  it('a service another home owns is refused and left exactly as it was', async () => {
+    await claimedHome()
+    const otherPaths = { ...servicePaths(), dataDir: join(testDir, 'other-home', 'antfly') }
+    const foreignUnit = renderLaunchdPlist(buildServiceArgv(DEFAULT_SETTINGS, otherPaths, { modelReady: () => false }), otherPaths.logFile)
+    writeFileSync(launchdPlistPath(serviceIo), foreignUnit)
+    const { value, view } = await uninstall({ removeData: true, removeEngine: true })
+    expect(value.status).toBe('failed')
+    expect(value.message).toContain('belongs to')
+    expect(stageStates(view)).toEqual({ stop: 'skipped', service: 'skipped', data: 'skipped', engine: 'skipped' })
+    expect(readFileSync(launchdPlistPath(serviceIo), 'utf8')).toBe(foreignUnit)
+    expect(commands).toEqual([])
+    expect(loaded).toBe(true)
+    expect(existsSync(join(servicePaths().dataDir, 'table.db'))).toBe(true)
+    expect(existsSync(managedBinary)).toBe(true)
+  })
+
+  it('with no service registered there is nothing to stop: alone it changes nothing, and the deletes still apply', async () => {
+    writeBinary(managedBinary, PIN_VERSION)
+    mkdirSync(servicePaths().dataDir, { recursive: true })
+    const nothing = await uninstall()
+    expect(nothing.value.status).toBe('noop')
+    expect(stageStates(nothing.view)).toEqual({ stop: 'skipped', service: 'skipped', data: 'skipped', engine: 'skipped' })
+    expect(commands).toEqual([])
+
+    const data = await uninstall({ removeData: true })
+    expect(data.value.status).toBe('installed')
+    expect(stageStates(data.view)).toEqual({ stop: 'skipped', service: 'skipped', data: 'done', engine: 'skipped' })
+    expect(existsSync(servicePaths().dataDir)).toBe(false)
+    expect(existsSync(managedBinary)).toBe(true)
+    expect(commands).toEqual([])
+  })
+
+  it('an externally managed endpoint and a temporary home are refused: nothing of Bakin\'s to remove, nothing touched', async () => {
+    await claimedHome()
+    const guest = await uninstall({ removeData: true, removeEngine: true }, { ...DEFAULT_SETTINGS, url: 'http://127.0.0.1:39998' })
+    expect(guest.value).toMatchObject({ status: 'failed', message: expect.stringContaining('externally managed') })
+    serviceIo.tempRoots = [testDir]
+    const temporary = await uninstall({ removeData: true, removeEngine: true })
+    expect(temporary.value).toMatchObject({ status: 'failed', message: expect.stringContaining('Temporary home') })
+    expect(commands).toEqual([])
+    expect(existsSync(launchdPlistPath(serviceIo))).toBe(true)
+    expect(existsSync(join(servicePaths().dataDir, 'table.db'))).toBe(true)
+    expect(existsSync(managedBinary)).toBe(true)
+  })
+
+  it('a stop that fails deletes nothing', async () => {
+    await claimedHome()
+    occupied = true // the engine never releases its port
+    const { value } = await uninstall({ removeData: true, removeEngine: true })
+    expect(value.status).toBe('failed')
+    expect(existsSync(join(servicePaths().dataDir, 'table.db'))).toBe(true)
+    expect(existsSync(managedBinary)).toBe(true)
+  })
+
+  it('refuses to run outside an owner of search-engine', async () => {
+    const { uninstallAntflySearch } = await import('../../../packages/adapter-antfly/src/installer')
+    await expect(uninstallAntflySearch({ op: noopOpWithout('search-engine'), removeData: false, removeEngine: false }, undefined, DEFAULT_SETTINGS, serviceIo)).rejects.toThrow(/requires search-engine/)
   })
 })
 

@@ -319,6 +319,19 @@ no state file — each content type declares its own `schemaVersion`.
   parked is reported as `parked` and ends the operation `tables_parked`, so
   no surface can report success. `search.rebuild.*` SSE events remain only
   as telemetry.
+- **Uninstall** (`bakin uninstall search [--data] [--engine]`, #1049) is the
+  reverse of `bakin install search`, for retiring or moving a home. One
+  operation owning `search-engine` (`searchUninstallOperation` →
+  `setup.uninstall`, `SEARCH_UNINSTALL_STAGES`): stop the engine (waiting
+  for its ports), then remove the OS registration. It acts only for the
+  owner, or for a home with no service registered (then only the deletes
+  apply); a foreign owner, an unreadable unit, a temporary home, a change in
+  progress and an externally managed endpoint are refused in the ownership
+  layer's words. `--data` also deletes this home's derived index data and
+  engine config; `--engine` also deletes the shared binary and models under
+  the engine home. The write journal (`search.db`) and source content are
+  never touched. CLI-only and in-process: it refuses while this home's
+  server runs, because the server uses the engine and would start it again.
 - **Engine reset** (`bakin search:reset`, `POST /api/search/reset`) is the
   clean slate for a corrupted or wedged engine: one non-cancellable
   operation whose stages are the adapter's `ENGINE_RESET_STAGES` (stop →

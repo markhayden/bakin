@@ -189,6 +189,27 @@ export const ENGINE_RESET_STAGES = [
   { id: 'boot', kind: 'verifying', label: 'Start the engine clean' },
 ] as const satisfies readonly OperationStagePlan[]
 
+/**
+ * The stages an uninstall reports, in order. `data` and `engine` are skipped
+ * unless asked for; `stop` and `service` are skipped when this home has no
+ * service registered.
+ */
+export const SEARCH_UNINSTALL_STAGES = [
+  { id: 'stop', kind: 'preparing', label: 'Stop the search service' },
+  { id: 'service', kind: 'cleanup', label: 'Remove the service registration' },
+  { id: 'data', kind: 'cleanup', label: 'Delete this home\'s index data' },
+  { id: 'engine', kind: 'cleanup', label: 'Delete the search engine and its models' },
+] as const satisfies readonly OperationStagePlan[]
+
+export interface SearchAdapterUninstallOptions {
+  /** The operation it reports through; its holder owns `search-engine`. */
+  op: OperationContext
+  /** Also delete this home's derived index data (rebuilt by a reindex). */
+  removeData: boolean
+  /** Also delete the engine binary and downloaded models, which every home on the machine shares. */
+  removeEngine: boolean
+}
+
 export interface SearchAdapterSetup {
   readonly dependency: SearchAdapterSetupComponent
   readonly models?: SearchAdapterSetupComponent
@@ -200,6 +221,14 @@ export interface SearchAdapterSetup {
    * honestly. Callers follow with a repair reindex to regenerate tables.
    */
   resetEngineData?(op: OperationContext): Promise<SearchAdapterSetupInstallResult>
+  /**
+   * The reverse of `dependency.install`: stop the engine this home runs and
+   * remove what registers it with the OS, reporting `SEARCH_UNINSTALL_STAGES`.
+   * Never touches a service another home owns, an externally managed
+   * endpoint, source content, or the write journal. Optional: an adapter
+   * with nothing installed on the machine omits it.
+   */
+  uninstall?(opts: SearchAdapterUninstallOptions): Promise<SearchAdapterSetupInstallResult>
 }
 
 export type {
