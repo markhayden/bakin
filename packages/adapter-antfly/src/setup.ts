@@ -2,7 +2,7 @@ import type { SearchAdapterSetup, SearchAdapterSetupOptions } from '@bakin/core/
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { isLocalDefaultUrl } from './paths'
 import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
-import { ANTFLY_ENGINE_PLAN, checkAntflyDependency, installAntflyDependency, resetAntflyEngineData } from './installer'
+import { ANTFLY_ENGINE_PLAN, checkAntflyDependency, installAntflyDependency, resetAntflyEngineData, uninstallAntflySearch } from './installer'
 import { ANTFLY_MODELS_PLAN, checkInferenceModels, installInferenceModels, requiredModelsForSettings } from './models'
 
 /**
@@ -45,5 +45,6 @@ export function createAntflySearchSetup(
       install: (opts) => isLocalDefaultUrl(settings.url) ? installInferenceModels(opts, logger, models) : external(opts),
     },
     resetEngineData: (op) => resetAntflyEngineData(op, logger, settings),
+    uninstall: (opts) => uninstallAntflySearch(opts, logger, settings),
   }
 }

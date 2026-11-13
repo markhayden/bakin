@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS, type AntflySettings } from './defaults'
 import { fileFact, identityOf } from './identity'
 import { antflyBinaryPath, antflyHome } from './paths'
 import { ANTFLY_PIN, antflyDownloadUrl, antflyPlatformKey, type AntflyPin } from './pin'
-import { defaultServiceIo, getServiceAccess, withServiceOperation, findAntflyBinary, servicePaths, stopService, startService, type ServiceIo } from './service'
+import { defaultServiceIo, getServiceAccess, withServiceOperation, findAntflyBinary, servicePaths, stopService, startService, removeService, type ServiceIo } from './service'
 
 /**
  * Direct-download installer for the pinned Antfly release.
@@ -195,6 +195,81 @@ export async function resetAntflyEngineData(
     logger.error('Engine reset failed', err)
     return { name: 'reset', status: 'failed', message: `Engine reset failed: ${err instanceof Error ? err.message : String(err)}`, error: err, durationMs: Date.now() - start }
   }
+}
+
+/**
+ * `bakin uninstall search` (#1049): the reverse of the install. Stops the
+ * engine and removes the OS registration THIS home owns; with `removeData`
+ * also this home's derived index data and engine config, with `removeEngine`
+ * the shared binary and models under the engine home.
+ *
+ * It only ever acts for the owner, or for a home with no service registered
+ * at all (then there is nothing to stop, and the deletes still apply). A
+ * service another home owns, an unreadable unit, a temporary home, a change
+ * already in progress and an externally managed endpoint are refused with
+ * the ownership layer's own words. The stop waits for the engine to release
+ * its ports before anything is deleted: an engine still exiting recreated
+ * its data directory behind a hand teardown (2026-11-12).
+ */
+export async function uninstallAntflySearch(
+  opts: { op: OperationContext; removeData: boolean; removeEngine: boolean },
+  logger: AdapterLogger = noopLogger,
+  settings: AntflySettings = DEFAULT_SETTINGS,
+  io: ServiceIo = defaultServiceIo(),
+): Promise<{ name: string; status: 'installed' | 'noop' | 'failed'; message: string; durationMs: number; error?: unknown }> {
+  const { op } = opts
+  if (!op.holds('search-engine')) throw new Error('uninstallAntflySearch requires search-engine (run it inside an operation that declares it)')
+  const start = Date.now()
+  const skipAll = (reason: string) => { for (const stage of ['stop', 'service', 'data', 'engine']) op.skip(stage, reason) }
+  const refused = (message: string) => {
+    skipAll('refused')
+    return { name: 'uninstall', status: 'failed' as const, message, durationMs: Date.now() - start }
+  }
+  const access = getServiceAccess(settings, io)
+  if (access.mode === 'guest') return refused(`Search is externally managed (${settings.url}); Bakin installed nothing for it on this machine.`)
+  const registered = access.allowed
+  if (!registered && access.reason !== 'unclaimed-home') return refused(access.detail)
+
+  const done: string[] = []
+  try {
+    if (registered) {
+      await withServiceOperation(settings, io, {}, async () => {
+        op.stage('stop')
+        await stopService(settings, io)
+        op.stage('service')
+        await removeService(settings, io)
+      })
+      done.push('stopped the service and removed its registration')
+    } else {
+      op.skip('stop', 'no search service is registered for this home')
+      op.skip('service', 'no search service is registered for this home')
+    }
+    const paths = servicePaths()
+    if (opts.removeData) {
+      op.stage('data')
+      rmSync(paths.dataDir, { recursive: true, force: true })
+      rmSync(paths.configFile, { force: true })
+      done.push(`deleted index data (${paths.dataDir})`)
+    } else {
+      op.skip('data', 'kept (pass --data to delete)')
+    }
+    if (opts.removeEngine) {
+      op.stage('engine')
+      rmSync(antflyHome(), { recursive: true, force: true })
+      done.push(`deleted the engine and models (${antflyHome()})`)
+    } else {
+      op.skip('engine', 'kept (pass --engine to delete)')
+    }
+  } catch (err) {
+    logger.error('Search uninstall failed', err)
+    const partial = done.length > 0 ? ` Already done: ${done.join('; ')}.` : ''
+    return { name: 'uninstall', status: 'failed', message: `Search uninstall failed: ${err instanceof Error ? err.message : String(err)}.${partial}`, error: err, durationMs: Date.now() - start }
+  }
+  if (done.length === 0) {
+    return { name: 'uninstall', status: 'noop', message: 'No search service is registered for this home, and nothing else was asked for.', durationMs: Date.now() - start }
+  }
+  const sentence = done.join('; ')
+  return { name: 'uninstall', status: 'installed', message: `${sentence[0]!.toUpperCase()}${sentence.slice(1)}.`, durationMs: Date.now() - start }
 }
 
 /**
