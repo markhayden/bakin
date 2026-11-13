@@ -10,6 +10,7 @@ import { Overline, Separator } from '@makinbakin/sdk/ui'
 import { cn } from '@makinbakin/sdk/utils'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
+import { useSuggestionCount } from '../../hooks/use-suggestion-count'
 import { buildSidebarNavModel } from './nav-placement'
 import { isNavActive } from './nav-badge-logic'
 import { SidebarNavItem } from './sidebar-nav-item'
@@ -28,6 +29,7 @@ export function AppSidebar({
   forceExpanded?: boolean
 }) {
   const pathname = usePathname()
+  const suggestionCount = useSuggestionCount(pathname)
   const { collapsed: sidebarCollapsed } = useSidebarContext()
   const collapsed = forceExpanded ? false : sidebarCollapsed
   const allNavItems = useSyncExternalStore(subscribeRegistry, getNavItemsSnapshot, getNavItemsSnapshot)
@@ -129,7 +131,7 @@ export function AppSidebar({
       </div>
 
       <div role="group" aria-label="Utilities" className="flex shrink-0 flex-col gap-0.5 pt-bakin-2">
-        <SidebarPromo collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
+        <SidebarPromo collapsed={collapsed} pathname={pathname} count={suggestionCount} onNavigate={onNavigate} />
         <Separator />
         <div className="flex flex-col gap-0.5 pt-bakin-2">
           {UTILITY_ITEMS.map(renderNavItem)}

@@ -19,6 +19,8 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
+// The count has its own test; here it must not reach for a server.
+mock.module('../../packages/host/src/hooks/use-suggestion-count', () => ({ useSuggestionCount: () => 2 }))
 mock.module('@tanstack/react-router', () => ({
   Link: ({ to, ...props }: ComponentProps<'a'> & { to: string }) => <a href={to} {...props} />,
 }))
@@ -37,6 +39,8 @@ describe('AppSidebar — registry changes', () => {
       </SidebarContext>,
     ))
     expect(screen.queryByRole('button', { name: /Late group/ })).toBeNull()
+    // The promo card is given Home's count.
+    expect(screen.getByTestId('sidebar-promo').textContent).toContain('2 suggestions')
     await act(async () => {
       registerPlugin({
         id: 'late-plugin',
