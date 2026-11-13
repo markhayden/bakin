@@ -63,6 +63,8 @@
       "@bakin/team/*": ["./plugins/team/*"],
       "@bakin/explore": ["./plugins/explore"],
       "@bakin/explore/*": ["./plugins/explore/*"],
+      "@bakin/home": ["./plugins/home"],
+      "@bakin/home/*": ["./plugins/home/*"],
       "@bakin/spend": ["./plugins/spend"],
       "@bakin/spend/*": ["./plugins/spend/*"]
     }

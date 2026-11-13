@@ -27,6 +27,7 @@ import { Route as ChatRoute } from './routes/chat'
 import { Route as ChatNewRoute } from './routes/chat.new'
 import { Route as ChatDetailRoute } from './routes/chat.$chatId'
 import { Route as ExploreRoute } from './routes/explore'
+import { Route as HomeRoute } from './routes/home'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
 import { Route as ModelsRoute } from './routes/models'
@@ -55,6 +56,7 @@ const routeTree = RootRoute.addChildren([
   ChatNewRoute,
   ChatDetailRoute,
   ExploreRoute,
+  HomeRoute,
   HealthRoute,
   MemoryRoute,
   ModelsRoute,

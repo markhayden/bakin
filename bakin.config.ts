@@ -15,6 +15,7 @@ const config: BakinConfig = {
     { path: 'plugins/health' },
     { path: 'plugins/git' },
     { path: 'plugins/explore' },
+    { path: 'plugins/home' },
     { path: 'plugins/chat' },
   ],
   theme: {},

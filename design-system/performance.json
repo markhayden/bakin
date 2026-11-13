@@ -320,6 +320,12 @@
     },
     {
       "repository": "bakin",
+      "pluginId": "home",
+      "path": "plugins/home/dist/client.js",
+      "bytes": 341
+    },
+    {
+      "repository": "bakin",
       "pluginId": "memory",
       "path": "plugins/memory/dist/client.js",
       "bytes": 36414

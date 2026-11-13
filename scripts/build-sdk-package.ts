@@ -88,6 +88,7 @@ const FORBIDDEN_BARE_PREFIXES = [
   '@bakin/schedule',
   '@bakin/spend',
   '@bakin/explore',
+  '@bakin/home',
 ]
 
 const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
