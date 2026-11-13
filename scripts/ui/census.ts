@@ -357,7 +357,9 @@ function routeEntries(root: string): CensusEntry[] {
     const sourcePath = portablePath(root, path)
     const stem = basename(path, '.tsx')
     const route = readRoutePath(path)
-    const nonVisualAlias = stem === 'index' && readFileSync(path, 'utf-8').includes('redirect(')
+    // A route that only redirects (no component of its own) draws nothing.
+    const routeSource = readFileSync(path, 'utf-8')
+    const nonVisualAlias = routeSource.includes('redirect(') && !routeSource.includes('component:')
     return {
       id: `host-route:${stem}`,
       kind: 'host-route',

@@ -114,7 +114,8 @@ mock.module('../../../plugins/health/components/repair-dialog', () => ({
 }))
 
 import { HealthPage } from '../../../plugins/health/components/health-page'
-import { armHandoffReturn, resetHandoffReturnForTests } from '../../../plugins/health/components/handoff-return'
+import { armHandoffReturn } from '../../../plugins/health/components/handoff-return'
+import { resetHandoffReturnForTests } from '../../../packages/sdk/src/hooks/use-terminal-handoff'
 import { HEALTH_REPORT_SWEEP_TIMEOUT_MS } from '../../../plugins/health/hooks/use-health-report'
 
 function jsonResponse(body: unknown, status = 200): Response {

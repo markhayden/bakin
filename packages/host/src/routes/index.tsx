@@ -1,21 +1,25 @@
 /**
- * Home route ('/').
+ * `/` is Home: the page Bakin opens on.
  *
- * Mirrors `src/app/page.tsx` — immediately redirects to `/tasks` so the
- * dashboard's default landing is the task board. Implemented as a
- * `beforeLoad` redirect so the router never renders a flash frame here.
- *
- * Left for last in the TC4-TC24 port because every other route had to
- * be registered first — TanStack's typed `redirect({ to: ... })` rejects
- * destinations that aren't in the route tree.
+ * Thin Suspense wrapper around the home plugin's slot. The slot keeps the
+ * name it was registered under (`page:/home`); `/home` itself redirects
+ * here, so the page has one URL.
  */
-import { createRoute, redirect } from '@tanstack/react-router'
+import { createRoute } from '@tanstack/react-router'
+import { Slot } from '@makinbakin/sdk/slots'
+import { Suspense } from 'react'
 import { Route as RootRoute } from './__root'
+
+function HomePage() {
+  return (
+    <Suspense>
+      <Slot name="page:/home" />
+    </Suspense>
+  )
+}
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/tasks' })
-  },
+  component: HomePage,
 })

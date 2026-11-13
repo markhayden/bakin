@@ -22,8 +22,8 @@ export function NotFoundPage() {
         title="Page not found"
         description={<><code className="break-all text-xs">{location.pathname}</code> doesn&apos;t match any page or installed plugin route.</>}
         action={
-          <Link to="/tasks" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-            Back to Tasks
+          <Link to="/" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            Back to Home
           </Link>
         }
       />

@@ -87,6 +87,6 @@ describe('NotFoundPage', () => {
     expect(container.textContent).toContain('Page not found')
     expect(container.textContent).toContain('/definitely/not/a/page')
     const home = container.querySelector('a')
-    expect(home?.textContent).toContain('Back to Tasks')
+    expect(home?.textContent).toContain('Back to Home')
   })
 })

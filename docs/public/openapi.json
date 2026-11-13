@@ -35136,6 +35136,32 @@
                     },
                     "introductionSkipped": {
                       "type": "boolean"
+                    },
+                    "login": {
+                      "type": "object",
+                      "properties": {
+                        "runtime": {
+                          "type": "string"
+                        },
+                        "steps": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "command": {
+                          "type": "string"
+                        },
+                        "docsUrl": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "runtime",
+                        "steps",
+                        "docsUrl"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "required": [

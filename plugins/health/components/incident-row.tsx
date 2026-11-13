@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react'
 import type { HealthDecisionChoice, HealthIncident } from '@makinbakin/sdk/types'
+import { useTerminalHandoff } from '@makinbakin/sdk/hooks'
 import { Panel } from '@makinbakin/sdk/layout'
 import { PluginLink } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, HandoffCard, ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
@@ -10,7 +11,6 @@ import { TriangleAlert, BellOff, ChevronRight, CircleQuestionMark, Wrench } from
 import type { OverviewIncident } from '../lib/health-view-model'
 import { performDecisionChoice, type RequestDecisionChoice } from '../lib/decision-choice'
 import { armHandoffReturn, disarmHandoffReturn } from './handoff-return'
-import { useTerminalHandoff } from './use-terminal-handoff'
 
 export interface IncidentRowProps {
   item: OverviewIncident

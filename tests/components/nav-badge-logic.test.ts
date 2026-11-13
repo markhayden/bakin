@@ -51,6 +51,11 @@ describe('badgeIsActive', () => {
 
 describe('isNavActive', () => {
   it('false for undefined href', () => expect(isNavActive('/x', undefined)).toBe(false))
+  it('Home at "/" is active only on "/" itself, never under every other page', () => {
+    expect(isNavActive('/', '/')).toBe(true)
+    expect(isNavActive('/tasks', '/')).toBe(false)
+    expect(isNavActive('/chat/c1', '/')).toBe(false)
+  })
   it('true on exact match', () => expect(isNavActive('/x', '/x')).toBe(true))
   it('true on prefix segment match', () => expect(isNavActive('/x/y', '/x')).toBe(true))
   it('false on partial non-segment match', () => expect(isNavActive('/xyz', '/x')).toBe(false))

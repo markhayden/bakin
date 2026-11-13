@@ -1,7 +1,8 @@
 /**
  * Home plugin — client entry point.
- * Contributes the Home page slot; the shell owns where it sits in the
- * sidebar and which path opens it.
+ * Contributes the Home page slot. Nav is declared in bakin-plugin.json
+ * `contributes.nav`; the shell renders the slot at `/` and puts Home first
+ * in the sidebar.
  */
 import { registerPlugin } from '@makinbakin/sdk'
 import { HomePage } from './components/home-page'

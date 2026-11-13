@@ -38,6 +38,14 @@ If nobody is logged in, onboarding shows the steps and waits. Log in from anothe
 - **Pi:** run `pi`, type `/login`, and pick a provider. There is no `pi login` command. Pi itself runs inside Bakin, but logging in uses the `pi` command line tool: install it with `npm install -g @earendil-works/pi-coding-agent`, which needs Node 22.19 or newer.
 - **OpenClaw:** add a provider login in OpenClaw and make sure its gateway is running. See the [OpenClaw docs](https://openclaw.ai/docs/).
 
+## The first time you open Bakin
+
+Bakin opens on Home, and Home shows whatever this install needs next:
+
+- **Meet your main agent.** Three questions: what to call it, how it should come across, and what it should call you. Skip it if you like; it's on the main agent's Team page whenever you want it back.
+- **Log in.** If no provider is logged in yet, Home shows the same steps as above with the command ready to copy. With the Terminal plugin installed, "Open in Terminal" types it for you; you press Enter. Home checks again when you come back.
+- **Ask for something.** Once an agent can answer, Home is a prompt and a handful of things to try.
+
 ## Confirm it worked
 
 The last screen of `bakin onboard` is a setup checklist: what's still to do, how to do each, and what's already in place. See it again any time, without changing anything:
