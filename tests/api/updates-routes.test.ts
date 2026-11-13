@@ -301,3 +301,48 @@ describe('review round 5 — stop during admission', () => {
     expect(observed).toEqual([])
   })
 })
+
+describe('POST /api/updates/check?ifStale=1 — what a page load asks', () => {
+  const NOW = Date.parse('2026-11-13T12:00:00.000Z')
+  const ago = (ms: number) => new Date(NOW - ms).toISOString()
+
+  it('a subject is stale when never attempted or last attempted 10 minutes ago or more; one backing off is left alone', () => {
+    expect(updatesRoute.isStaleForPageLoad(undefined, undefined, NOW)).toBe(true)
+    expect(updatesRoute.isStaleForPageLoad(ago(updatesRoute.PAGE_LOAD_FRESH_MS - 1), { failures: 0 }, NOW)).toBe(false)
+    expect(updatesRoute.isStaleForPageLoad(ago(updatesRoute.PAGE_LOAD_FRESH_MS), { failures: 0 }, NOW)).toBe(true)
+    // Rate limited an hour ago, told to come back in two: a reload does not ask again.
+    expect(updatesRoute.isStaleForPageLoad(ago(60 * 60_000), { failures: 1, nextDueAt: new Date(NOW + 60 * 60_000).toISOString() }, NOW)).toBe(false)
+    expect(updatesRoute.isStaleForPageLoad(ago(60 * 60_000), { failures: 1, nextDueAt: ago(1) }, NOW)).toBe(true)
+  })
+
+  it('the first load observes the subject; a reload right after observes nothing; a plain check still does', async () => {
+    // Its own subject: the updates file in this test home remembers earlier tests' attempts.
+    const { source, calls } = scripted('plugin', ['pageload'], async (id) => available(id))
+    registerUpdateSource(source)
+    startUpdates(testDir)
+
+    const first = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Apageload&ifStale=1&wait=1')
+    expect(first.status).toBe(200)
+    expect((await first.json() as { ids: string[] }).ids).toEqual(['plugin:pageload'])
+    expect(calls).toEqual(['pageload'])
+
+    const reload = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Apageload&ifStale=1')
+    expect(reload.status).toBe(200)
+    expect(await reload.json()).toMatchObject({ bootId: getBootId(), ids: [], coalesced: false })
+    expect(calls).toEqual(['pageload'])
+
+    // "Check for updates" is explicit and never held back by freshness.
+    await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Apageload&wait=1')
+    expect(calls).toEqual(['pageload', 'pageload'])
+  })
+
+  it('needs a named id (400), and an unknown one is still 404', async () => {
+    registerUpdateSource(scripted('plugin', ['projects'], async () => current).source)
+    startUpdates(testDir)
+    const unnamed = await call(updatesRoute.check, 'POST', '/api/updates/check?ifStale=1')
+    expect(unnamed.status).toBe(400)
+    expect(await unnamed.json()).toMatchObject({ error: 'id_required' })
+    const unknown = await call(updatesRoute.check, 'POST', '/api/updates/check?id=plugin%3Anope&ifStale=1')
+    expect(unknown.status).toBe(404)
+  })
+})

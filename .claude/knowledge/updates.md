@@ -412,6 +412,18 @@ through a server is an operator action: `bakin update --as human`; an
 
 ## Surfaces
 
+- **Header banner** (`bakin:bakin` only): reads `GET /api/updates` at load
+  and again on every `updates.changed`. A page load also posts
+  `POST /api/updates/check?id=bakin:bakin&ifStale=1`: the SERVER decides
+  whether to look (`isStaleForPageLoad` — never attempted, or last attempted
+  `PAGE_LOAD_FRESH_MS` = 10 min ago or more; a subject backing off after
+  failures is left to its schedule), so a release published an hour ago
+  shows on refresh instead of at the next scheduled check up to 6 h later,
+  and reloading a tab never becomes a probe per load. Before #1007 the
+  banner probed GitHub on every page load; the engine cutover dropped that
+  and left only the 6 h schedule, which read as "the banner stopped
+  appearing" (rc.47 report). Still not a consumer probe: the request goes
+  through the engine's one admission path and coalesces into a running pass.
 - **Health → Updates** (`?tab=updates`): Required and Available groups, every
   non-current record as a row with the state in words, skipped rows behind
   `?updates_skipped=1` (only an AVAILABLE update can be skipped — a required
