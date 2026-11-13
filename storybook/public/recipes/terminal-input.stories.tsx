@@ -34,7 +34,8 @@ export const BarAndSheet = {
     await expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false')
     // The sheet replaces the keyboard in the same accessory.
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
-    await expect(canvas.getByRole('region', { name: 'More keys' })).toBeVisible()
+    // The sheet mounts on a later frame than the click: wait for it, never read it synchronously.
+    await expect(await canvas.findByRole('region', { name: 'More keys' })).toBeVisible()
     await userEvent.click(canvas.getByRole('button', { name: 'Ctrl+C Interrupt' }))
     await expect(status).toHaveTextContent('Ctrl+C')
     // A Control shortcut takes an armed Option too.
@@ -107,7 +108,7 @@ export const BarAndSheet = {
     await userEvent.keyboard('{Escape}')
     dialog.remove()
     await settle()
-    await expect(canvas.getByRole('region', { name: 'More keys' })).toBeVisible()
+    await expect(await canvas.findByRole('region', { name: 'More keys' })).toBeVisible()
     await userEvent.keyboard('{Escape}')
     await expect(canvas.queryByRole('region', { name: 'More keys' })).toBeNull()
     // Hide keyboard works while sending is disabled.
