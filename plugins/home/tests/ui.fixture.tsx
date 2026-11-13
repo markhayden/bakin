@@ -20,6 +20,8 @@ createRoot(document.getElementById('root')!).render(<PluginUiFixtureHost
       personalities: [],
       hello: false,
       introductionSkipped: false,
+      suggestions: [],
+      suggestionCount: 0,
     } },
   ] }}
   registrations={[{ id: 'home', routes: { '/home': HomePage } }]} />)

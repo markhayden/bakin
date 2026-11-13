@@ -1,5 +1,5 @@
 /**
- * Home's curated content: starters and personality presets. Copy a person
+ * Home's curated content: starters, personality presets and suggestions. Copy a person
  * wrote, kept as data so changing it is never a code change. Validated at
  * load; a malformed file is a startup error, never a silently empty Home.
  */
@@ -41,12 +41,55 @@ const personalitySchema = z.object({
   soul: z.string().min(1),
 }).strict()
 
+const slug = z.string().regex(/^[a-z0-9-]+$/)
+
+/**
+ * When a suggestion applies. Each kind is one fact about the home that an
+ * existing engine already answers; none of them reads a message.
+ *  - `capability-missing`: no installed pack provides the capability
+ *  - `capability-needs-key`: a pack provides it, and a required key is not set
+ *  - `no-image-provider`: no provider that can make images is usable
+ *  - `agent-missing`: a specific agent is not on the roster
+ *  - `only-main-agent`: the roster is the main agent alone
+ *  - `plugin-missing`: a plugin is not loaded
+ *  - `checklist-todo`: a setup checklist item is in the `todo` state
+ */
+const suggestionConditionSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('capability-missing'), capability: slug }).strict(),
+  z.object({ kind: z.literal('capability-needs-key'), capability: slug }).strict(),
+  z.object({ kind: z.literal('no-image-provider') }).strict(),
+  z.object({ kind: z.literal('agent-missing'), agent: slug }).strict(),
+  z.object({ kind: z.literal('only-main-agent') }).strict(),
+  z.object({ kind: z.literal('plugin-missing'), plugin: slug }).strict(),
+  z.object({ kind: z.literal('checklist-todo'), item: z.string().min(1) }).strict(),
+])
+
+/** Pages a suggestion never sends anyone to: a spend limit or a brand is a choice, never a to-do. */
+const NEVER_SUGGESTED = ['/spend', '/brands'] as const
+
+const suggestionSchema = z.object({
+  id: slug,
+  title: z.string().min(1).max(50),
+  /** One sentence: what the person gets. */
+  payoff: z.string().min(1).max(120),
+  /** One step, taken on a page that already exists. */
+  action: z.object({
+    label: z.string().min(1).max(30),
+    href: z.string().regex(/^\/[^/]/, 'must be a path inside Bakin').refine(
+      (href) => !NEVER_SUGGESTED.some((path) => href === path || href.startsWith(`${path}/`) || href.startsWith(`${path}?`)),
+      'spend limits and brands are never suggested',
+    ),
+  }).strict(),
+  when: suggestionConditionSchema,
+}).strict()
+
 export const homeContentSchema = z.object({
   version: z.literal(1),
   starters: z.array(starterSchema).min(1),
   personalities: z.array(personalitySchema).min(1),
+  suggestions: z.array(suggestionSchema),
 }).strict().superRefine((content, ctx) => {
-  for (const key of ['starters', 'personalities'] as const) {
+  for (const key of ['starters', 'personalities', 'suggestions'] as const) {
     const seen = new Set<string>()
     for (const [index, entry] of content[key].entries()) {
       if (seen.has(entry.id)) ctx.addIssue({ code: 'custom', path: [key, index, 'id'], message: `duplicate id "${entry.id}"` })
@@ -59,6 +102,8 @@ export type HomeContent = z.infer<typeof homeContentSchema>
 export type Starter = HomeContent['starters'][number]
 export type StarterNeeds = Starter['needs']
 export type PersonalityPreset = HomeContent['personalities'][number]
+export type Suggestion = HomeContent['suggestions'][number]
+export type SuggestionCondition = Suggestion['when']
 
 export function parseHomeContent(value: unknown): HomeContent {
   return homeContentSchema.parse(value)

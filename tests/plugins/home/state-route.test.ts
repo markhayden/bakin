@@ -24,7 +24,21 @@ const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), e
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 mock.module('../../../src/core/watcher', () => ({ startWatcher: () => {}, stopWatcher: () => {} }))
-mock.module('../../../src/core/agent-packages/capability-readiness', () => ({ listCapabilities: async () => [] }))
+let capabilityPacks: Array<{ capability: string; ready: boolean; secrets: Array<{ required: boolean; status: string }> }> = []
+mock.module('../../../src/core/agent-packages/capability-readiness', () => ({ listCapabilities: async () => capabilityPacks }))
+/** What the setup checklist answers, and whether it can. */
+let checklistItems: Array<{ id: string; title: string; state: 'done' | 'todo' | 'unknown'; detail: string }> = []
+let checklistThrows = false
+let checklistAsked = 0
+mock.module('../../../src/core/onboarding/setup-checklist', () => ({
+  getSetupChecklist: async () => {
+    checklistAsked += 1
+    if (checklistThrows) throw new Error('a check threw')
+    return { items: checklistItems, notes: [] }
+  },
+}))
+let loadedPlugins: string[] = []
+mock.module('../../../src/core/plugin-registry', () => ({ pluginRegistry: { getPluginIds: () => loadedPlugins } }))
 mock.module('../../../src/core/model-eligibility', () => ({
   getModelEligibility: async (_runtime: unknown, opts: { extraIds?: string[] }) => ({ byModel: new Map((opts.extraIds ?? []).map((id) => [id, { eligibility: { status: 'eligible' } }])) }),
 }))
@@ -52,6 +66,8 @@ let activated: ActivatedPlugin
 let roster: Array<{ id: string; name: string; role?: string }> = []
 let providers: string[] = []
 let rosterThrows = false
+/** What the Images plugin answers through its hook; undefined is "not loaded". */
+let imageProvider: boolean | undefined
 
 beforeAll(async () => {
   activated = await activatePlugin(homePlugin, testDir)
@@ -70,6 +86,12 @@ beforeEach(() => {
   roster = [{ id: 'main', name: 'Main', role: 'orchestrator' }]
   providers = []
   rosterThrows = false
+  capabilityPacks = []
+  checklistItems = []
+  checklistThrows = false
+  checklistAsked = 0
+  loadedPlugins = ['home', 'chat']
+  imageProvider = undefined
   syncOutcome = { status: 'succeeded' }
   syncsStarted.length = 0
   operatorNames.length = 0
@@ -79,6 +101,7 @@ beforeEach(() => {
   // Team's hook, as the harness's registry would route it; it renames the roster entry.
   const invoke = activated.ctx.hooks.invoke as unknown as { mockImplementation: (fn: (name: string, data: Record<string, unknown>) => Promise<unknown>) => void }
   invoke.mockImplementation(async (name, data) => {
+    if (name === 'images.canGenerate') return imageProvider
     if (name !== 'team.updateIdentity') return undefined
     if (identityThrows) throw new Error('runtime refused the rename')
     identityUpdates.push(data)
@@ -230,5 +253,94 @@ describe('GET /state — what the introduction needs', () => {
     const body = await state()
     expect(body.personalities.map((preset) => preset.id)).toEqual(['warm', 'direct', 'witty', 'calm'])
     expect(Object.keys(body.personalities[0]!).sort()).toEqual(['id', 'label', 'sample'])
+  })
+})
+
+describe('do more with Bakin', () => {
+  const ready = () => {
+    roster = [{ id: 'main', name: 'Nova', role: 'orchestrator' }]
+    providers = ['anthropic']
+  }
+  const dismiss = (id: string) => callRoute(findRoute(activated.routes, 'POST', '/suggestions/:id/dismiss')!, activated.ctx, { path: `/suggestions/${id}/dismiss` })
+
+  it('a ready home with nothing added: the first three that apply, and how many apply in all', async () => {
+    ready()
+    imageProvider = false
+    checklistItems = [{ id: 'channels', title: 'Channels', state: 'todo', detail: 'Discord delivery is off.' }]
+    const body = await state()
+    expect(body.state.name).toBe('ready')
+    expect(body.suggestions.map((suggestion) => suggestion.id)).toEqual(['web-search', 'image-provider', 'add-agent'])
+    expect(body.suggestionCount).toBe(5)
+    expect(body.suggestions[0]).toEqual({
+      id: 'web-search',
+      title: 'Let your agents search the web',
+      payoff: 'Research with current facts and sources, not only what the model remembers.',
+      action: { label: 'Add web search', href: '/explore?tab=capabilities&item=skill-pack:web-search-brave' },
+    })
+  })
+
+  it('follows what is really there: a pack one key short, a second agent, a loaded plugin, a checklist item done', async () => {
+    ready()
+    roster = [...roster, { id: 'pixel', name: 'Pixel' }]
+    capabilityPacks = [{ capability: 'web-search', ready: false, secrets: [{ required: true, status: 'missing' }] }]
+    imageProvider = true
+    loadedPlugins = ['home', 'projects']
+    checklistItems = [{ id: 'channels', title: 'Channels', state: 'done', detail: 'Connected.' }]
+    const body = await state()
+    expect(body.suggestions.map((suggestion) => suggestion.id)).toEqual(['web-search-key'])
+    expect(body.suggestionCount).toBe(1)
+  })
+
+  it('nothing is suggested before Home is ready, and the checklist is not even asked', async () => {
+    roster = [{ id: 'main', name: 'Nova', role: 'orchestrator' }]
+    const body = await state()
+    expect(body.state.name).toBe('needs-login')
+    expect(body.suggestions).toEqual([])
+    expect(body.suggestionCount).toBe(0)
+    expect(checklistAsked).toBe(0)
+  })
+
+  it('a checklist that cannot answer, an item it could not tell, and an Images plugin that is not loaded suggest nothing of theirs', async () => {
+    ready()
+    checklistThrows = true
+    expect((await state()).suggestions.map((suggestion) => suggestion.id)).toEqual(['web-search', 'add-agent', 'projects'])
+    checklistThrows = false
+    checklistItems = [{ id: 'channels', title: 'Channels', state: 'unknown', detail: 'Could not tell.' }]
+    expect((await state()).suggestionCount).toBe(3)
+  })
+
+  it('"Not now" puts one away with the time, the next one takes its place, and reading still writes nothing', async () => {
+    ready()
+    imageProvider = false
+    const before = Date.now()
+    expect((await dismiss('web-search')).status).toBe(200)
+    const record = readDecisions().dismissedSuggestions?.['web-search']
+    expect(Date.parse(record!.at)).toBeGreaterThanOrEqual(before)
+    const written = readFileSync(decisionsPath(), 'utf-8')
+    const body = await state()
+    expect(body.suggestions.map((suggestion) => suggestion.id)).toEqual(['image-provider', 'add-agent', 'projects'])
+    expect(body.suggestionCount).toBe(3)
+    expect(readFileSync(decisionsPath(), 'utf-8')).toBe(written)
+  })
+
+  it('a second "Not now" keeps the first, and thirty days later the suggestion is back', async () => {
+    ready()
+    await dismiss('web-search')
+    await dismiss('add-agent')
+    expect(Object.keys(readDecisions().dismissedSuggestions ?? {})).toEqual(['web-search', 'add-agent'])
+    expect((await state()).suggestions.map((suggestion) => suggestion.id)).toEqual(['projects'])
+    const realNow = Date.now
+    Date.now = () => realNow() + 30 * 24 * 60 * 60 * 1000 + 1000
+    try {
+      expect((await state()).suggestions.map((suggestion) => suggestion.id)).toEqual(['web-search', 'add-agent', 'projects'])
+    } finally {
+      Date.now = realNow
+    }
+  })
+
+  it('refuses an id that is not a suggestion, and writes nothing', async () => {
+    const res = await dismiss('spend-limit')
+    expect(res.status).toBe(404)
+    expect(existsSync(decisionsPath())).toBe(false)
   })
 })

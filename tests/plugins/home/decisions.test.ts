@@ -36,13 +36,19 @@ describe('home decisions', () => {
 
   it('keeps keys a newer version wrote, across a change made by this one', () => {
     mkdirSync(dirname(decisionsPath()), { recursive: true })
-    writeFileSync(decisionsPath(), JSON.stringify({ version: 1, dismissedSuggestions: { discord: '2026-11-01T00:00:00.000Z' } }))
+    writeFileSync(decisionsPath(), JSON.stringify({ version: 1, closedPageIntroductions: { tasks: '2026-11-01T00:00:00.000Z' } }))
     updateDecisions((current) => ({ ...current, introduction: { status: 'completed', at: '2026-11-13T12:00:00.000Z' } }))
     expect(JSON.parse(readFileSync(decisionsPath(), 'utf-8'))).toEqual({
       version: 1,
-      dismissedSuggestions: { discord: '2026-11-01T00:00:00.000Z' },
+      closedPageIntroductions: { tasks: '2026-11-01T00:00:00.000Z' },
       introduction: { status: 'completed', at: '2026-11-13T12:00:00.000Z' },
     })
+  })
+
+  it('remembers which suggestions were put away, and when', () => {
+    updateDecisions((current) => ({ ...current, dismissedSuggestions: { ...current.dismissedSuggestions, 'web-search': { at: '2026-11-13T12:00:00.000Z' } } }))
+    updateDecisions((current) => ({ ...current, dismissedSuggestions: { ...current.dismissedSuggestions, channels: { at: '2026-11-14T12:00:00.000Z' } } }))
+    expect(readDecisions().dismissedSuggestions).toEqual({ 'web-search': { at: '2026-11-13T12:00:00.000Z' }, channels: { at: '2026-11-14T12:00:00.000Z' } })
   })
 
   it('a file that cannot be read means nothing decided, and is left as it was', () => {

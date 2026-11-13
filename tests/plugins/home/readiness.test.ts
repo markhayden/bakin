@@ -23,8 +23,9 @@ const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), e
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-let capabilities: Array<{ capability: string; ready: boolean }> = []
-mock.module('../../../src/core/agent-packages/capability-readiness', () => ({ listCapabilities: async () => capabilities }))
+let capabilities: Array<{ capability: string; ready: boolean; secrets: Array<{ required: boolean; status: string }> }> = []
+let capabilitiesThrow = false
+mock.module('../../../src/core/agent-packages/capability-readiness', () => ({ listCapabilities: async () => { if (capabilitiesThrow) throw new Error('lockfile unreadable'); return capabilities } }))
 type Verdict = { status: 'eligible' } | { status: 'ineligible'; reason: string; detail: string } | { status: 'unknown'; detail: string }
 let verdicts = new Map<string, Verdict>()
 let eligibilityThrows = false
@@ -65,6 +66,7 @@ const gather = (script: Scripted, canGenerateImage: () => Promise<boolean | unde
 
 beforeEach(() => {
   capabilities = []
+  capabilitiesThrow = false
   verdicts = new Map()
   eligibilityThrows = false
   eligibilityAskedFor.length = 0
@@ -152,7 +154,7 @@ describe('can the main agent\'s model run', () => {
 
 describe('what starters can use', () => {
   it('only capabilities that are ready count, once each', async () => {
-    capabilities = [{ capability: 'web-search', ready: true }, { capability: 'web-search', ready: true }, { capability: 'ocr', ready: false }]
+    capabilities = [{ capability: 'web-search', ready: true, secrets: [] }, { capability: 'web-search', ready: true, secrets: [] }, { capability: 'ocr', ready: false, secrets: [] }]
     expect((await gather({})).starters.readyCapabilities).toEqual(['web-search'])
   })
 
@@ -160,5 +162,23 @@ describe('what starters can use', () => {
     expect((await gather({}, async () => true)).starters.imageProvider).toBe(true)
     expect((await gather({}, async () => undefined)).starters.imageProvider).toBe(false)
     expect((await gather({}, async () => { throw new Error('images plugin failed') })).starters.imageProvider).toBe(false)
+  })
+
+  it('keeps what suggestions need: every installed pack, whether a key is what it lacks, and "unknown" when nobody could say', async () => {
+    capabilities = [
+      { capability: 'web-search', ready: false, secrets: [{ required: true, status: 'missing' }] },
+      { capability: 'ocr', ready: false, secrets: [{ required: false, status: 'missing' }, { required: true, status: 'store' }] },
+    ]
+    const facts = await gather({}, async () => false)
+    expect(facts.capabilities).toEqual([{ capability: 'web-search', ready: false, needsKey: true }, { capability: 'ocr', ready: false, needsKey: false }])
+    expect(facts.imageProvider).toBe(false)
+
+    capabilitiesThrow = true
+    const blind = await gather({}, async () => undefined)
+    expect(blind.capabilities).toBe('unknown')
+    expect(blind.imageProvider).toBe('unknown')
+    // Starters still lean the safe way.
+    expect(blind.starters).toMatchObject({ readyCapabilities: [], imageProvider: false })
+    expect((await gather({}, async () => { throw new Error('images plugin failed') })).imageProvider).toBe('unknown')
   })
 })

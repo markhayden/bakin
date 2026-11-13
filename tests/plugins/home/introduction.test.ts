@@ -53,6 +53,7 @@ function world(failAt: IntroductionStep[] = []) {
 const factsWith = (name: string, introduced: boolean): HomeFacts => ({
   runtimeReachable: true, mainAgent: { id: 'main', name, introduced }, credentials: 'present', model: { status: 'runnable' },
   decisions: { introduction: readDecisions().introduction }, starters: { readyCapabilities: [], imageProvider: false, agents: ['main'] },
+  capabilities: [], imageProvider: false,
 })
 
 beforeEach(() => rmSync(testDir, { recursive: true, force: true }))

@@ -12,15 +12,17 @@ import { createLogger } from '../../src/core/logger'
 import { installableComponent } from '../../src/core/onboarding/index'
 import { componentInstallOperation } from '../../src/core/onboarding/operation'
 import { getOperationRegistry } from '../../src/core/operations'
+import { getSetupChecklist } from '../../src/core/onboarding/setup-checklist'
 import { getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory'
 import { getSettings } from '../../src/core/settings'
 import { setOperatorName } from '../../src/core/team-context'
 import { HOME_CONTENT } from './lib/content'
-import { introductionAnswersSchema } from './lib/decisions'
+import { introductionAnswersSchema, updateDecisions } from './lib/decisions'
 import { completeIntroduction, recordHello, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
 import { gatherHomeFacts } from './lib/readiness'
-import { availableStarters, homeState, offersHello } from './lib/state'
-import type { HomeStateResponse } from './types'
+import { availableStarters, homeState, offersHello, type HomeFacts } from './lib/state'
+import { MAX_SHOWN, suggestionsFor, type SuggestionFacts } from './lib/suggestions'
+import type { HomeStateResponse, HomeSuggestion } from './types'
 
 const log = createLogger('home')
 
@@ -44,7 +46,43 @@ const stateResponse = z.object({
   hello: z.boolean(),
   introductionSkipped: z.boolean(),
   login: z.object({ runtime: z.string(), steps: z.array(z.string()), command: z.string().optional(), docsUrl: z.string() }).optional(),
+  suggestions: z.array(z.object({ id: z.string(), title: z.string(), payoff: z.string(), action: z.object({ label: z.string(), href: z.string() }) })),
+  suggestionCount: z.number(),
 })
+
+/** Setup checklist items with something to do, from the engines the checklist already asks. */
+async function checklistTodo(): Promise<SuggestionFacts['checklistTodo']> {
+  try {
+    return (await getSetupChecklist()).items.filter((item) => item.state === 'todo').map((item) => item.id)
+  } catch (err) {
+    log.debug('Could not read the setup checklist', { error: String(err) })
+    return 'unknown'
+  }
+}
+
+/** The plugins that are loaded. Required lazily: the registry's import graph is the whole server. */
+function loadedPlugins(): SuggestionFacts['plugins'] {
+  try {
+    const { pluginRegistry } = require('../../src/core/plugin-registry') as typeof import('../../src/core/plugin-registry')
+    return pluginRegistry.getPluginIds()
+  } catch (err) {
+    log.debug('Could not read the loaded plugins', { error: String(err) })
+    return 'unknown'
+  }
+}
+
+/** Every suggestion that applies to this home now, in curated order. */
+async function applicableSuggestions(facts: HomeFacts): Promise<HomeSuggestion[]> {
+  const suggestionFacts: SuggestionFacts = {
+    capabilities: facts.capabilities,
+    imageProvider: facts.imageProvider,
+    agents: facts.starters.agents,
+    plugins: loadedPlugins(),
+    checklistTodo: await checklistTodo(),
+  }
+  return suggestionsFor(HOME_CONTENT.suggestions, suggestionFacts, facts.decisions.dismissedSuggestions ?? {}, Date.now())
+    .map(({ id, title, payoff, action }) => ({ id, title, payoff, action }))
+}
 
 /** The active runtime's own way to log a provider in. Bakin shows it; the person does it. */
 function loginFor(): NonNullable<HomeStateResponse['login']> {
@@ -79,8 +117,8 @@ const routes = [
     method: 'GET',
     summary: 'What Home shows now',
     description:
-      'The Home state (unavailable, meet-agent, needs-login or ready) and the starters this home can run, derived from the runtime, ' +
-      'credentials, the main agent and capability readiness. Read-only: it never writes and never starts a turn.',
+      'The Home state (unavailable, meet-agent, needs-login or ready), the starters this home can run and, once it is ready, the first suggestions that apply ' +
+      '(with how many apply in all), derived from the runtime, credentials, the main agent, capability readiness and the setup checklist. Read-only: it never writes and never starts a turn.',
     responses: { 200: stateResponse },
     handler: async (_req, ctx) => {
       try {
@@ -89,6 +127,8 @@ const routes = [
           canGenerateImage: () => ctx.hooks.invoke<boolean>('images.canGenerate', {}),
         })
         const state = homeState(facts)
+        // Suggestions are for a home that already works: first things first.
+        const suggestions = state.name === 'ready' ? await applicableSuggestions(facts) : []
         const body: HomeStateResponse = {
           ok: true,
           state,
@@ -103,6 +143,8 @@ const routes = [
           hello: offersHello(facts.decisions),
           introductionSkipped: facts.decisions.introduction?.status === 'skipped',
           ...(state.name === 'needs-login' ? { login: loginFor() } : {}),
+          suggestions: suggestions.slice(0, MAX_SHOWN),
+          suggestionCount: suggestions.length,
         }
         return Response.json(body)
       } catch (err) {
@@ -151,6 +193,23 @@ const routes = [
     responses: { 200: okResponse },
     handler: async () => {
       recordHello()
+      return Response.json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/suggestions/:id/dismiss',
+    method: 'POST',
+    summary: 'Put a suggestion away',
+    description: '"Not now": records the time, and Home stops showing that suggestion for thirty days. It comes back afterwards if it still applies. 404 for an id that is not a suggestion.',
+    params: z.object({ id: z.string() }),
+    responses: { 200: okResponse, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      if (!HOME_CONTENT.suggestions.some((suggestion) => suggestion.id === params.id)) {
+        return Response.json({ ok: false, error: `No suggestion "${params.id}"` }, { status: 404 })
+      }
+      const at = new Date().toISOString()
+      updateDecisions((current) => ({ ...current, dismissedSuggestions: { ...current.dismissedSuggestions, [params.id]: { at } } }))
       return Response.json({ ok: true })
     },
   }),

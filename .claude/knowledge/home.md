@@ -7,8 +7,12 @@ The page Bakin opens on. Spec: `.claude/specs/home-first-run.md`; plan:
 page at `/` (first in the sidebar), the state route, and a screen for
 every state: the introduction, logging in, the ready prompt with starters
 and the first hello, and "unavailable". `/home` redirects to `/` with its
-query string. Phase 2 (suggestions, "Do more with Bakin") and Phase 3 (the
-tour) are not built.
+query string.
+
+**Phase 2, in progress:** the suggestions engine, its "Not now" route and
+the setup checklist's HTTP route are built (plan PR 4). The "Do more with
+Bakin" section on the page and the sidebar count (PR 5) are not, so nothing
+shows the suggestions yet. Phase 3 (the tour) is not built.
 
 ## The rule
 
@@ -66,8 +70,10 @@ home must have:
 | `attachment` | the person, in the composer. Never the server, and never a reason to install something |
 
 The route returns the starters this home can run; the page shows six at
-most. A starter whose machine need is missing becomes a suggestion in
-plan PR 4. The list is expected to change once it has been used.
+most. A starter whose machine need is missing is not gone for good: a
+suggestion supplies what it lacks (a test fails when a starter has a need
+no suggestion covers). The list is expected to change once it has been
+used.
 
 ## Starting a conversation
 
@@ -158,11 +164,51 @@ Sending it, or "Not now", calls `POST /hello` and the offer is over. A
 skipped introduction offers nothing, and neither does an agent that was
 named somewhere else.
 
+## Suggestions
+
+"Do more with Bakin" is curated data plus a pure engine
+(`lib/suggestions.ts`); no component decides what applies. Each entry in
+`home-content.json` has a title, a payoff sentence, ONE action (a label
+and a path to a page that already exists; Explore and Settings do the
+installing and the consent) and a condition:
+
+| Condition | Holds when | Asked of |
+|---|---|---|
+| `capability-missing` | no installed pack provides the capability | capability readiness |
+| `capability-needs-key` | a pack provides it, none is ready, and a required key is not set | capability readiness |
+| `no-image-provider` | no provider can make images | `images.canGenerate` |
+| `agent-missing` | a named agent is not on the roster | the roster |
+| `only-main-agent` | the roster is the main agent alone | the roster |
+| `plugin-missing` | a plugin is not loaded | the plugin registry |
+| `checklist-todo` | a setup checklist item is `todo` | the setup checklist |
+
+Rules:
+
+- **Unknown never suggests.** Capabilities that could not be read, an
+  Images plugin that is not loaded, a checklist that threw or an item it
+  could not tell: none of them makes a suggestion appear. (Starters lean
+  the other way on the same evidence: what could not be read is not
+  offered.)
+- **Only a ready Home.** The state route returns no suggestions in any
+  other state and does not ask the checklist.
+- **Curated order, three shown.** `suggestions` is the first three that
+  apply (`MAX_SHOWN`); `suggestionCount` is how many apply in all.
+- **Never spend limits or brands.** The schema refuses an action that
+  points at `/spend` or `/brands`; both are choices, never to-dos.
+- **"Not now" is thirty days**, not forever
+  (`POST /suggestions/:id/dismiss`, `DISMISSAL_MS`). The time is stored;
+  the suggestion returns afterwards if it still applies. An id that is
+  not a suggestion is a 404 and writes nothing.
+
+Capability readiness is read ONCE per state read (`evidence()` in
+`lib/readiness.ts`) and feeds both starters and suggestions.
+
 ## Decisions
 
 `~/.bakin/plugin-data/home/decisions.json` (`lib/decisions.ts`). Today:
-`introduction` (`skipped`, `completed`, or `pending` with the answers) and
-`saidHello`. Keys this version does not know are kept across a write. A
+`introduction` (`skipped`, `completed`, or `pending` with the answers),
+`saidHello`, and `dismissedSuggestions` (suggestion id → when it was put
+away). Keys this version does not know are kept across a write. A
 file that cannot be parsed means "nothing decided" and is left as it is
 until the next real decision.
 
@@ -181,7 +227,8 @@ conversation kit's `Composer`, and for the introduction
 ## Tests
 
 `tests/plugins/home/`: content, decisions, state machine, fact gathering,
-the routes, the introduction's writes (a failure injected at each step),
+the suggestions engine (every condition, unknown evidence, the thirty
+days), the routes, the introduction's writes (a failure injected at each step),
 start-chat, and the page (ready, hello, the introduction, reopening,
 logging in). `tests/hooks/use-terminal-handoff.test.tsx` and
 `tests/plugins/health/handoff-return.test.tsx` cover the shared handoff.

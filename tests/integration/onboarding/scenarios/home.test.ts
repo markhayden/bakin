@@ -33,6 +33,8 @@ interface StateBody {
   ok: boolean
   state: { name: string; agent?: { id: string; name: string } }
   starters: Array<{ id: string }>
+  suggestions: Array<{ id: string; title: string; payoff: string; action: { label: string; href: string } }>
+  suggestionCount: number
 }
 const stateOf = async (server: HarnessServer): Promise<StateBody> => {
   const res = await realFetch(`${server.baseUrl}/api/plugins/home/state`)
@@ -61,5 +63,35 @@ describe('Home on a fresh Pi home', () => {
     expect(home).toMatchObject({ id: 'home', status: 'active' })
     const asset = await realFetch(`${server.baseUrl}/api/plugins/home/assets/client.js`)
     expect(asset.status).toBe(200)
+  }, TEST_TIMEOUT)
+
+  test('once Home is ready it suggests what this home lacks, "Not now" puts one away, and the checklist has its route', async () => {
+    const { server } = await served({ auth: true })
+    expect((await stateOf(server)).suggestions).toEqual([])
+    const skipped = await realFetch(`${server.baseUrl}/api/plugins/home/introduction/skip`, { method: 'POST' })
+    expect(skipped.status).toBe(200)
+
+    const ready = await stateOf(server)
+    expect(ready.state.name).toBe('ready')
+    expect(ready.suggestions.length).toBeGreaterThan(0)
+    expect(ready.suggestions.length).toBeLessThanOrEqual(3)
+    expect(ready.suggestionCount).toBeGreaterThanOrEqual(ready.suggestions.length)
+    for (const suggestion of ready.suggestions) expect(suggestion.action.href.startsWith('/')).toBe(true)
+
+    const first = ready.suggestions[0]!
+    const dismissed = await realFetch(`${server.baseUrl}/api/plugins/home/suggestions/${first.id}/dismiss`, { method: 'POST' })
+    expect(dismissed.status).toBe(200)
+    const after = await stateOf(server)
+    expect(after.suggestions.map((suggestion) => suggestion.id)).not.toContain(first.id)
+    expect(after.suggestionCount).toBe(ready.suggestionCount - 1)
+    expect((await realFetch(`${server.baseUrl}/api/plugins/home/suggestions/no-such-thing/dismiss`, { method: 'POST' })).status).toBe(404)
+
+    const res = await realFetch(`${server.baseUrl}/api/runtime/onboarding/checklist`)
+    expect(res.status).toBe(200)
+    const body = await res.json() as { adapter: string; checklist: { items: Array<{ id: string; state: string }>; notes: Array<{ id: string }> } }
+    expect(body.adapter).toBe('pi')
+    expect(body.checklist.items.find((item) => item.id === 'login')).toMatchObject({ state: 'done' })
+    // A server is answering, so "Start Bakin" is not a next step.
+    expect(body.checklist.notes.map((note) => note.id)).toEqual(['explore'])
   }, TEST_TIMEOUT)
 })

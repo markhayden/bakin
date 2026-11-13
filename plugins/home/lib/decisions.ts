@@ -47,6 +47,8 @@ const decisionsSchema = z.object({
   ]).optional(),
   /** The person sent their first hello after the introduction; the offer is not shown again. */
   saidHello: z.object({ at: isoInstant }).optional(),
+  /** Suggestions put away with "Not now", by id, with when. Each one stays hidden for a while, not for good. */
+  dismissedSuggestions: z.record(z.string(), z.object({ at: isoInstant })).optional(),
 }).passthrough()
 
 export type HomeDecisions = z.infer<typeof decisionsSchema>
