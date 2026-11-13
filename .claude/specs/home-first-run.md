@@ -1,6 +1,6 @@
 # Spec: Home and the first-run experience
 
-Status: **draft 1, awaiting review.** Supersedes the seed
+Status: **approved for planning (2026-11-13).** Supersedes the seed
 `onboarding-ui-wizard.md` (deleted): the interview moved away from a second
 setup wizard. Mockup of the direction (not the design):
 https://claude.ai/artifact/TjNWn1kMdySSHaFdMPZGqt
@@ -138,7 +138,7 @@ capability, an attachment). Home shows up to six that this home can run.
 logged in (in either order), Bakin starts one turn in which the agent
 greets the person by name in its new voice. Home shows it once.
 
-**CLI.** `bakin runtime login` (name subject to the spike). Onboarding's
+**CLI.** `bakin login`. Onboarding's
 login step and Pi's `loginSteps` point at it; the "install `pi`, needs Node
 22.19" guidance is removed.
 
@@ -160,7 +160,7 @@ login step and Pi's `loginSteps` point at it; the "install `pi`, needs Node
 
 - **Modal tour:** six slides, one per area, each with a low-fidelity
   kit-built illustration, two or three sentences and one "do this first"
-  line. Offered on Home and in the help menu. The last slide hands back to
+  line. Offered on Home. The last slide hands back to
   "What do you want to do?".
 - **Page introductions:** a dismissible, remembered panel on first visit to
   Chat, Tasks, Team, Assets, Schedule and Health; real empty states on
@@ -301,11 +301,12 @@ that, let's connect Gmail". **No such connectivity is built here**: every
 starter above runs on existing tools. The rule and the data shape
 (`needs`) are what this spec provides for that future.
 
-## 11. Open questions
+## 11. Resolved after draft 1
 
-1. **The starters above:** edit freely; the list is data.
-2. **The four personality presets** and their sample lines: wording.
-3. **The command's name:** `bakin runtime login`, or something a novice
-   would guess.
-4. **Where the tour is offered** beyond Home: is there a help menu today,
-   or does this add one?
+1. **Starters:** the ten in section 10, as data.
+2. **Personality presets:** the implementer's choice; four, proposed in the
+   plan, as data.
+3. **The login command:** `bakin login`.
+4. **Help menu:** Bakin has none. The tour is offered on Home only. Whether
+   Bakin needs a help menu is a separate question, noted for later and not
+   built here.
