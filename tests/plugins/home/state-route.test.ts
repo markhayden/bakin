@@ -313,7 +313,12 @@ describe('do more with Bakin', () => {
     ready()
     imageProvider = false
     const before = Date.now()
+    // Every open browser is told, so the sidebar's count follows.
+    const announced: unknown[] = []
+    const stop = activated.ctx.events.on('home.suggestions_changed', (data) => { announced.push(data) })
     expect((await dismiss('web-search')).status).toBe(200)
+    stop()
+    expect(announced).toHaveLength(1)
     const record = readDecisions().dismissedSuggestions?.['web-search']
     expect(Date.parse(record!.at)).toBeGreaterThanOrEqual(before)
     const written = readFileSync(decisionsPath(), 'utf-8')

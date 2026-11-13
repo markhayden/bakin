@@ -20,8 +20,12 @@ createRoot(document.getElementById('root')!).render(<PluginUiFixtureHost
       personalities: [],
       hello: false,
       introductionSkipped: false,
-      suggestions: [],
-      suggestionCount: 0,
+      suggestions: [
+        { id: 'web-search', title: 'Let your agents search the web', payoff: 'Research with current facts and sources, not only what the model remembers.', action: { label: 'Add web search', href: '/explore?tab=capabilities&item=skill-pack:web-search-brave' } },
+        { id: 'image-provider', title: 'Create and edit images', payoff: 'Add a key for an image provider and your agents can make pictures from a description.', action: { label: 'Add a key', href: '/settings?tab=integrations' } },
+        { id: 'add-agent', title: 'Add a specialist to your team', payoff: 'A researcher, a developer or an image artist your main agent can hand work to.', action: { label: 'Browse agents', href: '/explore?tab=agents' } },
+      ],
+      suggestionCount: 5,
     } },
   ] }}
   registrations={[{ id: 'home', routes: { '/home': HomePage } }]} />)
