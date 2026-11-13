@@ -290,6 +290,44 @@ install of anything else is still an error. Found on the real-home pass:
 both recommended plugins were rejected, and that alone left a working home
 un-onboarded.
 
+A failed install says what git said, in one sentence per item
+(`gitFailureMessage`, `packages/core/src/net/git-args.ts`): a failed clone's
+stderr used to be printed whole, temp path first.
+
+## Warnings onboarding repairs itself
+
+A check may mark a `warn` as `repairable`: its own `install()` clears it
+with no download, no consent and nothing of the operator's overwritten.
+The orchestrator (`repairWarning`) then runs that install and reports what
+the recheck finds. Two components do this:
+
+- `plugin-assets`, when skills or pinned binaries are missing or drifted
+  (not for locked user edits, non-text skills or invalid declarations);
+- `agent-sync`, for findings the local sync clears (not when an `error`
+  finding exists, and never the one-time block migration, which a person
+  confirms).
+
+Before this, a clean first run always ended on "5 plugin asset(s) need
+install" and "3 agent-sync finding(s)", which the server cleared at its
+first start; in-process and through-a-server runs disagreed on those two
+steps. A repair can only improve the outcome: one that fails, skips or
+leaves something behind ends on the warning it started from, never an
+error. `--check` repairs nothing.
+
+## A recommended agent never lands on a model that cannot run
+
+An agent package may name a `defaultModel`. On a fresh install the agent
+installer (`src/core/agent-packages/installer.ts`, every surface) asks the
+eligibility engine about it; when this home is KNOWN to be unable to run it
+(no credentials, not in the catalog, runtime-unavailable, rejected) the
+agent is created without a model and inherits the home default, and
+`InstallResult.modelFallback` says so. Onboarding's `recommended-agents`
+message names the agent and the reason. Unknown evidence, or an
+eligibility read that fails, leaves the author's choice. Found on the
+real-home pass (#1055): H'enrich pinned an OpenAI model on a home logged in
+to another provider, and the first Health page opened on a critical
+incident nobody had chosen.
+
 ## What stops what
 
 Each component declares `requires`: the components it cannot run without

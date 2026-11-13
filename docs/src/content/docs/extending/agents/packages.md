@@ -100,7 +100,7 @@ Package IDs may contain letters, numbers, dashes, and underscores, up to 40 char
 | `agent.identity.name` | Display name for the runtime agent. |
 | `agent.identity.emoji` | Optional small visual marker. |
 | `agent.role` | One-line role summary. |
-| `agent.defaultModel` | Preferred model assignment. |
+| `agent.defaultModel` | Preferred model assignment. If the home it is installed on cannot run that model (for example, no login for its provider), the agent is created on the home's default model instead and the install says so. |
 | `agent.dispatchableBy` | Agent IDs allowed to dispatch work to this agent. `main` is the normal human entry point. |
 | `agent.tags` | Search and grouping metadata. |
 | `agent.allowedTools` | Optional MCP tool restriction list. Missing or empty means unrestricted; non-empty lists are enforced by Bakin's MCP server. |
