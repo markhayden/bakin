@@ -36,7 +36,7 @@
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { execFileSync, spawn } from 'child_process'
-import { gitArgs } from '@bakin/core/net/git-args'
+import { gitArgs, gitFailureMessage } from '@bakin/core/net/git-args'
 import { homedir, tmpdir } from 'os'
 import { basename, isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
@@ -380,8 +380,16 @@ interface GitRunner {
 }
 
 // Foreground-only git (#978): staging clones are deleted moments later.
-const realGit: GitRunner = (args) =>
-  execFileSync('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
+const realGit: GitRunner = (args) => {
+  try {
+    return execFileSync('git', gitArgs(args), { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
+  } catch (err) {
+    // execFileSync's own message is the whole command line plus all of stderr.
+    const stderr = (err as { stderr?: Buffer | string }).stderr
+    if (stderr === undefined) throw err
+    throw new Error(gitFailureMessage(String(stderr), `git ${args.join(' ')} failed`), { cause: err })
+  }
+}
 
 const abortError = (signal: AbortSignal): Error =>
   (signal.reason instanceof Error ? signal.reason : new Error(typeof signal.reason === 'string' ? signal.reason : 'aborted'))
@@ -408,7 +416,7 @@ const realGitAsync: AsyncGitRunner = (args, opts = {}) => new Promise((resolve, 
       resolve(stdout)
       return
     }
-    reject(new Error(stderr.trim() || `git ${args.join(' ')} exited with code ${code}`))
+    reject(new Error(gitFailureMessage(stderr, `git ${args.join(' ')} exited with code ${code}`)))
   })
 })
 
