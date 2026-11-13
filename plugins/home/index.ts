@@ -114,7 +114,8 @@ const routes = [
           log.warn('introduction did not finish', { step: result.step, error: result.error })
           return Response.json(result, { status: 502 })
         }
-        ctx.activity.audit('home.introduction_completed', 'human', { agent: agentId })
+        // The plugin's id is prefixed by the host.
+        ctx.activity.audit('introduction_completed', 'human', { agent: agentId })
         return Response.json({ ok: true })
       } catch (err) {
         if (err instanceof UnknownPersonalityError) return Response.json({ ok: false, error: err.message }, { status: 400 })

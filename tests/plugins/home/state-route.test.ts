@@ -3,7 +3,7 @@
  * route through the plugin harness, with the harness's mock runtime.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -136,6 +136,8 @@ describe('POST /introduction', () => {
     expect(operatorNames).toEqual(['Mark'])
     expect(syncsStarted).toEqual(['onboarding:agent-sync'])
     expect(readDecisions().introduction?.status).toBe('completed')
+    // The host prefixes the plugin id: the event is recorded as home.introduction_completed.
+    expect(activated.ctx.activity.audit).toHaveBeenCalledWith('introduction_completed', 'human', { agent: 'main' })
     expect((await state()).state).toEqual({ name: 'needs-login', agent: { id: 'main', name: 'Nova' } })
   })
 
@@ -173,6 +175,13 @@ describe('POST /introduction/skip', () => {
     const res = await callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
     expect(res.status).toBe(200)
     expect((await state()).state.name).toBe('needs-login')
+  })
+})
+
+describe('what the plugin is allowed to do', () => {
+  it('declares the permission its audit record needs', () => {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dir, '../../../plugins/home/bakin-plugin.json'), 'utf8')) as { permissions: string[] }
+    expect(manifest.permissions).toContain('events.emit')
   })
 })
 

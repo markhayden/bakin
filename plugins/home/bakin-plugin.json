@@ -11,7 +11,8 @@
     "storage.read",
     "storage.write",
     "runtime.read",
-    "runtime.agents"
+    "runtime.agents",
+    "events.emit"
   ],
   "contributes": {
     "apiRoutes": [
