@@ -64,6 +64,10 @@ export { useNow } from '@bakin/ui/behaviors'
 export { useKeyedState } from '@bakin/ui/behaviors'
 /** Whether a CSS media query matches, as an external-store read (false without matchMedia). */
 export { useMediaQuery } from '@bakin/ui/behaviors'
+/** Offer "Open in Terminal" for a command when the Terminal plugin is active: a session with the command prefilled, never executed. */
+export { useTerminalHandoff, type TerminalHandoff } from './use-terminal-handoff'
+/** Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. */
+export { handoffReturnChannel, useHandoffReturn, type HandoffReturnChannel } from './use-terminal-handoff'
 /** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
 export { useOperation } from './use-operation'
 

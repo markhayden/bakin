@@ -28,8 +28,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import '../../rtl-settle'
 import type { HealthIncident } from '@makinbakin/sdk/types'
 import { IncidentRow } from '@bakin/health/components/incident-row'
-import { resetTerminalHandoffForTests } from '@bakin/health/components/use-terminal-handoff'
-import { armedHandoffChecks, isHandoffReturnArmed, resetHandoffReturnForTests } from '@bakin/health/components/handoff-return'
+import { resetHandoffReturnForTests, resetTerminalHandoffForTests } from '../../../packages/sdk/src/hooks/use-terminal-handoff'
+import { armedHandoffChecks, isHandoffReturnArmed } from '@bakin/health/components/handoff-return'
 import type { OverviewIncident } from '@bakin/health/lib/health-view-model'
 
 afterEach(cleanup)

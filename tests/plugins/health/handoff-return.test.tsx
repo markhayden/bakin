@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { act, cleanup, render } from '@testing-library/react'
 import '../../rtl-settle'
 
-import { armHandoffReturn, armedHandoffChecks, disarmHandoffReturn, isHandoffReturnArmed, resetHandoffReturnForTests, useHandoffReturn } from '@bakin/health/components/handoff-return'
+import { armHandoffReturn, armedHandoffChecks, disarmHandoffReturn, isHandoffReturnArmed, useHandoffReturn } from '@bakin/health/components/handoff-return'
+import { handoffReturnChannel, resetHandoffReturnForTests, useHandoffReturn as useChannelReturn } from '../../../packages/sdk/src/hooks/use-terminal-handoff'
 
 function Page({ onReturn }: { onReturn: (checkIds: string[]) => void }) {
   useHandoffReturn(onReturn)
@@ -66,5 +67,39 @@ describe('useHandoffReturn', () => {
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(onReturn).not.toHaveBeenCalled()
     expect(isHandoffReturnArmed('y')).toBe(true) // waits for the page to mount again
+  })
+})
+
+describe('handoff return channels are per consumer', () => {
+  function Other({ onReturn }: { onReturn: (tokens: string[]) => void }) {
+    useChannelReturn('home', onReturn)
+    return <div>home</div>
+  }
+
+  it("another page coming back does not spend Health's recheck, and Health does not spend its", () => {
+    const home = handoffReturnChannel('home')
+    armHandoffReturn('health:runtime:credentials', ['team.runtime-credentials'])
+    home.arm('login')
+
+    const onHome = mock()
+    const homePage = render(<Other onReturn={onHome} />)
+    expect(onHome).toHaveBeenCalledTimes(1)
+    expect(onHome).toHaveBeenCalledWith([]) // nothing to name: Home just looks again
+    expect(isHandoffReturnArmed('health:runtime:credentials')).toBe(true)
+    homePage.unmount()
+
+    home.arm('login')
+    const onHealth = mock()
+    render(<Page onReturn={onHealth} />)
+    expect(onHealth).toHaveBeenCalledTimes(1)
+    expect(onHealth).toHaveBeenCalledWith(['team.runtime-credentials'])
+    expect(home.isArmed('login')).toBe(true)
+  })
+
+  it('the same consumer name is the same channel wherever it is asked for', () => {
+    handoffReturnChannel('home').arm('login', ['a', 'a', 'b'])
+    expect(handoffReturnChannel('home').armedTokens()).toEqual(['a', 'b'])
+    expect(handoffReturnChannel('home').take()).toEqual(['a', 'b'])
+    expect(handoffReturnChannel('home').take()).toBeNull()
   })
 })

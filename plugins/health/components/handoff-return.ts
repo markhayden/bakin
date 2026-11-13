@@ -12,51 +12,36 @@
  * the tab becoming visible. One-shot per arming; nothing reruns without a
  * handoff having been taken. (The Terminal plugin publishes no session-exit
  * event, so "session end" is observed as the return itself.)
+ *
+ * The mechanism is the SDK's (`handoffReturnChannel` / `useHandoffReturn`
+ * in `@makinbakin/sdk/hooks`); this file is Health's own channel on it, so
+ * another page coming back never spends Health's recheck.
  */
-import { useEffect } from 'react'
+import { handoffReturnChannel, useHandoffReturn as useChannelReturn } from '@makinbakin/sdk/hooks'
+
+const CONSUMER = 'health'
+const channel = handoffReturnChannel(CONSUMER)
 
 /** incident id → the check ids its evidence came from */
-const armed = new Map<string, string[]>()
-
 export function armHandoffReturn(incidentId: string, checkIds: readonly string[]): void {
-  armed.set(incidentId, [...new Set(checkIds)])
+  channel.arm(incidentId, checkIds)
 }
 
 /** A terminal that failed to open hands nothing off — disarm so no phantom rerun fires. */
 export function disarmHandoffReturn(incidentId: string): void {
-  armed.delete(incidentId)
+  channel.disarm(incidentId)
 }
 
 export function isHandoffReturnArmed(incidentId: string): boolean {
-  return armed.has(incidentId)
+  return channel.isArmed(incidentId)
 }
 
 /** The union of check ids every armed handoff would rerun (test seam + page copy). */
 export function armedHandoffChecks(): string[] {
-  return [...new Set([...armed.values()].flat())]
-}
-
-/** Test seam. */
-export function resetHandoffReturnForTests(): void {
-  armed.clear()
+  return channel.armedTokens()
 }
 
 /** Page-level: `onReturn(checkIds)` runs once per arming, when the operator is back on this page. */
 export function useHandoffReturn(onReturn: (checkIds: string[]) => void): void {
-  useEffect(() => {
-    const fire = () => {
-      if (armed.size === 0) return
-      const checkIds = armedHandoffChecks()
-      armed.clear()
-      onReturn(checkIds)
-    }
-    fire() // mounting again IS the return when the handoff navigated away
-    const onVisible = () => { if (document.visibilityState === 'visible') fire() }
-    window.addEventListener('focus', fire)
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.removeEventListener('focus', fire)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [onReturn])
+  useChannelReturn(CONSUMER, onReturn)
 }
