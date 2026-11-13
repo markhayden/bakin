@@ -14,8 +14,8 @@ route, the setup checklist's HTTP route, the "Do more with Bakin" section
 on a ready Home, and the count on the sidebar's "Make Bakin Yours" card.
 
 
-**Phase 3, in progress:** the tour (plan PR 6) is built. Pages
-introducing themselves (PR 7) are not.
+**Phase 3 (plan PRs 6 and 7):** the tour, and six pages that introduce
+themselves on a first visit. Every phase of the plan is built.
 
 ## The rule
 
@@ -246,12 +246,42 @@ serves them; the page fetches them only when the tour is open.
   fallback for each. Slides that cannot be loaded toast and close, never
   an empty dialog.
 
+## Pages introduce themselves
+
+Chat, Tasks, Team, Assets, Schedule and Health each show a short panel
+the first time someone opens them: a title and two sentences, curated in
+`home-content.json` (`pageIntroductions`, keyed by the page's plugin id),
+with "Got it".
+
+- **Who sees them.** Only a home where someone finished or skipped Home's
+  introduction (`startedOnHome`, `lib/page-introductions.ts`, pure). That
+  is the one recorded sign a person started here. A home set up before
+  Home existed, or whose agent was named elsewhere, gets none: its people
+  know their way around and are never handed six panels to close.
+- **Closed is closed.** `POST /page-introductions/:id/close` records it in
+  the decisions file and emits `home.page_introduction_closed`, so every
+  open browser drops it. Unlike a suggestion, it never returns.
+- **One mechanism.** `usePageIntroduction(pageId)` in
+  `@makinbakin/sdk/hooks` asks `GET /page-introductions` once per page
+  load for every page, hands a page its introduction or null, and closes
+  optimistically. A page never fetches or stores this itself. A page
+  without an entry always gets null, so the hook is safe anywhere.
+- **Where it renders.** Each page puts a kit `Alert` (accent, with an
+  `AlertAction`) in its `PageBody` `feedback` slot, the slot the kit
+  keeps for feedback that stays with usable content. The four pages whose
+  body runs edge to edge (Chat, Tasks, Team, Schedule) wrap it in the
+  inset the row above it uses. Chat shows it on the list only.
+- **Empty states.** The plan also called for real empty states on these
+  pages. Each already had one (for example "No chats yet", "No assets
+  yet" with its upload action, "No scheduled jobs yet"), so none was
+  changed.
+
 ## Decisions
 
 `~/.bakin/plugin-data/home/decisions.json` (`lib/decisions.ts`). Today:
 `introduction` (`skipped`, `completed`, or `pending` with the answers),
-`saidHello`, and `dismissedSuggestions` (suggestion id → when it was put
-away). Keys this version does not know are kept across a write. A
+`saidHello`, `dismissedSuggestions` (suggestion id → when it was put
+away) and `closedPageIntroductions` (page → when it was closed). Keys this version does not know are kept across a write. A
 file that cannot be parsed means "nothing decided" and is left as it is
 until the next real decision.
 
@@ -277,7 +307,9 @@ the suggestions engine (every condition, unknown evidence, the thirty
 days), the routes, the introduction's writes (a failure injected at each step),
 start-chat, and the page (ready, hello, the introduction, reopening,
 logging in, suggestions, the tour). `tour.test.ts` holds the slides to
-the sidebar. `tests/hooks/use-suggestion-count.test.tsx` and
+the sidebar. `page-introductions.test.ts` covers who is offered
+them; `tests/hooks/use-page-introduction.test.tsx` covers the shared hook;
+the Health page test covers a page showing and closing one. `tests/hooks/use-suggestion-count.test.tsx` and
 `tests/components/sidebar-promo.test.tsx` cover the sidebar's count. `tests/hooks/use-terminal-handoff.test.tsx` and
 `tests/plugins/health/handoff-return.test.tsx` cover the shared handoff.
 `tests/core/team-context-operator.test.ts` covers the person's name in
