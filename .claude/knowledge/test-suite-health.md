@@ -405,6 +405,29 @@ If a test depends on the calendar, pin the clock (`setSystemTime`) or make the f
 relative to now, and restore the clock in `afterEach`. A test that fails on the 1st of the
 month is a test nobody is around to see fail.
 
+### The Chromium browser lane (2026-11)
+
+`UI visuals / Behavior (chromium)` failed its first attempt on 7 of 23 pull
+request runs and passed on re-run. Two causes, both a budget that did not
+match the work, neither a product bug:
+
+- **A browser test waited on another suite's script.** Three
+  `workspace-input` tests opened the terminal-input story whose play
+  function walks every key and modifier, and waited up to 20 s for its
+  `data-story-ready` marker before starting. On a loaded runner the script
+  was still going. A browser test that drives the UI itself opens a story
+  with no interaction script (here `VisualCapture`); the play function is
+  the story suite's coverage, not a precondition.
+- **One test was seventeen page loads.** The workflow recipe test loaded
+  three stories at four widths and five more, each to `networkidle`, inside
+  the 30 s a single test gets. It is now one test per story for the width
+  sweep plus one for the interactions. Playwright's budget is per test: when
+  a test grows by a loop over stories or widths, the loop belongs around
+  `test(...)`, not inside it.
+
+Neither fix raises a timeout. Before raising one in this lane, count the
+page loads in the test.
+
 ## 7. Running things
 
 ```bash
