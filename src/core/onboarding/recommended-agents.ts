@@ -165,6 +165,7 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
   const installed: string[] = []
   const adopted: string[] = []
   const failures: string[] = []
+  const modelNotes: string[] = []
   op.stage('install')
   const label = ({ agent, state }: AgentInstallCandidate) => state === 'unmanaged' ? `Adopt ${agent.id}` : `Install ${agent.id}`
   for (const candidate of selected) op.item('install', { id: candidate.agent.id, label: label(candidate) })
@@ -174,11 +175,14 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
     op.item('install', { id: agent.id, label: label(candidate), status: 'active' })
     try {
       // This operation owns install-state; the installer's writers assert it.
-      await installPackage({
+      const result = await installPackage({
         source: sourceWithRef(agent.source, agent.ref),
         installAs: agent.id,
         adopt: state === 'unmanaged',
       })
+      if (result.modelFallback) {
+        modelNotes.push(`${agent.id} uses this home's default model (its own, ${result.modelFallback.declared}, cannot run here: ${result.modelFallback.reason})`)
+      }
       if (state === 'unmanaged') adopted.push(agent.id)
       else installed.push(agent.id)
       op.item('install', { id: agent.id, label: label(candidate), status: 'done' })
@@ -206,7 +210,7 @@ async function install(opts: ComponentInstallOptions, op: OperationContext): Pro
   return {
     name: 'recommended-agents',
     status: 'installed',
-    message: `Installed official agent package${selected.length === 1 ? '' : 's'}: ${parts.join('; ')}`,
+    message: `Installed official agent package${selected.length === 1 ? '' : 's'}: ${parts.join('; ')}${modelNotes.length > 0 ? `. ${modelNotes.join('; ')}.` : ''}`,
     durationMs: Date.now() - start,
   }
 }

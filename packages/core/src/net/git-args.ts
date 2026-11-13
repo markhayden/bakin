@@ -22,3 +22,19 @@ export const GIT_FOREGROUND_ARGS: readonly string[] = [
 export function gitArgs(args: readonly string[]): string[] {
   return [...GIT_FOREGROUND_ARGS, ...args]
 }
+
+/**
+ * What git said went wrong, for a person: its own `fatal:` / `error:` lines
+ * without the prefix, joined. A failed clone's stderr leads with progress
+ * ("Cloning into '/var/folders/…/tmp-uuid'...") and may carry `remote:`
+ * chatter; printed whole it buried the one sentence that mattered under a
+ * temp path. With no such line, the last line git wrote; with nothing at
+ * all, `fallback`. This formats — it never decides what KIND of failure it
+ * was.
+ */
+export function gitFailureMessage(stderr: string, fallback: string): string {
+  const lines = stderr.split('\n').map((line) => line.trim()).filter(Boolean)
+  const said = lines.filter((line) => /^(fatal|error): /.test(line)).map((line) => line.replace(/^(fatal|error): /, ''))
+  if (said.length > 0) return said.join('; ')
+  return lines.at(-1) ?? fallback
+}

@@ -523,6 +523,56 @@ describe('runOnboard orchestrator', () => {
     })
   })
 
+  describe('a warning the component can repair itself', () => {
+    const pending: CheckResult = { name: 'plugin-assets', status: 'warn', message: '5 plugin asset(s) need install', remediation: 'Run `bakin install plugin-assets`.', repairable: true }
+    /** The install's result, with what the next check will find once it has run. */
+    const repairs = (name: 'plugin-assets' | 'agent-sync', install: InstallResult, after: CheckResult) => {
+      const script = scripts[name]
+      Object.defineProperty(script, 'install', { configurable: true, get: () => { script.check = after; return install } })
+    }
+
+    it('is repaired during the run and the step ends ok, so a clean first run is clean', async () => {
+      scripts['plugin-assets'].check = pending
+      repairs('plugin-assets', { name: 'plugin-assets', status: 'installed', message: 'Installed 5 skill(s)', durationMs: 1 }, { name: 'plugin-assets', status: 'ok', message: 'All 5 plugin asset(s) installed' })
+      const result = await runOnboard(opts)
+      const outcome = result.outcomes.find((o) => o.name === 'plugin-assets')
+      expect(scripts['plugin-assets'].installCalls).toBe(1)
+      expect(outcome).toMatchObject({ finalStatus: 'ok', message: 'Installed 5 skill(s)' })
+      expect(result.exitCode).toBe(0)
+    })
+
+    it('what the repair could not clear stays a warning, in the words of the recheck', async () => {
+      scripts['agent-sync'].check = { name: 'agent-sync', status: 'warn', message: '3 agent-sync finding(s)', repairable: true }
+      repairs('agent-sync', { name: 'agent-sync', status: 'installed', message: 'Synced 1 agent(s) locally.', durationMs: 1 }, { name: 'agent-sync', status: 'warn', message: '1 agent-sync finding(s): 1 user-edited', remediation: 'Keep the edit.' })
+      const outcome = (await runOnboard(opts)).outcomes.find((o) => o.name === 'agent-sync')
+      expect(outcome).toMatchObject({ finalStatus: 'warn', message: 'Synced 1 agent(s) locally. 1 agent-sync finding(s): 1 user-edited', remediation: 'Keep the edit.' })
+    })
+
+    it('a repair that fails leaves the warning it started from: never an error, and the marker is still written', async () => {
+      scripts['plugin-assets'].check = pending
+      scripts['plugin-assets'].install = { name: 'plugin-assets', status: 'failed', message: 'skill store is read-only', durationMs: 1 }
+      const result = await runOnboard(opts)
+      const outcome = result.outcomes.find((o) => o.name === 'plugin-assets')
+      expect(outcome).toMatchObject({ finalStatus: 'warn', message: '5 plugin asset(s) need install (repair did not finish: skill store is read-only)', remediation: 'Run `bakin install plugin-assets`.' })
+      expect(result.exitCode).toBe(2)
+      expect(result.markerWritten).toBe(true)
+    })
+
+    it('--check repairs nothing', async () => {
+      scripts['plugin-assets'].check = pending
+      const result = await runOnboard({ ...opts, checkOnly: true })
+      expect(scripts['plugin-assets'].installCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'plugin-assets')).toMatchObject({ finalStatus: 'warn', message: '5 plugin asset(s) need install' })
+    })
+
+    it('a warning that does not say it is repairable is left alone', async () => {
+      scripts['plugin-assets'].check = { ...pending, repairable: undefined }
+      const result = await runOnboard(opts)
+      expect(scripts['plugin-assets'].installCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'plugin-assets')?.finalStatus).toBe('warn')
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // Runtime cascade - missing runtime aborts the entire flow
   // ---------------------------------------------------------------------------

@@ -282,6 +282,9 @@ async function runComponent(
       durationMs: Date.now() - start,
     }
   }
+  if (check.status === 'warn' && check.repairable === true && !opts.checkOnly && isInstallable(component)) {
+    return repairWarning(component, check, installComponent, start)
+  }
   if (check.status === 'warn') {
     return {
       name: component.name,
@@ -415,6 +418,63 @@ async function runComponent(
       details: check.details,
       durationMs: Date.now() - start,
     }
+  }
+}
+
+/**
+ * A warning the component says its own install clears (`repairable`): run
+ * that install, then report what the home looks like now. It can only make
+ * the outcome better — a repair that fails, skips or leaves something behind
+ * ends on the warning it started from, never on an error.
+ */
+async function repairWarning(
+  component: InstallableComponent,
+  check: CheckResult,
+  installComponent: ComponentInstaller,
+  start: number,
+): Promise<ComponentOutcome> {
+  const stillWarning = (why: string): ComponentOutcome => ({
+    name: component.name,
+    finalStatus: 'warn',
+    check,
+    message: `${check.message} (${why})`,
+    remediation: check.remediation,
+    details: check.details,
+    durationMs: Date.now() - start,
+  })
+  let install: InstallResult
+  try {
+    install = await installComponent(component, { autoApprove: true, allowServiceClaim: false })
+  } catch (err) {
+    if (err instanceof OnboardingInterruptedError) throw err
+    log.warn('Repair of an onboarding warning threw', { component: component.name, error: String(err) })
+    return stillWarning(`repair did not finish: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  if (install.status !== 'installed' && install.status !== 'noop') {
+    return stillWarning(`repair did not finish: ${install.message}`)
+  }
+  const after = await component.check().catch((err: unknown) => {
+    log.warn('Post-repair recheck failed', { component: component.name, error: String(err) })
+    return null
+  })
+  if (after && after.status !== 'ok') {
+    return {
+      name: component.name,
+      finalStatus: after.status === 'error' ? 'error' : 'warn',
+      check: after,
+      message: `${install.message} ${after.message}`,
+      remediation: after.remediation,
+      details: after.details,
+      durationMs: Date.now() - start,
+    }
+  }
+  return {
+    name: component.name,
+    finalStatus: 'ok',
+    check: after ?? check,
+    message: install.message,
+    details: (after ?? check).details,
+    durationMs: Date.now() - start,
   }
 }
 

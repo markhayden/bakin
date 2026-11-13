@@ -22,6 +22,14 @@ export interface CheckResult {
   remediation?: string
   /** Extra structured info for --json output. */
   details?: Record<string, unknown>
+  /**
+   * On a `warn`: the component's own `install()` puts this right, with no
+   * download, no consent and nothing of the operator's overwritten (Bakin's
+   * projected skills, its managed blocks). Onboarding then repairs it instead
+   * of finishing a clean first run on a warning the server would clear at
+   * its first start anyway. `--check` never repairs.
+   */
+  repairable?: boolean
 }
 
 /**

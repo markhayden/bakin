@@ -758,6 +758,8 @@ async function check(): Promise<CheckResult> {
       ? 'Run `bakin install plugin-assets` (or the Health repair) to apply.'
       : 'Remove the plugin, or install it on a supported platform.',
     details,
+    // Missing or drifted skills and pinned binaries are what install() writes.
+    ...(pending > 0 ? { repairable: true } : {}),
   }
 }
 

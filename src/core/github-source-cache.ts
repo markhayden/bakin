@@ -3,7 +3,7 @@ import { spawn } from 'child_process'
 import { tmpdir } from 'os'
 import { join, resolve, sep } from 'path'
 import { randomUUID } from 'crypto'
-import { gitArgs } from '@bakin/core/net/git-args'
+import { gitArgs, gitFailureMessage } from '@bakin/core/net/git-args'
 
 export interface AsyncGitRunner {
   /** Run `git <args>` and return stdout; throw on non-zero exit. An aborted `signal` kills the child and rejects with its reason. */
@@ -86,7 +86,7 @@ const realGitAsync: AsyncGitRunner = (args, opts = {}) => new Promise((resolvePr
       resolvePromise(stdout)
       return
     }
-    reject(new Error(stderr.trim() || `git ${args.join(' ')} exited with code ${code}`))
+    reject(new Error(gitFailureMessage(stderr, `git ${args.join(' ')} exited with code ${code}`)))
   })
 })
 

@@ -43,6 +43,11 @@ describe('a stored runtime runs to a marker', () => {
     expect(lines.runtime?.message).toContain('pi')
     expect(lines.llm?.status).toBe('ok')
     expect(lines.mkdir?.status).toBe('ok')
+    // Bakin's own projected skills and managed blocks are put in place by the
+    // run itself: a clean first run does not end on "5 plugin assets need
+    // install" for the server to clear at its first start.
+    expect(lines['plugin-assets']).toMatchObject({ status: 'ok' })
+    expect(lines['agent-sync']).toMatchObject({ status: 'ok' })
     expect(Object.values(lines).filter((line) => line.status === 'error')).toEqual([])
     // Warnings (unapproved installs) are allowed; errors are not.
     expect(run.exitCode).toBe(2)

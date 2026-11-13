@@ -723,6 +723,8 @@ describe('plugin-assets — binaries', () => {
     writeFileSync(join(installedDir, 'SKILL.md'), 'My own version.\n')
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('warn')
+    // The user locked it: install() would not touch it, so onboarding must not try.
+    expect(check.repairable).toBeUndefined()
     expect(check.message).toMatch(/1 user-edited skill\(s\) differ from what the plugin ships: cold-email \(sdr\)/)
     expect(check.remediation).toMatch(/\.userEdited/)
   })
@@ -760,6 +762,7 @@ describe('plugin-assets — binaries', () => {
     }))
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('warn')
+    expect(check.repairable).toBeUndefined()
     expect(check.message).toMatch(/1 plugin\(s\) declare binaries this Bakin cannot verify: oldterm \(.*extractedSha256/)
     expect(check.remediation).toMatch(/bakin plugins upgrade oldterm/)
     // The repair reports it as failed with the upgrade — never "0 plugin assets to install".
@@ -819,6 +822,8 @@ describe('plugin-assets — binaries', () => {
     }))
     const check = await pluginAssetsComponent.check()
     expect(check.status).toBe('warn')
+    // A missing pinned binary is exactly what install() writes: onboarding repairs it.
+    expect(check.repairable).toBe(true)
     expect(check.message).toMatch(/1 binary missing: tool \(term\)/)
     expect(check.remediation).toMatch(/bakin install plugin-assets/)
 

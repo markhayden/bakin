@@ -83,6 +83,9 @@ async function check(): Promise<CheckResult> {
     message: `${report.findings.length} agent-sync finding(s): ${parts.join(', ')}`,
     remediation,
     details: report as unknown as Record<string, unknown>,
+    // The local sync recomposes managed blocks and re-projects from installed
+    // sources. The one-time block migration is confirmed, never implicit.
+    ...(errors === 0 && !report.migrationNeeded ? { repairable: true } : {}),
   }
 }
 

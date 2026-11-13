@@ -58,6 +58,16 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let runtimeAgents: Array<{ id: string; identity?: { name?: string } }> = []
+
+/** What this home can say about a model: absent = nobody knows (the eligibility engine's `unknown`). */
+const modelVerdicts = new Map<string, { status: 'eligible' } | { status: 'ineligible'; reason: string; detail: string }>()
+let eligibilityThrows = false
+mock.module('../../src/core/model-eligibility', () => ({
+  getModelEligibility: async (_runtime: unknown, opts: { extraIds?: string[] } = {}) => {
+    if (eligibilityThrows) throw new Error('catalog unavailable')
+    return { byModel: new Map((opts.extraIds ?? []).map((id) => [id, { eligibility: modelVerdicts.get(id) ?? { status: 'unknown', detail: 'could not verify' } }])) }
+  },
+}))
 let updateAllowlistError: Error | null = null
 
 const adapterCalls: { addAgent: unknown[]; removeAgent: unknown[]; addToAllowLists: unknown[] } = {
@@ -235,7 +245,7 @@ beforeEach(() => {
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?: string[] } } = {}): string {
+function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?: string[] }; defaultModel?: string } = {}): string {
   const id = opts.id ?? 'pixel'
   const dir = join(testDir, `${id}-pkg`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
@@ -253,6 +263,7 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
       identity: { name: 'Pixel', emoji: opts.emoji ?? '🎨' },
       role: 'Image artist',
       dispatchableBy: ['main'],
+      ...(opts.defaultModel ? { defaultModel: opts.defaultModel } : {}),
     },
     install: {
       createIfMissing: true,
@@ -392,6 +403,49 @@ describe('installPackage — fresh install (kind:"agent")', () => {
 })
 
 // ─── Adopt mode ──────────────────────────────────────────────────────────────
+
+describe('installPackage — a package model this home cannot run (#1055)', () => {
+  const MODEL = 'openai/gpt-5.4-mini'
+  const createdWith = () => (adapterCalls.addAgent[0] as { model?: string }).model
+  beforeEach(() => {
+    modelVerdicts.clear()
+    eligibilityThrows = false
+  })
+
+  it('a model known to be unrunnable is left off: the agent inherits the home default and the result says why', async () => {
+    modelVerdicts.set(MODEL, { status: 'ineligible', reason: 'no_credentials', detail: 'no credentials for openai' })
+    const result = await installPackage({ source: seedAgentPackage({ defaultModel: MODEL }) })
+    expect(createdWith()).toBeUndefined()
+    expect(result.modelFallback).toEqual({ declared: MODEL, reason: 'no credentials for openai' })
+  })
+
+  it('a model that can run is the one the agent is created with', async () => {
+    modelVerdicts.set(MODEL, { status: 'eligible' })
+    const result = await installPackage({ source: seedAgentPackage({ defaultModel: MODEL }) })
+    expect(createdWith()).toBe(MODEL)
+    expect(result.modelFallback).toBeUndefined()
+  })
+
+  it('when nobody can say, the author\'s choice stands', async () => {
+    const unknown = await installPackage({ source: seedAgentPackage({ defaultModel: MODEL }) })
+    expect(createdWith()).toBe(MODEL)
+    expect(unknown.modelFallback).toBeUndefined()
+  })
+
+  it('a failing eligibility read never blocks the install', async () => {
+    eligibilityThrows = true
+    const result = await installPackage({ source: seedAgentPackage({ defaultModel: MODEL }) })
+    expect(result.createdAgent).toBe(true)
+    expect(createdWith()).toBe(MODEL)
+  })
+
+  it('a package that names no model asks nothing', async () => {
+    eligibilityThrows = true
+    const result = await installPackage({ source: seedAgentPackage() })
+    expect(createdWith()).toBeUndefined()
+    expect(result.modelFallback).toBeUndefined()
+  })
+})
 
 describe('installPackage — trackingSource (#1007 D7.12 R8′)', () => {
   it('records the tracking source as the lock entry\'s source while fetching from the given ref, and audits what it fetched from', async () => {

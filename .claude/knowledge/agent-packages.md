@@ -164,7 +164,7 @@ On failure: rollback every projection in reverse via `unprojectPackage()`; remov
 optional fetch → reclaim → ALWAYS local re-projection (context layers change
 without the source moving) → verify via the drift scanner → receipt + audit.
 
-`defaultModel` and `dispatchableBy` are NOT re-applied on update — they only propagate on fresh install per D5.
+`defaultModel` and `dispatchableBy` are NOT re-applied on update — they only propagate on fresh install per D5. A `defaultModel` this home is known to be unable to run is not applied at all: the agent is created without a model, inherits the home default, and the install result carries `modelFallback { declared, reason }` (#1055).
 
 ## Workflow + skill source registry tiers
 
