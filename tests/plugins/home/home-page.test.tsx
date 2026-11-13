@@ -18,6 +18,12 @@ import type { HomeStateResponse } from '../../../plugins/home/types'
 
 let response: { data: HomeStateResponse | null; loading: boolean; error: string | null } = { data: null, loading: false, error: null }
 const refresh = mock()
+const TOUR = [
+  { id: 'chat', title: 'Chat', icon: 'MessageSquare', body: 'Talk to any agent. Everything is kept.', first: 'Ask your main agent something.', href: '/chat' },
+  { id: 'tasks', title: 'Tasks', icon: 'CheckSquare', body: 'The board is where work lives. Agents pick tasks up.', first: 'Break a goal into tasks.', href: '/tasks' },
+  { id: 'health', title: 'Health', icon: 'HeartPulse', body: 'Bakin watches itself. Health says what is wrong.', first: 'Look here first.', href: '/health' },
+]
+let tourResponse: { data: { ok: true; slides: typeof TOUR } | null; loading: boolean; error: string | null } = { data: { ok: true, slides: TOUR }, loading: false, error: null }
 const toast = mock()
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
 /** Whether a browser terminal is installed, and what opening one answers. */
@@ -26,7 +32,11 @@ const terminalOpens: Array<[string, string]> = []
 mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks,
   toast,
-  usePluginJsonFetch: () => ({ ...response, refresh }),
+  usePluginJsonFetch: (_pluginId: string, path: string | null) => {
+    if (path === 'tour') return { ...tourResponse, refresh }
+    if (path === null) return { data: null, loading: false, error: null, refresh }
+    return { ...response, refresh }
+  },
   useTerminalHandoff: () => ({
     available: terminal.available,
     busy: false,
@@ -106,6 +116,7 @@ beforeEach(() => {
   requests.length = 0
   pushed.length = 0
   query = {}
+  tourResponse = { data: { ok: true, slides: TOUR }, loading: false, error: null }
   querySets.length = 0
   terminal = { available: false, error: null, opens: 's1' }
   terminalOpens.length = 0
@@ -553,5 +564,69 @@ describe('Home: do more with Bakin', () => {
   it('is not shown while logging in or meeting the agent, whatever the response carries', async () => {
     await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: [], suggestions: SUGGESTIONS, suggestionCount: 2 })
     expect(section()).toBeNull()
+  })
+})
+
+describe('Home: the tour', () => {
+  const dialog = () => screen.queryByRole('dialog')
+  const touring = async (slide: string, data: Shown = ready()) => {
+    query = { tour: slide }
+    await show(data)
+  }
+
+  it('is offered on a ready Home and while logging in, and is never open by itself', async () => {
+    await show(ready())
+    expect(screen.getByRole('link', { name: 'Take a two-minute tour' }).getAttribute('href')).toBe('/?tour=start')
+    expect(dialog()).toBeNull()
+    cleanup()
+    await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: [] })
+    expect(screen.getByRole('link', { name: 'Take a two-minute tour' })).toBeTruthy()
+    cleanup()
+    await show({ ok: true, state: { name: 'meet-agent', agent: { id: 'main', name: 'Main' } }, starters: [] })
+    expect(screen.queryByRole('link', { name: 'Take a two-minute tour' })).toBeNull()
+  })
+
+  it('opens on the first slide: where it is, what the area is for, one thing to try, and its page', async () => {
+    await touring('start')
+    const slide = within(dialog()!)
+    expect(dialog()!.getAttribute('aria-labelledby')).toBeTruthy()
+    expect(slide.getByRole('heading', { name: 'Chat' })).toBeTruthy()
+    expect(slide.getByText('1 of 3')).toBeTruthy()
+    expect(slide.getByText('Talk to any agent. Everything is kept.')).toBeTruthy()
+    expect(slide.getByText('Ask your main agent something.')).toBeTruthy()
+    expect(slide.getByRole('link', { name: 'Open Chat' }).getAttribute('href')).toBe('/chat')
+    // Nowhere to go back to from the first slide.
+    expect(slide.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+
+  it('Next and Back move through the URL, naming where Next goes', async () => {
+    await touring('tasks')
+    const slide = within(dialog()!)
+    expect(slide.getByText('2 of 3')).toBeTruthy()
+    await act(async () => { fireEvent.click(slide.getByRole('button', { name: 'Next: Health' })) })
+    await act(async () => { fireEvent.click(slide.getByRole('button', { name: 'Back' })) })
+    expect(querySets).toEqual([['tour', 'health'], ['tour', 'chat']])
+  })
+
+  it('the last slide ends with Done, which hands back to Home', async () => {
+    await touring('health')
+    const slide = within(dialog()!)
+    expect(slide.queryByRole('button', { name: /^Next/ })).toBeNull()
+    await act(async () => { fireEvent.click(slide.getByRole('button', { name: 'Done' })) })
+    expect(querySets).toEqual([['tour', '']])
+  })
+
+  it('closing it any other way also clears the URL', async () => {
+    await touring('tasks')
+    await act(async () => { fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close the tour' })) })
+    expect(querySets).toEqual([['tour', '']])
+  })
+
+  it('slides that cannot be loaded say so and put the tour away, never an empty dialog', async () => {
+    tourResponse = { data: null, loading: false, error: 'Request failed (500)' }
+    await touring('start')
+    expect(dialog()).toBeNull()
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("The tour couldn't be loaded. Try again.", 'error'))
+    expect(querySets).toEqual([['tour', '']])
   })
 })
