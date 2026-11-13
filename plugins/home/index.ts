@@ -129,7 +129,7 @@ const routes = [
     path: '/hello',
     method: 'POST',
     summary: 'Record that the person said hello',
-    description: 'Called after the first hello was sent, so Home stops offering it. The message itself is an ordinary chat message the person sent.',
+    description: 'Called after the first hello was sent, or put away with "Not now", so Home stops offering it. The message itself is an ordinary chat message the person sent.',
     responses: { 200: okResponse },
     handler: async () => {
       recordHello()

@@ -160,7 +160,7 @@ export function Introduction({ agent, personalities, resume, onFinished }: Intro
       <AgentTurn turn={turn(step)} agent={speaker} />
 
       {failure ? (
-        <Alert variant="destructive">
+        <Alert tone="danger">
           <AlertTitle>Setup didn't finish</AlertTitle>
           <AlertDescription>{failure}</AlertDescription>
         </Alert>

@@ -4,7 +4,8 @@
  * Patterns: `storybook/public/pages/page.stories.tsx` (CanonicalUsage,
  * StandardWidth), `feedback/system-state.stories.tsx` (StateMatrix) for
  * every non-ready state, `lists/list-rows.stories.tsx` (InteractiveRows)
- * for starters, and the conversation kit's `Composer` for the prompt. The
+ * for starters, `feedback/alert.stories.tsx` (action) for the first hello,
+ * and the conversation kit's `Composer` for the prompt. The
  * introduction is `introduction.tsx`.
  */
 import { Suspense, useCallback, useRef, useState } from 'react'
@@ -12,7 +13,8 @@ import { Composer } from '@makinbakin/sdk/conversation'
 import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
 import { Introduction } from './introduction'
 import type { HomeStarter, HomeState, HomeStateResponse } from '../types'
@@ -30,9 +32,22 @@ function titleFor(state: HomeState | undefined): string {
 interface ReadyViewProps {
   agent: { id: string; name: string }
   starters: HomeStarter[]
+  /** The introduction just finished and nobody has said hello yet. */
+  hello: boolean
+  /** The hello offer was used or put away: Home should look again. */
+  onHelloSettled: () => void
 }
 
-function ReadyView({ agent, starters }: ReadyViewProps) {
+/** The offer is over once this is recorded; a failure only means it is offered again. */
+async function recordHello(): Promise<void> {
+  try {
+    await pluginFetch('home', 'hello', { method: 'POST' })
+  } catch {
+    // Nothing is lost: Home offers the hello again next time.
+  }
+}
+
+function ReadyView({ agent, starters, hello, onHelloSettled }: ReadyViewProps) {
   const router = useRouter()
   const [sending, setSending] = useState(false)
   // A second submit while the first is still creating its chat must not make a second chat.
@@ -58,6 +73,30 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
     }
   }, [agent.id, agent.name, router])
 
+  const sayHello = useCallback(async () => {
+    if (inFlight.current) return
+    inFlight.current = true
+    setSending(true)
+    try {
+      const result = await startChat(agent.id, `Hello, ${agent.name}!`, { title: `Meeting ${agent.name}` })
+      if (!result.chatId) {
+        toast(`Couldn't start a conversation with ${agent.name}. Try again.`, 'error')
+        return
+      }
+      await recordHello()
+      if (!result.sent) toast("Message didn't send. Your text is waiting in the composer.", 'error')
+      router.push(`/chat/${encodeURIComponent(result.chatId)}`)
+    } finally {
+      inFlight.current = false
+      setSending(false)
+    }
+  }, [agent.id, agent.name, router])
+
+  const notNow = useCallback(async () => {
+    await recordHello()
+    onHelloSettled()
+  }, [onHelloSettled])
+
   const pick = useCallback((starter: HomeStarter) => {
     if (starter.needsAttachment) {
       router.push(draftChatWith(agent.id, starter.prompt))
@@ -68,6 +107,16 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
 
   return (
     <div className="flex flex-col gap-bakin-6">
+      {hello ? (
+        <Alert tone="accent" role="status">
+          <AlertTitle>{agent.name} is ready to meet you</AlertTitle>
+          <AlertDescription>Say hello and see how {agent.name} answers. You can change the name or personality any time on the Team page.</AlertDescription>
+          <AlertAction>
+            <Button size="xs" variant="ghost" disabled={sending} onClick={() => { void notNow() }}>Not now</Button>
+            <Button size="xs" disabled={sending} onClick={() => { void sayHello() }}>Say hello to {agent.name}</Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
       <Composer
         storageKey="home"
         onSend={send}
@@ -141,7 +190,7 @@ function HomePageInner() {
         ) : state.name === 'meet-agent' ? (
           <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
-          <ReadyView agent={state.agent} starters={data.starters} />
+          <ReadyView agent={state.agent} starters={data.starters} hello={data.hello} onHelloSettled={() => { void refresh() }} />
         ) : (
           <NotReadyView state={state} />
         )}

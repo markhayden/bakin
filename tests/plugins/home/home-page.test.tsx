@@ -208,6 +208,53 @@ describe('Home: not ready', () => {
   })
 })
 
+describe('Home: saying hello', () => {
+  const offered = (): Shown => ({ ...ready(), hello: true })
+
+  it('is not offered unless the server says so', async () => {
+    await show(ready())
+    expect(screen.queryByRole('button', { name: 'Say hello to Nova' })).toBeNull()
+  })
+
+  it('sends an ordinary first message in a titled chat, records the hello, and opens the chat', async () => {
+    answers = [{ status: 201, body: { chat: { id: 'c9' } } }, { status: 202, body: { ok: true } }, { status: 200, body: { ok: true } }]
+    await show(offered())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Say hello to Nova' })) })
+    await waitFor(() => expect(pushed).toEqual(['/chat/c9']))
+    expect(requests).toEqual([
+      { path: 'chats', body: { agentId: 'main', title: 'Meeting Nova' } },
+      { path: 'chats/c9/messages', body: { content: 'Hello, Nova!' } },
+      { path: 'hello', body: null },
+    ])
+  })
+
+  it('a chat that cannot be created says so, records nothing, and the offer stays', async () => {
+    answers = [{ status: 500, body: { error: 'nope' } }]
+    await show(offered())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Say hello to Nova' })) })
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("Couldn't start a conversation with Nova. Try again.", 'error'))
+    expect(requests.map((request) => request.path)).toEqual(['chats'])
+    expect(pushed).toEqual([])
+    expect(screen.getByRole('button', { name: 'Say hello to Nova' })).toBeTruthy()
+  })
+
+  it('a hello that could not be recorded still opens the chat: it is only offered again', async () => {
+    answers = [{ status: 201, body: { chat: { id: 'c10' } } }, { status: 202, body: { ok: true } }, new Error('connection reset')]
+    await show(offered())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Say hello to Nova' })) })
+    await waitFor(() => expect(pushed).toEqual(['/chat/c10']))
+  })
+
+  it('"Not now" puts the offer away without sending anything, and Home looks again', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    await show(offered())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Not now' })) })
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toEqual([{ path: 'hello', body: null }])
+    expect(pushed).toEqual([])
+  })
+})
+
 describe('Home: meet your agent', () => {
   const meet = (resume?: { agentName: string; personality: { kind: 'preset'; id: string } | { kind: 'custom'; description: string }; userName: string }): Shown => ({
     ok: true, state: { name: 'meet-agent', agent: { id: 'main', name: 'Main' }, ...(resume ? { resume } : {}) }, starters: STARTERS,
