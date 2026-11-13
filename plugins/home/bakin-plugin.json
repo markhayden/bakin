@@ -9,10 +9,18 @@
   "dependencies": [],
   "permissions": [
     "storage.read",
-    "storage.write"
+    "storage.write",
+    "runtime.read",
+    "runtime.agents"
   ],
   "contributes": {
-    "apiRoutes": [],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/state",
+        "summary": "What Home shows now"
+      }
+    ],
     "slots": [
       "page:/home"
     ]
