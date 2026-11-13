@@ -1,7 +1,7 @@
 import type { AgentRuntimeAdapter, RuntimeCompatibility } from '@bakin/core/adapters/runtime'
 import type { HealthCheckRegistrationInput } from '@bakin/core/plugin-types'
 import { createOpenClawHealthChecks, createOpenClawRuntimeAdapter, isOpenClawPresent } from '@bakin/adapter-openclaw'
-import { createPiHealthChecks, createPiRuntimeAdapter, isPiPresent, PI_CLI_INSTALL_HINT } from '@bakin/adapter-pi'
+import { createPiHealthChecks, createPiRuntimeAdapter, isPiPresent, PI_CLI_INSTALL_HINT, PI_LOGIN_COMMAND } from '@bakin/adapter-pi'
 import { withModelAvailabilityObservation } from './model-availability'
 import type { RuntimeAdapterName } from './settings'
 
@@ -16,6 +16,12 @@ export interface RuntimeAdapterSupportInfo {
   setupHint: string
   /** How to log a provider in. Bakin never handles the secret; the operator does this in the runtime. */
   loginSteps: readonly string[]
+  /**
+   * The shell command that starts the sign-in, when the runtime has one. A
+   * surface may offer to copy it or to open it in a terminal; it is never
+   * run for the operator.
+   */
+  loginCommand?: string
 }
 
 const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportInfo> = {
@@ -41,6 +47,7 @@ const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportI
       'Type `/login` and pick a provider (there is no `pi login` command).',
       'Finish the sign-in, then quit pi.',
     ],
+    loginCommand: PI_LOGIN_COMMAND,
   },
 }
 

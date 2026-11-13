@@ -12,6 +12,8 @@ import { createLogger } from '../../src/core/logger'
 import { installableComponent } from '../../src/core/onboarding/index'
 import { componentInstallOperation } from '../../src/core/onboarding/operation'
 import { getOperationRegistry } from '../../src/core/operations'
+import { getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory'
+import { getSettings } from '../../src/core/settings'
 import { setOperatorName } from '../../src/core/team-context'
 import { HOME_CONTENT } from './lib/content'
 import { introductionAnswersSchema } from './lib/decisions'
@@ -41,7 +43,19 @@ const stateResponse = z.object({
   personalities: z.array(z.object({ id: z.string(), label: z.string(), sample: z.string() })),
   hello: z.boolean(),
   introductionSkipped: z.boolean(),
+  login: z.object({ runtime: z.string(), steps: z.array(z.string()), command: z.string().optional(), docsUrl: z.string() }).optional(),
 })
+
+/** The active runtime's own way to log a provider in. Bakin shows it; the person does it. */
+function loginFor(): NonNullable<HomeStateResponse['login']> {
+  const support = getRuntimeAdapterSupport(getSettings().runtime.adapter)
+  return {
+    runtime: support.label,
+    steps: [...support.loginSteps],
+    ...(support.loginCommand ? { command: support.loginCommand } : {}),
+    docsUrl: support.docsUrl,
+  }
+}
 
 const okResponse = z.object({ ok: z.literal(true) })
 const introductionFailed = z.object({ ok: z.literal(false), step: z.enum(['identity', 'person', 'sync']), error: z.string() })
@@ -74,9 +88,10 @@ const routes = [
           runtime: ctx.runtime,
           canGenerateImage: () => ctx.hooks.invoke<boolean>('images.canGenerate', {}),
         })
+        const state = homeState(facts)
         const body: HomeStateResponse = {
           ok: true,
-          state: homeState(facts),
+          state,
           starters: availableStarters(HOME_CONTENT.starters, facts.starters).map((starter) => ({
             id: starter.id,
             title: starter.title,
@@ -87,6 +102,7 @@ const routes = [
           personalities: HOME_CONTENT.personalities.map(({ id, label, sample }) => ({ id, label, sample })),
           hello: offersHello(facts.decisions),
           introductionSkipped: facts.decisions.introduction?.status === 'skipped',
+          ...(state.name === 'needs-login' ? { login: loginFor() } : {}),
         }
         return Response.json(body)
       } catch (err) {

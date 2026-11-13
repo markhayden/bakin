@@ -14,7 +14,7 @@ import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import './bun-static-modules'
 import { PiRuntimeAdapter, type PiRuntimeAdapterOptions } from './runtime'
 
-export { createPiHealthChecks } from './health-checks'
+export { createPiHealthChecks, PI_LOGIN_COMMAND } from './health-checks'
 export { isPiPresent } from './presence'
 export { PI_CLI_INSTALL_HINT, PI_CLI_MIN_NODE, PI_CLI_PACKAGE } from './cli-requirements'
 

@@ -103,9 +103,23 @@ describe('GET /state', () => {
     expect(body.starters.find((starter) => starter.id === 'summarize-document')?.needsAttachment).toBe(true)
   })
 
-  it('a named agent with no provider logged in needs a login', async () => {
+  it('a named agent with no provider logged in needs a login, and is told how on the active runtime', async () => {
     roster = [{ id: 'main', name: 'Nova', role: 'orchestrator' }]
-    expect((await state()).state).toEqual({ name: 'needs-login', agent: { id: 'main', name: 'Nova' } })
+    const body = await state()
+    expect(body.state).toEqual({ name: 'needs-login', agent: { id: 'main', name: 'Nova' } })
+    // The harness home runs the default runtime; its own steps come through untouched.
+    expect(body.login?.runtime).toBe('OpenClaw')
+    expect(body.login?.steps.length).toBeGreaterThan(0)
+    expect(body.login?.docsUrl).toMatch(/^https:/)
+  })
+
+  it('no login help is sent when no login is needed', async () => {
+    roster = [{ id: 'main', name: 'Nova', role: 'orchestrator' }]
+    providers = ['openai-codex']
+    expect((await state()).login).toBeUndefined()
+    roster = [{ id: 'main', name: 'Main', role: 'orchestrator' }]
+    providers = []
+    expect((await state()).login).toBeUndefined() // meet-agent comes first
   })
 
   it('a named agent with a login is ready', async () => {

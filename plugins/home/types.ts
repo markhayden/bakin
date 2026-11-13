@@ -26,6 +26,18 @@ export interface HomeStateResponse {
   hello: boolean
   /** The introduction was skipped: Home keeps a quiet way back to it. */
   introductionSkipped: boolean
+  /** How to log a provider in on this runtime. Present only when the state is `needs-login`. */
+  login?: HomeLogin
+}
+
+export interface HomeLogin {
+  /** The runtime's name as people write it. */
+  runtime: string
+  /** The runtime's own steps, in order. Text in backticks is something to type. */
+  steps: string[]
+  /** The shell command that starts the sign-in, when the runtime has one. Never run by Bakin. */
+  command?: string
+  docsUrl: string
 }
 
 export interface HomePersonality {

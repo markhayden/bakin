@@ -5,19 +5,20 @@
  * StandardWidth), `feedback/system-state.stories.tsx` (StateMatrix) for
  * every non-ready state, `lists/list-rows.stories.tsx` (InteractiveRows)
  * for starters, `feedback/alert.stories.tsx` (action) for the first hello,
+ * `feedback/handoff-card.stories.tsx` for logging in,
  * and the conversation kit's `Composer` for the prompt. The
  * introduction is `introduction.tsx`.
  */
 import { Suspense, useCallback, useRef, useState } from 'react'
 import { Composer } from '@makinbakin/sdk/conversation'
-import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
+import { handoffReturnChannel, toast, useHandoffReturn, usePluginJsonFetch, useTerminalHandoff } from '@makinbakin/sdk/hooks'
 import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
-import { ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
+import { HandoffCard, ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
 import { Introduction } from './introduction'
-import type { HomeStarter, HomeState, HomeStateResponse } from '../types'
+import type { HomeLogin, HomeStarter, HomeState, HomeStateResponse } from '../types'
 
 const STATE_TIMEOUT_MS = 15_000
 /** How many starters Home offers at once. */
@@ -29,6 +30,7 @@ const INTRODUCE_PATH = `/home?${INTRODUCE_PARAM}=1`
 
 function titleFor(state: HomeState | undefined, introducing: boolean): string {
   if (state?.name === 'meet-agent' || introducing) return 'Meet your main agent'
+  if (state?.name === 'needs-login') return `One step before ${state.agent.name} can answer`
   if (state?.name === 'ready') return 'What do you want to do?'
   return 'Home'
 }
@@ -146,30 +148,112 @@ function ReadyView({ agent, starters, hello, onHelloSettled }: ReadyViewProps) {
   )
 }
 
-/** States that have no screen of their own yet say what is true and where it is fixed today. */
-function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' | 'meet-agent' }> }) {
-  if (state.name === 'unavailable') {
-    const model = state.reason === 'model_cannot_run'
-    return (
-      <SystemState
-        kind="error"
-        scope="page"
-        title={model ? "Your agent's model can't run here" : "Bakin can't reach its agents right now"}
-        description={model
-          ? `A provider is logged in, but not one this agent's model belongs to${state.detail ? ` (${state.detail})` : ''}. Pick a model that can run on the Models page.`
-          : 'The agent runtime is not answering. Health shows what is wrong and how to fix it.'}
-        action={<Button render={<PluginLink to={state.href} />}>{model ? 'Open Models' : 'Open Health'}</Button>}
-      />
-    )
-  }
+/** Home cannot work right now: say what is true and where it is fixed. */
+function UnavailableView({ state }: { state: Extract<HomeState, { name: 'unavailable' }> }) {
+  const model = state.reason === 'model_cannot_run'
   return (
     <SystemState
-      kind="initial-empty"
+      kind="error"
       scope="page"
-      title={`${state.agent.name} can't answer yet`}
-      description="No AI provider is logged in, so agents cannot run. Health shows the steps to log in."
-      action={<Button render={<PluginLink to="/health" />}>Open Health</Button>}
+      title={model ? "Your agent's model can't run here" : "Bakin can't reach its agents right now"}
+      description={model
+        ? `A provider is logged in, but not one this agent's model belongs to${state.detail ? ` (${state.detail})` : ''}. Pick a model that can run on the Models page.`
+        : 'The agent runtime is not answering. Health shows what is wrong and how to fix it.'}
+      action={<Button render={<PluginLink to={state.href} />}>{model ? 'Open Models' : 'Open Health'}</Button>}
     />
+  )
+}
+
+/** Home's own handoff channel: coming back from the sign-in makes Home look again. */
+const HOME_CONSUMER = 'home'
+const LOGIN_HANDOFF = 'login'
+
+/** A runtime's step, with anything in backticks shown as something to type. */
+function StepText({ text }: { text: string }) {
+  return (
+    <>
+      {text.split('`').map((part, index) => (
+        // The parts of one fixed sentence never reorder.
+        index % 2 === 1 ? <code key={index} className="font-bakin-typography-family-mono">{part}</code> : <span key={index}>{part}</span>
+      ))}
+    </>
+  )
+}
+
+interface LoginViewProps {
+  agent: { id: string; name: string }
+  login: HomeLogin | undefined
+  starters: HomeStarter[]
+  /** Look at the machine again: the person says they are logged in, or came back from doing it. */
+  onCheck: () => void
+  checking: boolean
+}
+
+/**
+ * No provider is logged in. Bakin never handles the secret: it shows the
+ * runtime's own steps, hands over the command (typed into a Terminal
+ * session where one is installed, copyable everywhere), and looks again
+ * when the person comes back.
+ */
+function LoginView({ agent, login, starters, onCheck, checking }: LoginViewProps) {
+  const terminal = useTerminalHandoff(Boolean(login?.command))
+  const channel = handoffReturnChannel(HOME_CONSUMER)
+
+  const openTerminal = useCallback(async () => {
+    if (!login?.command) return
+    channel.arm(LOGIN_HANDOFF)
+    const sessionId = await terminal.open(login.command, `Log in to ${login.runtime}`)
+    if (!sessionId) channel.disarm(LOGIN_HANDOFF)
+  }, [channel, login, terminal])
+
+  return (
+    <div className="flex flex-col gap-bakin-6" data-home-login>
+      <p className="text-bakin-text-muted">
+        {agent.name} needs an AI provider to think with, and none is logged in yet. You log in yourself{login ? `, in ${login.runtime}` : ''}; Bakin never sees your password or key.
+      </p>
+      {login ? (
+        // Numbered by hand: the canonical stylesheet carries no list-marker utility.
+        <ol className="flex flex-col gap-bakin-2">
+          {login.steps.map((step, index) => (
+            <li key={step} className="flex gap-bakin-2">
+              <span aria-hidden="true" className="shrink-0 text-bakin-text-muted">{index + 1}.</span>
+              <span className="min-w-0"><StepText text={step} /></span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {login?.command ? (
+        <HandoffCard
+          title="Start the sign-in"
+          description={terminal.available
+            ? 'Open in Terminal types the command for you. Press Enter to run it, follow the steps above, then come back here.'
+            : 'Run this in a terminal on the machine Bakin runs on, follow the steps above, then come back here.'}
+          command={login.command}
+          onCopied={() => channel.arm(LOGIN_HANDOFF)}
+          onOpenTerminal={terminal.available ? () => { void openTerminal() } : undefined}
+          busy={terminal.busy}
+          error={terminal.error ?? undefined}
+          headingLevel={2}
+        />
+      ) : null}
+      <div className="flex flex-wrap items-center gap-bakin-3">
+        <Button onClick={onCheck} disabled={checking}>{checking ? 'Checking…' : "I've logged in. Check again"}</Button>
+        {login ? <a href={login.docsUrl} target="_blank" rel="noreferrer" className="underline">{login.runtime} docs</a> : null}
+      </div>
+      {starters.length > 0 ? (
+        <section aria-labelledby="home-locked-starters" className="flex flex-col gap-bakin-3">
+          <h2 id="home-locked-starters" className="text-bakin-text-muted">Then you can ask {agent.name} for things like</h2>
+          <ListRows variant="bordered" aria-labelledby="home-locked-starters">
+            {starters.slice(0, STARTER_LIMIT).map((starter) => (
+              <ListRow key={starter.id}>
+                <span className="block font-bakin-typography-weight-semibold text-bakin-text-muted">{starter.title}</span>
+                <span className="block text-bakin-text-muted">{starter.description}</span>
+              </ListRow>
+            ))}
+          </ListRows>
+        </section>
+      ) : null}
+    </div>
   )
 }
 
@@ -180,6 +264,9 @@ function HomePageInner() {
   // Reopening needs an agent to introduce; a home that cannot read its roster shows that instead.
   const reopened = introduce === '1' && state !== undefined && state.name !== 'unavailable' && state.name !== 'meet-agent'
   const closeIntroduction = useCallback(() => { setIntroduce('') }, [setIntroduce])
+  const lookAgain = useCallback(() => { void refresh() }, [refresh])
+  // Back from the sign-in (the Terminal route, or their own shell): look again, once.
+  useHandoffReturn(HOME_CONSUMER, lookAgain)
 
   return (
     <Page width="standard">
@@ -206,8 +293,10 @@ function HomePageInner() {
           <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
           <ReadyView agent={state.agent} starters={data.starters} hello={data.hello} onHelloSettled={() => { void refresh() }} />
+        ) : state.name === 'needs-login' ? (
+          <LoginView agent={state.agent} login={data.login} starters={data.starters} onCheck={lookAgain} checking={loading} />
         ) : (
-          <NotReadyView state={state} />
+          <UnavailableView state={state} />
         )}
         {data?.introductionSkipped && state && !reopened && (state.name === 'ready' || state.name === 'needs-login') ? (
           <p className="text-bakin-text-muted">

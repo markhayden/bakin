@@ -20,10 +20,19 @@ let response: { data: HomeStateResponse | null; loading: boolean; error: string 
 const refresh = mock()
 const toast = mock()
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
+/** Whether a browser terminal is installed, and what opening one answers. */
+let terminal: { available: boolean | null; error: string | null; opens: string | null } = { available: false, error: null, opens: 's1' }
+const terminalOpens: Array<[string, string]> = []
 mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks,
   toast,
   usePluginJsonFetch: () => ({ ...response, refresh }),
+  useTerminalHandoff: () => ({
+    available: terminal.available,
+    busy: false,
+    error: terminal.error,
+    open: async (command: string, title: string) => { terminalOpens.push([command, title]); return terminal.opens },
+  }),
 }))
 
 const pushed: string[] = []
@@ -98,6 +107,9 @@ beforeEach(() => {
   pushed.length = 0
   query = {}
   querySets.length = 0
+  terminal = { available: false, error: null, opens: 's1' }
+  terminalOpens.length = 0
+  realSdkHooks.handoffReturnChannel('home').take()
   drafts.length = 0
   lastSend = null
   holdCreate = null
@@ -195,13 +207,6 @@ describe('Home: not ready', () => {
     expect(screen.getByText("Home couldn't load")).toBeTruthy()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Try again' })) })
     expect(refresh).toHaveBeenCalledTimes(1)
-  })
-
-  it('no provider logged in: names the agent and points at Health; nothing that would fail is offered', async () => {
-    await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: STARTERS })
-    expect(screen.getByText("Nova can't answer yet")).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe('/health')
-    expect(screen.queryByLabelText(/^Ask /)).toBeNull()
   })
 
   it('an unreachable runtime points at Health; a model that cannot run points at Models with the reason', async () => {
@@ -428,5 +433,76 @@ describe('Home: the introduction can be reopened', () => {
     await show({ ok: true, state: { name: 'unavailable', reason: 'runtime_unreachable', href: '/health' }, starters: [] })
     expect(screen.getByText("Bakin can't reach its agents right now")).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+  })
+})
+
+describe('Home: logging in', () => {
+  const LOGIN = { runtime: 'Pi', steps: ['Open another terminal and run `pi`.', 'Type `/login` and pick a provider.'], command: 'pi', docsUrl: 'https://pi.dev/docs/latest' }
+  const needsLogin = (login: Partial<typeof LOGIN> | null = LOGIN): Shown => ({
+    ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: STARTERS, ...(login ? { login: login as typeof LOGIN } : {}),
+  })
+  const home = () => realSdkHooks.handoffReturnChannel('home')
+
+  it("shows the runtime's own steps in order, the command, and says Bakin never sees the secret", async () => {
+    await show(needsLogin())
+    expect(screen.getByRole('heading', { level: 1, name: 'One step before Nova can answer' })).toBeTruthy()
+    expect(screen.getAllByRole('listitem').slice(0, 2).map((item) => item.textContent)).toEqual(['1.Open another terminal and run pi.', '2.Type /login and pick a provider.'])
+    expect(screen.getByText('/login').tagName).toBe('CODE')
+    expect(screen.getByText(/Bakin never sees your password or key/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Pi docs' }).getAttribute('href')).toBe('https://pi.dev/docs/latest')
+  })
+
+  it('nothing that would fail is offered: no prompt, and the starters are shown but cannot be pressed', async () => {
+    await show(needsLogin())
+    expect(screen.queryByLabelText(/^Ask /)).toBeNull()
+    expect(screen.getByText('Brainstorm ideas')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Brainstorm ideas' })).toBeNull()
+  })
+
+  it('without a browser terminal the card is copy-only', async () => {
+    await show(needsLogin())
+    expect(screen.queryByRole('button', { name: /Terminal/ })).toBeNull()
+    expect(screen.getByText(/Run this in a terminal on the machine Bakin runs on/)).toBeTruthy()
+  })
+
+  it('with Terminal installed, "Open in Terminal" hands over the command and arms the return check', async () => {
+    terminal.available = true
+    await show(needsLogin())
+    expect(screen.getByText(/Press Enter to run it/)).toBeTruthy()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Terminal/ })) })
+    expect(terminalOpens).toEqual([['pi', 'Log in to Pi']])
+    expect(home().isArmed('login')).toBe(true)
+  })
+
+  it('a terminal that could not be opened arms nothing and says so', async () => {
+    terminal = { available: true, error: 'The Terminal plugin refused to start a session. Copy the command instead.', opens: null }
+    await show(needsLogin())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Terminal/ })) })
+    expect(home().isArmed('login')).toBe(false)
+    expect(screen.getByText(/refused to start a session/)).toBeTruthy()
+  })
+
+  it('coming back after a handoff makes Home look again, once', async () => {
+    await show(needsLogin())
+    expect(refresh).not.toHaveBeenCalled()
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(refresh).not.toHaveBeenCalled() // nothing was handed off
+    home().arm('login')
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Check again" looks at the machine again', async () => {
+    await show(needsLogin())
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: "I've logged in. Check again" })) })
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('a runtime with no command to hand over shows its steps and docs, and no card', async () => {
+    await show(needsLogin({ runtime: 'OpenClaw', steps: ['Add a provider login in OpenClaw.'], docsUrl: 'https://openclaw.ai/docs/' }))
+    expect(screen.getByText('Add a provider login in OpenClaw.')).toBeTruthy()
+    expect(screen.queryByText('Start the sign-in')).toBeNull()
+    expect(screen.getByRole('link', { name: 'OpenClaw docs' })).toBeTruthy()
   })
 })

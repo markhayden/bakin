@@ -18,7 +18,7 @@ process.env.OPENCLAW_HOME = join(root, 'openclaw')
 import { isOpenClawPresent } from '../../packages/adapter-openclaw/src/presence'
 import { isPiPresent } from '../../packages/adapter-pi/src/presence'
 import { resetPiHome } from '../../packages/adapter-pi/src/home'
-import { detectRuntimes } from '../../src/core/runtime-adapter-factory'
+import { detectRuntimes, getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory'
 
 const piAgentDir = join(root, 'pi', 'agent')
 const openClawConfig = join(root, 'openclaw', 'openclaw.json')
@@ -101,5 +101,19 @@ describe('presence probes', () => {
     detectRuntimes()
     detectRuntimes()
     expect(fingerprint(root)).toEqual(before)
+  })
+})
+
+describe('how a provider is logged in, per runtime', () => {
+  test('Pi names the command that starts its sign-in; it is the one its own steps say to run', () => {
+    const pi = getRuntimeAdapterSupport('pi')
+    expect(pi.loginCommand).toBe('pi')
+    expect(pi.loginSteps[0]).toContain(`\`${pi.loginCommand}\``)
+  })
+
+  test('OpenClaw has steps but no single command to hand over', () => {
+    const openclaw = getRuntimeAdapterSupport('openclaw')
+    expect(openclaw.loginSteps.length).toBeGreaterThan(0)
+    expect(openclaw.loginCommand).toBeUndefined()
   })
 })
