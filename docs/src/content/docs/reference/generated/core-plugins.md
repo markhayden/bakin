@@ -55,6 +55,13 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
+      <td>Home<br/><span>The page Bakin opens on: meet your main agent, ask for something, find what to add next</span></td>
+      <td><code>home</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
       <td>Images<br/><span>Provider-routed image generation, import, export, prompt routing, and platform surface profiles</span></td>
       <td><code>images</code></td>
       <td>Core</td>
@@ -72,7 +79,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>0.12.2</code></td>
+      <td><code>0.12.3</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -86,7 +93,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>0.13.0</code></td>
+      <td><code>0.14.0</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -121,7 +128,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Terminal<br/><span>Persistent shared terminals with per-agent access and retained coding worktrees.</span></td>
       <td><code>terminal</code></td>
       <td>Official</td>
-      <td><code>0.4.0-dev.30</code></td>
+      <td><code>0.4.0-dev.31</code></td>
       <td><code>git</code></td>
     </tr>
     <tr>
@@ -135,5 +142,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -69,6 +69,7 @@ import asset_vendor_sdk_internal_js from '../../public/vendor/sdk-internal.js' w
 import asset_vendor_sdk_shared_y43gvqwp_js from '../../public/vendor/sdk-shared-y43gvqwp.js' with { type: 'file' }
 import asset_vendor_jsx_dev_runtime_js from '../../public/vendor/jsx-dev-runtime.js' with { type: 'file' }
 import asset_vendor_sdk_shared_h7rc11hk_js from '../../public/vendor/sdk-shared-h7rc11hk.js' with { type: 'file' }
+import asset_api_plugins_home_assets_client_js from '../../../../plugins/home/dist/client.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_client_js from '../../../../plugins/schedule/dist/client.js' with { type: 'file' }
 import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
@@ -162,6 +163,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-shared-y43gvqwp.js', asset_vendor_sdk_shared_y43gvqwp_js],
   ['/vendor/jsx-dev-runtime.js', asset_vendor_jsx_dev_runtime_js],
   ['/vendor/sdk-shared-h7rc11hk.js', asset_vendor_sdk_shared_h7rc11hk_js],
+  ['/api/plugins/home/assets/client.js', asset_api_plugins_home_assets_client_js],
   ['/api/plugins/schedule/assets/client.js', asset_api_plugins_schedule_assets_client_js],
   ['/api/plugins/tasks/assets/client.js', asset_api_plugins_tasks_assets_client_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
@@ -198,4 +200,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/data/curated-catalog.json', asset_data_curated_catalog_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 88
+export const EMBEDDED_ASSET_COUNT = 89

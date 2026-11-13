@@ -239,6 +239,13 @@ const imagesPlugin = definePlugin({
   navItems: [],
   contentFiles: [],
   activate(ctx: PluginContext) {
+    // Other plugins ask "can an image be made here?" without importing this
+    // one: true when at least one provider is configured and routable.
+    ctx.hooks.register(
+      'images.canGenerate',
+      async () => (await providerReadiness(ctx)).some((provider) => provider.configured && provider.routable),
+      { hookKind: 'rpc', label: 'Can an image be made here', summary: 'True when at least one image provider is configured and routable' },
+    )
     // Resolved through plugin-resources: disk on a checkout, the embedded
     // copies inside a compiled binary (where this module has no directory).
     const defaultsLoaded = loadDefaultWorkflowFiles(

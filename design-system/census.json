@@ -18,11 +18,11 @@
     ]
   },
   "summary": {
-    "total": 102,
+    "total": 104,
     "byKind": {
-      "host-route": 27,
+      "host-route": 28,
       "plugin-route": 11,
-      "plugin-slot": 33,
+      "plugin-slot": 34,
       "plugin-template": 2,
       "shared-component": 29,
       "sdk-ui-export": 0
@@ -291,6 +291,30 @@
           "type": "route-definition",
           "path": "packages/host/src/routes/health.tsx",
           "detail": "createRoute path \"/health\""
+        }
+      ]
+    },
+    {
+      "id": "host-route:home",
+      "kind": "host-route",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "route": "/home"
+      },
+      "sourcePath": "packages/host/src/routes/home.tsx",
+      "symbols": [
+        "Route"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "route-definition",
+          "path": "packages/host/src/routes/home.tsx",
+          "detail": "createRoute path \"/home\""
         }
       ]
     },
@@ -1495,6 +1519,37 @@
           "type": "client-registration",
           "path": "plugins/health/client.tsx",
           "detail": "registerPlugin slots \"page:/health\" -> HealthPage"
+        }
+      ]
+    },
+    {
+      "id": "plugin-slot:home:page:/home",
+      "kind": "plugin-slot",
+      "owner": {
+        "repository": "bakin",
+        "area": "plugin",
+        "pluginId": "home"
+      },
+      "identity": {
+        "slot": "page:/home",
+        "route": "/home"
+      },
+      "sourcePath": "plugins/home/client.tsx",
+      "symbols": [
+        "HomePage"
+      ],
+      "exportStatus": "not-applicable",
+      "classification": "visual-surface",
+      "evidence": [
+        {
+          "type": "manifest-slot",
+          "path": "plugins/home/bakin-plugin.json",
+          "detail": "contributes.slots[0]"
+        },
+        {
+          "type": "client-registration",
+          "path": "plugins/home/client.tsx",
+          "detail": "registerPlugin slots \"page:/home\" -> HomePage"
         }
       ]
     },

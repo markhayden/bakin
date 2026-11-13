@@ -1,0 +1,28 @@
+{
+  "id": "home",
+  "name": "Home",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "The page Bakin opens on: meet your main agent, ask for something, find what to add next",
+  "contentFiles": [],
+  "secrets": [],
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "runtime.read",
+    "runtime.agents"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/state",
+        "summary": "What Home shows now"
+      }
+    ],
+    "slots": [
+      "page:/home"
+    ]
+  }
+}

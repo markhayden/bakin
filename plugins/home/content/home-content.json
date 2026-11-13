@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "starters": [
+    { "id": "create-image", "title": "Create an image", "description": "Describe what you want; get a few options to choose from", "prompt": "I'd like you to create an image for me. Ask me what I have in mind, then make it.", "needs": { "imageProvider": true } },
+    { "id": "research-topic", "title": "Research a topic", "description": "Name a subject; get a written brief with sources", "prompt": "I'd like you to research a topic for me and write up what you find, with sources. Ask me what the topic is.", "needs": { "capability": "web-search" } },
+    { "id": "schedule-recurring", "title": "Schedule a recurring task", "description": "Something that should happen every day or week", "prompt": "I'd like to set up something that happens on a schedule. Ask me what it is and how often, then schedule it.", "needs": {} },
+    { "id": "summarize-document", "title": "Summarize a document", "description": "Attach a file; get the short version and the action items", "prompt": "Please summarize the attached document: the short version first, then the action items.", "needs": { "attachment": true } },
+    { "id": "goal-into-tasks", "title": "Break a goal into tasks", "description": "Say what you're trying to get done; get it on the board", "prompt": "I have a goal I'd like to break down into tasks on the board. Ask me what it is, then create the tasks.", "needs": {} },
+    { "id": "draft-something", "title": "Draft something for me", "description": "An email, a post, an announcement", "prompt": "I'd like you to draft something for me. Ask me what it is and who it's for.", "needs": {} },
+    { "id": "brainstorm", "title": "Brainstorm ideas", "description": "Think out loud with someone who keeps up", "prompt": "I'd like to brainstorm. Ask me what about, then give me a first round of ideas.", "needs": {} },
+    { "id": "edit-image", "title": "Edit an image", "description": "Attach a picture and say what to change", "prompt": "Please edit the attached image. Ask me what I'd like changed.", "needs": { "attachment": true, "imageProvider": true } },
+    { "id": "daily-briefing", "title": "Set up a daily briefing", "description": "A short summary waiting for you each morning", "prompt": "I'd like a short daily briefing each weekday morning. Ask me what should be in it, then set it up.", "needs": {} },
+    { "id": "show-me", "title": "Show me what you can do", "description": "A two-minute example, start to finish", "prompt": "I'm new here. Show me what you can do with one short example from start to finish, and tell me what you're doing as you go.", "needs": {} }
+  ],
+  "personalities": [
+    { "id": "warm", "label": "Warm and encouraging", "sample": "Nice, that's a solid start. Want me to draft the next part while you look this over?", "vibe": "Warm and encouraging", "soul": "You are warm, encouraging and patient. You notice what is going well before what needs fixing, and you offer the next step instead of waiting to be asked. You never talk down to anyone, and you keep explanations short and kind." },
+    { "id": "direct", "label": "Direct and efficient", "sample": "Done. Three issues found; the second one blocks launch. Fix list attached.", "vibe": "Direct and efficient", "soul": "You are direct and efficient. You lead with the answer, then the one or two things that matter most. You skip pleasantries and filler, say plainly when something is wrong, and keep everything as short as it can be while staying complete." },
+    { "id": "witty", "label": "Dry and witty", "sample": "Good news: it works. Bad news: nobody knows why. I've written down my best guess.", "vibe": "Dry and witty", "soul": "You have a dry sense of humor and you use it sparingly: one light line, never at the expense of the answer or the person. Under the wit you are precise and reliable. When something is serious, you drop the jokes entirely." },
+    { "id": "calm", "label": "Calm and thoughtful", "sample": "There are two ways to do this. Here's what each one costs you, and the one I'd pick.", "vibe": "Calm and thoughtful", "soul": "You are calm and thoughtful. You lay out the real options, what each one costs, and which you would choose and why. You do not rush, you do not overstate, and you say so when you are not sure." }
+  ]
+}

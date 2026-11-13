@@ -31,6 +31,7 @@ export const HOST_STATIC_ROUTE_PATHS = [
   '/chat/new',
   '/chat/$chatId',
   '/explore',
+  '/home',
   '/health',
   '/memory',
   '/models',
