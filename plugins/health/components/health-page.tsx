@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { countAvailableUpdates, type HealthIncident, type HealthRepairTarget } from '@makinbakin/sdk/types'
-import { usePathname, useQueryState } from '@makinbakin/sdk/hooks'
+import { usePathname, useQueryState, usePageIntroduction } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import {
   Page,
   PageBody,
   PageHeader,
 } from '@makinbakin/sdk/patterns'
-import { Alert, AlertDescription, Badge, Button, Tabs, TabsList, TabsTrigger } from '@makinbakin/sdk/ui'
+import { Alert, AlertDescription, Badge, Button, Tabs, TabsList, TabsTrigger, AlertAction, AlertTitle } from '@makinbakin/sdk/ui'
 import { RefreshCw } from 'lucide-react'
 import { useOverviewData } from '../hooks/use-overview-data'
 import { useUpdatesResource } from '../hooks/use-updates'
@@ -148,6 +148,17 @@ function OverviewPanel({ updates, onRunChecksReady, onRefreshReady }: OverviewPa
 
 /** Five focused Health views with URL-backed navigation and on-demand checks. */
 export function HealthPage() {
+  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
+  const { introduction, close: closeIntroduction } = usePageIntroduction('health')
+  const pageIntroduction = introduction ? (
+    <Alert tone="accent" data-page-introduction="health">
+      <AlertTitle>{introduction.title}</AlertTitle>
+      <AlertDescription>{introduction.body}</AlertDescription>
+      <AlertAction>
+        <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
+      </AlertAction>
+    </Alert>
+  ) : null
   const [tabParam, setTabParam] = useQueryState('tab', 'overview')
   const pathname = usePathname()
   // The engine's records are read ONCE per page (#1007 D7.7): the Updates tab
@@ -305,6 +316,7 @@ export function HealthPage() {
           labelledBy={`health-tab-${activeTab}`}
           gap="page"
           busy={runningChecks}
+          feedback={pageIntroduction ?? undefined}
           className="pt-bakin-6"
         >
           {activeTab === 'overview' && (
