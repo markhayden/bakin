@@ -228,13 +228,34 @@ export function operationStatusLine(view: OperationView): string {
   if (view.waitingFor) return `${view.title} — waiting for ${view.waitingFor.holderTitle}`
   const stage = view.stages.find((s) => s.status === 'active')
   if (!stage) return view.title
-  const bytes = stage.bytes
+
+  // What is being done: the stage, unless it only repeats the title, and the
+  // item in hand with its place in the list.
+  const parts: string[] = []
+  if (!saysTheSame(view.title, stage.label)) parts.push(stage.label)
+  const items = stage.items ?? []
+  const itemIndex = items.findIndex((item) => item.status === 'active')
+  const item = itemIndex === -1 ? undefined : items[itemIndex]
+  if (item) parts.push(`${item.label} (${itemIndex + 1} of ${items.length})`)
+
+  const bytes = stage.bytes ?? item?.bytes
   const amount = !bytes
     ? ''
     : bytes.total
       ? ` ${Math.floor((bytes.received / bytes.total) * 100)}%`
       : ` ${(bytes.received / 1024 / 1024).toFixed(1)} MB (size unknown)`
-  return `${view.title} — ${stage.label}${amount}`
+  // A download with nothing to measure yet still owes the reader an expectation.
+  const patience = !bytes && stage.kind === 'downloading' ? 'this can take a few minutes' : ''
+
+  const doing = parts.join(' — ')
+  if (!doing) return patience ? `${view.title} — ${patience}` : `${view.title}${amount}`
+  return `${view.title} — ${doing}${patience ? `, ${patience}` : amount}`
+}
+
+/** "Download the search models" and "Download search models" are one statement. */
+function saysTheSame(a: string, b: string): boolean {
+  const words = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word && word !== 'the' && word !== 'a' && word !== 'an').join(' ')
+  return words(a) === words(b)
 }
 
 /** The closing line for a follow result (pure). */

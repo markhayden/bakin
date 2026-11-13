@@ -22,6 +22,7 @@ import {
   describeTransitions,
   followAndRender,
   operationExitCode,
+  operationStatusLine,
   renderOperationFrame,
 } from '../../src/cli/operation-renderer'
 
@@ -357,5 +358,42 @@ describe('followOperation', () => {
     signals.emit('SIGINT')
     expect((await following).phase).toBe('detached')
     expect(stub.cancels).toEqual([])
+  })
+})
+
+describe('operationStatusLine: the one-line view onboarding shows', () => {
+  const models = (stage: Partial<OperationView['stages'][number]> = {}) => view({
+    title: 'Download the search models',
+    stages: [{ id: 'download', kind: 'downloading', label: 'Download search models', status: 'active', ...stage }],
+  })
+
+  it('names the operation and its active stage, with the percentage when the size is known', () => {
+    expect(operationStatusLine(view())).toBe('Install the media store — Download sharp 31%')
+  })
+
+  it('does not say the same thing twice when the stage only repeats the title', () => {
+    expect(operationStatusLine(models({ bytes: { received: 50, total: 100 } }))).toBe('Download the search models 50%')
+  })
+
+  it('names the item being worked on, where it is in the list, and its own progress', () => {
+    const line = operationStatusLine(models({
+      items: [
+        { id: 'a', label: 'Text embeddings', status: 'done' },
+        { id: 'b', label: 'Image embeddings', status: 'active', bytes: { received: 25, total: 100 } },
+        { id: 'c', label: 'Reranker', status: 'pending' },
+      ],
+    }))
+    expect(line).toBe('Download the search models — Image embeddings (2 of 3) 25%')
+  })
+
+  it('says a download can take a while when there is no progress to show yet', () => {
+    expect(operationStatusLine(models())).toBe('Download the search models — this can take a few minutes')
+    expect(operationStatusLine(models({ items: [{ id: 'a', label: 'Text embeddings', status: 'active' }] })))
+      .toBe('Download the search models — Text embeddings (1 of 1), this can take a few minutes')
+  })
+
+  it('shows megabytes when the size is unknown', () => {
+    expect(operationStatusLine(models({ bytes: { received: 3 * 1024 * 1024, total: null } })))
+      .toBe('Download the search models 3.0 MB (size unknown)')
   })
 })
