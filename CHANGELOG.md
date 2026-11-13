@@ -6,9 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.47] - 2026-11-13
+
+First-time setup works on a machine that has only Pi: `bakin onboard` picks or asks for the runtime, waits while you log in, and finishes with a list of what is left.
+
+### Added
+- **Onboarding chooses the runtime (#1052).** A home with no runtime stored uses whichever of OpenClaw or Pi is set up on the machine, Pi when neither is, and asks at a terminal when both are. A scripted run with both refuses with a typed reason until you pass `--runtime <openclaw|pi>`. Onboarding never switches a runtime a home already uses; that stays `bakin runtime use`.
+- **A guided login step (#1053).** With a working runtime and no provider logged in, the wizard shows the runtime's own login steps and waits; Enter rechecks, `s` finishes without a login. A logged-out runtime ends in a warning, not a failure.
+- **A setup checklist ends every run (#1056):** login, search, channels, capability keys and the model plan, each with where to go next.
+- **`bakin onboard --no-recommended`** skips the recommended plugins and agents without asking.
+- **`bakin onboard --json` ends with a summary line:** exit code, the runtime and how it was chosen, and the checklist. Every skipped component carries a typed reason.
+- **Plugin CLI commands declare their arguments (#1028).** A command that dispatches must list its complete `args`; values stay literal, unknown flags are refused before anything is sent, and a command can launch one of its managed binaries in your terminal.
+
 ### Changed
+- **The terminal wizard reads as a short list of steps (#1057).** Each answered screen collapses to one row, the brand is drawn once, plugin and agent lists lead with `[✔]` / `[ ]`, and the progress line names the item being downloaded and its percentage.
+- **Terminal, Pixel and Jessica are pre-selected** in onboarding alongside Messaging, Projects and H'enrich. The same set is what `bakin onboard --yes` installs.
+- **A recommended plugin or agent that cannot install is a warning (#1056).** Onboarding finishes and says how to install it later.
+- **Checks change nothing (#1050).** `bakin onboard --check` and `bakin check <component>` open storage read-only, start the runtime adapter read-only, create no secrets and write no log file.
+- **Requirements are declared per component (#1050).** An unreachable runtime skips only the steps that need a runtime, and the exit code is 1 only when a component errors (2 for warnings or skips).
+- **All onboarding wording comes from the active runtime (#1053):** no OpenClaw instructions on a Pi home.
 - **Collapsible rails can be dragged.** `PageAside` takes `resizable={{ storageKey, minWidth?, maxWidth? }}`: the kit grab bar (the same one Drawer uses) sits on the rail's page-facing edge, drag or arrows / Home / End change the width, it persists per key, and the rail never takes more than half its row (measured, so the handle and its accessible value track what is on screen; the saved preference comes back on a wider screen). The projects conversation dock uses it.
 - **Question cards have one text field.** A structured question (`bakin_exec_ask_user`) used to stack three inputs with the composer: a "Something else…" radio that opened a bare input, a separate "Add a note (optional)" field, and the chat box below. The card now has the agent's options, "Not sure — help me choose", and ONE labelled field: with nothing picked the text is your own answer (when the agent allows one), with an option picked it goes along as a note, and "Clear choice" hands the text its answer role back. Enter in the field answers. The tool description tells agents the card adds "Not sure" and the own-answer field itself, so a lead no longer offers its own duplicate "Help me choose" option.
+
+### Fixed
+- **Reinstalling search over a running engine no longer fails on its own port (#1019).** A supervised stop now waits for the engine to release its ports.
+- The Memory table gives Title a stable share of the width (#1041).
+- `bakin install` and `bakin check` list every component they accept, including `capabilities`, `budget` and `openclaw-integration`.
+
+### Upgrade notes
+- **Update Messaging and Projects first.** This release refuses a plugin whose dispatched CLI commands do not declare `args`. Messaging 0.12.3 and Projects 0.14.0 declare them; earlier versions fail to load (`manifest_invalid`) until upgraded (`bakin plugins upgrade messaging`, `bakin plugins upgrade projects`, or Health → Updates).
 
 ## [0.0.1-rc.46] - 2026-10-27
 
@@ -914,5 +940,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.45]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.45
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.46...HEAD
 [0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.47...HEAD
+[0.0.1-rc.47]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.47
