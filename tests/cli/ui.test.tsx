@@ -191,11 +191,10 @@ describe('CLI UI primitives', () => {
 
     expect(output).toContain('INSTALL OFFICIAL PLUGINS')
     expect(output).toContain('Use up/down to move, space to select, enter to continue.')
-    expect(output).toContain('\u276f [Messaging]')
-    expect(output).toContain('\u2714')
-    expect(output).toContain('[Messaging]')
-    expect(output).toContain('Planning and approvals')
-    expect(output).toContain('[Projects] (installed)')
+    // The box leads the row: checked for the selected one, and the
+    // pointer sits on it; an installed item is not a choice.
+    expect(output).toContain('\u276f [\u2714] Messaging Planning and approvals')
+    expect(output).toContain('[-] Projects (installed)')
   })
 
   it('can embed multi-select without repeating the title', () => {
@@ -215,6 +214,6 @@ describe('CLI UI primitives', () => {
 
     expect(output).not.toContain('INSTALL OFFICIAL PLUGINS')
     expect(output).toContain('Use up/down to move, space to select, enter to continue.')
-    expect(output).toContain('\u276f [Messaging]')
+    expect(output).toContain('\u276f [\u2714] Messaging')
   })
 })
