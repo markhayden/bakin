@@ -230,6 +230,10 @@ export function Header() {
 
   // The engine's records: read once, then every `updates.changed` (the
   // banner is the engine's `bakin` record, never a probe of its own, D7.7).
+  // A page load also asks the engine to look again unless it just did
+  // (`ifStale`): a release published an hour ago shows on refresh instead of
+  // at the next scheduled check, up to six hours later. The result arrives
+  // as `updates.changed`, like any other observation.
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/updates', { signal: controller.signal })
@@ -239,6 +243,7 @@ export function Header() {
         setBakinRecord(d.records?.find((record) => record.id === BAKIN_RECORD_ID) ?? null)
       })
       .catch(() => {})
+    fetch(`/api/updates/check?id=${encodeURIComponent(BAKIN_RECORD_ID)}&ifStale=1`, { method: 'POST', signal: controller.signal }).catch(() => {})
     return () => controller.abort()
   }, [])
   usePluginEvent('updates.changed', (payload) => {

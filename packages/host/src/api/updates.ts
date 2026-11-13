@@ -2,7 +2,8 @@
  * Updates HTTP surface (#1007, D7.1/D7.5/D7.8).
  *
  *   GET  /api/updates                       → { bootId, records, generatedAt, running }
- *   POST /api/updates/check[?source=|?id=]  → 202 { bootId, ids, coalesced } (pass runs on; `wait=1` ⇒ 200 with the snapshot)
+ *   POST /api/updates/check[?source=|?id=]  → 202 { bootId, ids, coalesced } (pass runs on; `wait=1` ⇒ 200 with the snapshot;
+ *                                             `ifStale=1` ⇒ only the named ids not attempted in the last 10 min)
  *   POST /api/updates/:id/skip              → { bootId, record } · 404 · 409 nothing_to_skip | required
  *   GET  /api/updates/:id/apply-preview     → { bootId, preview } · 404 · 409 multiple_covering_approvals
  *   POST /api/updates/:id/apply             → 202 { operationId, bootId } (D7.4: resolves a covering approval
@@ -121,6 +122,20 @@ export interface UpdatesCheckResponse {
   records?: UpdateRecord[]
 }
 
+/** How recent an attempt must be for a page load to leave the subject alone. */
+export const PAGE_LOAD_FRESH_MS = 10 * 60 * 1000
+
+/**
+ * Whether a page load should look at a subject again: never attempted, or
+ * last attempted longer ago than `PAGE_LOAD_FRESH_MS`. A subject backing off
+ * after failures (a rate limit) is left to its own schedule.
+ */
+export function isStaleForPageLoad(lastAttemptAt: string | undefined, schedule: { failures: number; nextDueAt?: string } | undefined, now: number): boolean {
+  if (schedule && schedule.failures > 0 && schedule.nextDueAt && Date.parse(schedule.nextDueAt) > now) return false
+  if (!lastAttemptAt) return true
+  return now - Date.parse(lastAttemptAt) >= PAGE_LOAD_FRESH_MS
+}
+
 function unavailable(): Response {
   return Response.json({ bootId: getBootId(), error: 'updates_unavailable', message: 'The updates engine has not started on this server.' }, { status: 503 })
 }
@@ -141,8 +156,25 @@ export async function check(_req: Request, url: URL): Promise<Response> {
   if (kind !== undefined && !(UPDATE_SUBJECT_KINDS as readonly string[]).includes(kind)) {
     return Response.json({ bootId: getBootId(), error: 'unknown_source', message: `"${kind}" is not an update subject kind` }, { status: 400 })
   }
-  const ids = url.searchParams.getAll('id')
+  let ids = url.searchParams.getAll('id')
   const wait = url.searchParams.get('wait') === '1'
+  // A page load asks "look again unless you just did" (`ifStale=1`, named
+  // ids only): the server decides what "just" means, so reloading a tab, or
+  // ten tabs, never becomes a probe per load.
+  if (url.searchParams.get('ifStale') === '1') {
+    if (ids.length === 0) return Response.json({ bootId: getBootId(), error: 'id_required', message: 'ifStale needs at least one id' }, { status: 400 })
+    const snapshot = await engine.snapshot()
+    const stale: string[] = []
+    for (const id of ids) {
+      const record = snapshot.records.find((candidate) => candidate.id === id)
+      if (isStaleForPageLoad(record?.attempt?.at, await engine.scheduleFor(id), Date.now())) stale.push(id)
+    }
+    if (stale.length === 0) {
+      const body: UpdatesCheckResponse = { bootId: getBootId(), ids: [], coalesced: false, ...(wait ? { records: snapshot.records } : {}) }
+      return Response.json(body)
+    }
+    ids = stale
+  }
   // ONE admission path: the timer refreshes the inventory (serialized with
   // every other pass startup — concurrent requests never fan out probes) and
   // refuses an id outside it before anything runs; a subject installed a

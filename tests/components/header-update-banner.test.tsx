@@ -80,6 +80,27 @@ describe('Header update banner', () => {
     })
   })
 
+  it('a page load asks the engine to look again unless it just did, and the banner follows the answer', async () => {
+    // What the engine holds at load is hours old: no release yet. The page
+    // load's own check finds one, and it arrives as `updates.changed`.
+    let found = false
+    const requests: Array<{ url: string; method: string }> = []
+    global.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      requests.push({ url, method: init?.method ?? 'GET' })
+      if (url === '/api/version') return Promise.resolve(response({ version: '0.1.0', bootId: 'boot-old', state: 'serving' }))
+      if (url === '/api/updates') return Promise.resolve(updatesResponse(found ? 'update-available' : 'current'))
+      if (url === '/api/dispatch') return Promise.resolve(response({ secondsUntilNext: 120, dispatching: false }))
+      return Promise.resolve(response({}))
+    }) as unknown as typeof global.fetch
+    renderHeader()
+    await waitFor(() => expect(requests).toContainEqual({ url: '/api/updates/check?id=bakin%3Abakin&ifStale=1', method: 'POST' }))
+    expect(screen.queryByText(/New Bakin version available/i)).toBeNull()
+    found = true
+    await act(async () => { realSdkHooks.emitPluginEvent({ event: 'updates.changed', ids: ['bakin:bakin'] }) })
+    expect(await screen.findByText(/New Bakin version available/i)).toBeTruthy()
+  })
+
   it('a skipped release identity hides the banner, and Skip posts the skip and hides it (D7.7/D7.8)', async () => {
     const calls: Array<{ url: string; method?: string }> = []
     global.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
