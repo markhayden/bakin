@@ -322,7 +322,7 @@
       "repository": "bakin",
       "pluginId": "home",
       "path": "plugins/home/dist/client.js",
-      "bytes": 4557
+      "bytes": 11569
     },
     {
       "repository": "bakin",
@@ -358,7 +358,7 @@
       "repository": "bakin",
       "pluginId": "team",
       "path": "plugins/team/dist/client.js",
-      "bytes": 305746
+      "bytes": 305870
     },
     {
       "repository": "bakin",

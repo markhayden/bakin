@@ -299,7 +299,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Task hooks let plugins enrich task details and react to task lifecycle changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:438" badges={["waterfall"]}>
+<HookCard id="tasks-enrichdetails" name="tasks.enrichDetails" label="Add project task context." summary="Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage." source="bakin-bits-official/plugins/projects/index.ts:541" badges={["waterfall"]}>
 ```ts frame="terminal"
 const next = await ctx.hooks.call(
   'tasks.enrichDetails',
@@ -312,7 +312,7 @@ const next = await ctx.hooks.call(
 )
 ```
 </HookCard>
-<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Refresh project task state." summary="Tells open project pages to refetch when a linked task changes column (linked step completion is derived from the board at read time) and schedules the project steward's check for work tasks reaching done, blocked or review." source="bakin-bits-official/plugins/projects/index.ts:428" badges={["event"]}>
+<HookCard id="tasks-statuschanged" name="tasks.statusChanged" label="Refresh project task state." summary="Tells open project pages to refetch when a linked task changes column (linked step completion is derived from the board at read time) and schedules the project steward's check for work tasks reaching done, blocked or review." source="bakin-bits-official/plugins/projects/index.ts:531" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'tasks.statusChanged',
@@ -343,7 +343,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Team hooks expose runtime agent and team metadata for plugins that need agent-aware behavior.</p>
 
 <div class="hook-card-list">
-<HookCard id="team-exists" name="team.exists" label="Check team exists." summary="Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments." source="plugins/team/index.ts:304" badges={["rpc"]}>
+<HookCard id="team-exists" name="team.exists" label="Check team exists." summary="Returns true when the given teamId is a configured team. Use it for write-time validation of team assignments." source="plugins/team/index.ts:315" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.exists',
@@ -351,7 +351,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:282" badges={["rpc"]}>
+<HookCard id="team-getagent" name="team.getAgent" label="Get an agent." summary="Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record." source="plugins/team/index.ts:283" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgent',
@@ -361,7 +361,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:287" badges={["rpc"]}>
+<HookCard id="team-getagentids" name="team.getAgentIds" label="List agent ids." summary="Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata." source="plugins/team/index.ts:298" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentIds',
@@ -369,7 +369,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:294" badges={["rpc"]}>
+<HookCard id="team-getagentteam" name="team.getAgentTeam" label="Get agent team." summary="Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views." source="plugins/team/index.ts:305" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getAgentTeam',
@@ -379,7 +379,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:301" badges={["rpc"]}>
+<HookCard id="team-getorgstructure" name="team.getOrgStructure" label="Get org structure." summary="Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records." source="plugins/team/index.ts:312" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getOrgStructure',
@@ -387,7 +387,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:291" badges={["rpc"]}>
+<HookCard id="team-getteammembers" name="team.getTeamMembers" label="List team members." summary="Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership." source="plugins/team/index.ts:302" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.getTeamMembers',
@@ -397,7 +397,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:281" badges={["rpc"]}>
+<HookCard id="team-list" name="team.list" label="List agents." summary="Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it." source="plugins/team/index.ts:282" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.list',
@@ -405,7 +405,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-resolveassignment" name="team.resolveAssignment" label="Resolve team assignment." summary="Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent." source="plugins/team/index.ts:307" badges={["rpc"]}>
+<HookCard id="team-resolveassignment" name="team.resolveAssignment" label="Resolve team assignment." summary="Resolves a team-assigned task to the best-suited member via an ephemeral runtime turn (#189). Returns {ok:true, agentId, reason, model} or {ok:false, kind: transient|structural, message} — dispatch classifies by kind. Use it from dispatch or any surface that must turn a teamId into a concrete agent." source="plugins/team/index.ts:318" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.resolveAssignment',
@@ -413,13 +413,21 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:288" badges={["rpc"]}>
+<HookCard id="team-resolveprofile" name="team.resolveProfile" label="Resolve agent profile." summary="Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record." source="plugins/team/index.ts:299" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'team.resolveProfile',
   {
     id: 'patch'
   },
+)
+```
+</HookCard>
+<HookCard id="team-updateidentity" name="team.updateIdentity" label="Update an agent's identity." summary="Changes an agent's name, emoji, role, vibe or persona files and returns the fields that changed. The same service as the Team page: it audits the change. Use it when a plugin lets a person name or describe an agent." source="plugins/team/index.ts:288" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'team.updateIdentity',
+  {},
 )
 ```
 </HookCard>
@@ -687,5 +695,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>

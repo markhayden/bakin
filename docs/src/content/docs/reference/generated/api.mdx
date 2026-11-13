@@ -1402,6 +1402,32 @@ curl -sS \
 
 <OpenApiReference tag="Home" summary />
 
+<OpenApiReference operationId="home.post.hello">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/hello'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="home.post.introduction">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/introduction' \
+  -H 'Content-Type: application/json' \
+  --data '{"agentName":"value","personality":"value","userName":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="home.post.introduction-skip">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/introduction/skip'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="home.get.state">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
