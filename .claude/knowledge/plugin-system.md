@@ -1380,7 +1380,7 @@ host-store counters:
 The public `NavItem.section` vocabulary is closed to
 `plan-and-automate | create | operations` and is valid only on top-level
 items. Omitted sections fall into Mix-ins; plugins cannot create headings or
-enter the host-owned primary (Chat, Tasks) or utility (Make Bakin Yours,
+enter the host-owned primary (Home, Chat, Tasks) or utility (Make Bakin Yours,
 Runtime, Settings) regions. `buildSidebarNavModel` owns official rank,
 custom sorting (`order` → label → id), Mix-ins fallback, and empty-section
 omission. Section declarations live with each plugin—even official external

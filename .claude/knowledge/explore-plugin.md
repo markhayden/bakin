@@ -43,7 +43,9 @@ removes, syncs, or repairs anything.
 - Discovery is promoted by the shell-owned **"Make Bakin Yours"** card in
   `packages/host/src/components/layout/sidebar-promo.tsx`, with the line
   "Do more with Bakin—discover agent kits, plugins & more." The card links
-  to `/explore`; the Explore plugin contributes the page content, not a nav
+  to `/explore`, except while Home has suggestions for this home: then it
+  shows their count and links to Home's list (`/#do-more`; see
+  `.claude/knowledge/home.md` § Suggestions); the Explore plugin contributes the page content, not a nav
   item. This keeps product discovery visually distinct without giving
   plugins access to the utility region.
 - Tab, category filter, and selected item all live in URL params

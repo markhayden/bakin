@@ -9,10 +9,10 @@ every state: the introduction, logging in, the ready prompt with starters
 and the first hello, and "unavailable". `/home` redirects to `/` with its
 query string.
 
-**Phase 2, in progress:** the suggestions engine, its "Not now" route and
-the setup checklist's HTTP route are built (plan PR 4). The "Do more with
-Bakin" section on the page and the sidebar count (PR 5) are not, so nothing
-shows the suggestions yet. Phase 3 (the tour) is not built.
+**Phase 2 (plan PRs 4 and 5):** the suggestions engine, its "Not now"
+route, the setup checklist's HTTP route, the "Do more with Bakin" section
+on a ready Home, and the count on the sidebar's "Make Bakin Yours" card.
+Phase 3 (the tour) is not built.
 
 ## The rule
 
@@ -200,6 +200,21 @@ Rules:
   the suggestion returns afterwards if it still applies. An id that is
   not a suggestion is a 404 and writes nothing.
 
+**On the page.** A ready Home lists the suggestions under "Do more with
+Bakin" (`id="do-more"`), below the starters: title, payoff, "Not now" and
+one link. The link is a `PluginLink` to the suggestion's page; Home
+installs nothing itself.
+
+**In the sidebar.** The shell's `SidebarPromo` takes a `count`. With any
+suggestions it reads "N suggestions for getting more out of Bakin" and
+links to `/#do-more`; with none it is the plain Explore card it always
+was. The count is `suggestionCount` from Home's state route, read by
+`useSuggestionCount` (`packages/host/src/hooks/`), which never counts
+anything itself and is zero when Home cannot answer. It reads again when
+the page changes (something may have been installed on the last one) and
+on the `home.suggestions_changed` plugin event, which the dismiss route
+emits so every open browser follows.
+
 Capability readiness is read ONCE per state read (`evidence()` in
 `lib/readiness.ts`) and feeds both starters and suggestions.
 
@@ -221,7 +236,9 @@ Patterns: `pages/page.stories.tsx` (standard width),
 conversation kit's `Composer`, and for the introduction
 `conversation/turns.stories.tsx`, `forms/form-composition.stories.tsx`,
 `primitives/radio-group.stories.tsx` and `feedback/alert.stories.tsx`
-(also the hello offer). Home's fixture
+(also the hello offer). Suggestions are `lists/list-rows.stories.tsx`
+rows with a trailing `ListRowActions` (the `DenseRows` anatomy, always
+visible). Home's fixture
 (`plugins/home/tests/ui.fixture.tsx`) is enrolled in the conformance suite.
 
 ## Tests
@@ -230,7 +247,8 @@ conversation kit's `Composer`, and for the introduction
 the suggestions engine (every condition, unknown evidence, the thirty
 days), the routes, the introduction's writes (a failure injected at each step),
 start-chat, and the page (ready, hello, the introduction, reopening,
-logging in). `tests/hooks/use-terminal-handoff.test.tsx` and
+logging in, suggestions). `tests/hooks/use-suggestion-count.test.tsx` and
+`tests/components/sidebar-promo.test.tsx` cover the sidebar's count. `tests/hooks/use-terminal-handoff.test.tsx` and
 `tests/plugins/health/handoff-return.test.tsx` cover the shared handoff.
 `tests/core/team-context-operator.test.ts` covers the person's name in
 global context. End to end:

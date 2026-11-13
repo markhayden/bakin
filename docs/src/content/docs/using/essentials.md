@@ -94,7 +94,7 @@ The sidebar starts with the two places that keep work moving: **Chat** and **Tas
 
 Installed plugins can join one of those sections. Custom destinations without a defined section collect under **Mix-ins**, which stays out of the way when it is empty.
 
-The bottom of the sidebar keeps product-wide actions close: **Make Bakin Yours** opens the discovery catalog for agent kits, plugins, and more, followed by Runtime and Settings. Collapse the sidebar for a 52px icon rail; grouped destinations open in a flyout by hover, focus, or click. On smaller screens, the menu opens as the full labeled drawer so the hierarchy never depends on icons alone.
+The bottom of the sidebar keeps product-wide actions close: **Make Bakin Yours** opens the discovery catalog for agent kits, plugins, and more; when Home has suggestions for this install, it shows how many and takes you to them instead. Runtime and Settings follow. Collapse the sidebar for a 52px icon rail; grouped destinations open in a flyout by hover, focus, or click. On smaller screens, the menu opens as the full labeled drawer so the hierarchy never depends on icons alone.
 
 ## Dispatch Ticker
 
