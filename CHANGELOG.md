@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.47] - 2026-11-13
+
 First-time setup works on a machine that has only Pi: `bakin onboard` picks or asks for the runtime, waits while you log in, and finishes with a list of what is left.
 
 ### Added
@@ -938,5 +940,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.45]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.45
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.46...HEAD
 [0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.47...HEAD
+[0.0.1-rc.47]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.47
