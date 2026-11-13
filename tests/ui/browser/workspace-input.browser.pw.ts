@@ -1,6 +1,14 @@
 import { expect, test } from 'playwright/test'
 
-const story = '/iframe.html?id=recipes-terminalinput--bar-and-sheet&viewMode=story'
+/**
+ * The bar with no interaction script: ready on its first render. These tests
+ * drive the bar themselves, so they must start from an untouched one — and
+ * must not wait for BarAndSheet's play function, which walks every key and
+ * modifier (the story suite's coverage) and regularly took longer than the
+ * 20 s these tests allowed on a loaded CI runner. That wait was this file's
+ * whole flake: the story had rendered, the script had not finished.
+ */
+const story = '/iframe.html?id=recipes-terminalinput--visual-capture&viewMode=story'
 
 test('a short keyboard viewport keeps the visible full header accessible', async ({ page }) => {
   await page.addInitScript(() => {

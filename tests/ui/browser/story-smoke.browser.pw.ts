@@ -1,4 +1,4 @@
-import { expect, test, type Request } from 'playwright/test'
+import { expect, test, type Page, type Request } from 'playwright/test'
 
 function isCancelledStorybookA11yInstrumentation(request: Request): boolean {
   const failure = request.failure()?.errorText
@@ -1080,7 +1080,13 @@ test('conversation and inspector recipes preserve explicit scroll, state, and ac
   expect(browserErrors).toEqual([])
 })
 
-test('workflow and action recipes preserve real graph interaction, bounded overflow, and page decisions', async ({ page, browserName }) => {
+/**
+ * Console errors, page errors and failed requests on a workflow story page.
+ * The workflow coverage is several tests (below) because it is seventeen
+ * full story loads: as one test it had the 30 s budget of a single load and
+ * timed out on a loaded CI runner about one run in eight.
+ */
+function watchWorkflowPage(page: Page, browserName: string): string[] {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
@@ -1097,8 +1103,16 @@ test('workflow and action recipes preserve real graph interaction, bounded overf
     if (reason === 'NS_BINDING_ABORTED' || reason === 'net::ERR_ABORTED' || reason === 'Load request cancelled') return
     browserErrors.push(`requestfailed: ${request.method()} ${request.url()} ${reason}`)
   })
+  return browserErrors
+}
 
-  for (const [story, heading] of [[verticalWorkflowStory, 'Launch publishing workflow'], [horizontalWorkflowStory, 'Launch publishing workflow'], [reviewActionStory, 'Review launch publishing workflow']] as const) {
+for (const [label, story, heading] of [
+  ['vertical workflow', verticalWorkflowStory, 'Launch publishing workflow'],
+  ['horizontal workflow', horizontalWorkflowStory, 'Launch publishing workflow'],
+  ['review action', reviewActionStory, 'Review launch publishing workflow'],
+] as const) {
+  test(`workflow and action recipes stay contained at every width: ${label}`, async ({ page, browserName }) => {
+    const browserErrors = watchWorkflowPage(page, browserName)
     for (const width of responsiveWidths) {
       await test.step(`${heading} remains contained at ${width}px`, async () => {
         await page.setViewportSize({ width, height: 1000 })
@@ -1112,7 +1126,12 @@ test('workflow and action recipes preserve real graph interaction, bounded overf
         expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth)
       })
     }
-  }
+    expect(browserErrors).toEqual([])
+  })
+}
+
+test('workflow and action recipes preserve real graph interaction, bounded overflow, and page decisions', async ({ page, browserName }) => {
+  const browserErrors = watchWorkflowPage(page, browserName)
 
   await test.step('vertical is the default and graph controls stay in named regions', async () => {
     await page.setViewportSize({ width: 1024, height: 1000 })
