@@ -3,12 +3,12 @@
 The page Bakin opens on. Spec: `.claude/specs/home-first-run.md`; plan:
 `.claude/specs/home-first-run-plan.md`. This file describes what is built.
 
-**Built so far (plan PRs 1 and 2):** the `home` core plugin, its page at
-`/home`, the state route, the ready screen (prompt and starters), the
-introduction ("Meet your main agent"), the first hello, and honest
-placeholders for the remaining states (`needs-login`, `unavailable`). `/`
-still redirects to `/tasks`; it switches to Home when every state has a
-screen (plan PR 3). Home has no sidebar entry until then.
+**Built so far (plan PRs 1 to 3, Phase 1):** the `home` core plugin, its
+page at `/` (first in the sidebar), the state route, and a screen for
+every state: the introduction, logging in, the ready prompt with starters
+and the first hello, and "unavailable". `/home` redirects to `/` with its
+query string. Phase 2 (suggestions, "Do more with Bakin") and Phase 3 (the
+tour) are not built.
 
 ## The rule
 
@@ -120,12 +120,33 @@ plugin id; the plugin declares `events.emit`).
 "Skip for now" (`POST /introduction/skip`) records the skip; Home moves on
 and keeps a quiet link back (`introductionSkipped` on the state response).
 
-**Reopening:** `/home?introduce=1` opens the introduction over any Home
+**Reopening:** `/?introduce=1` opens the introduction over any Home
 that has an agent, starting from the name the agent goes by. Leaving is a
 plain Cancel that records nothing, so a finished introduction is never
 overwritten by a skip. The main agent's Team page links there ("Redo the
 introduction" in the agent actions menu). It is a link by URL: Team
 imports nothing from Home.
+
+## Logging in
+
+`needs-login` carries `login` on the state response: the ACTIVE runtime's
+own label, steps, docs link and, when it has one, the shell command that
+starts the sign-in (`getRuntimeAdapterSupport(...)`: `loginSteps` and
+`loginCommand`; Pi's is `pi`, OpenClaw has none). Home names no runtime
+itself.
+
+The screen shows the steps, then the kit's `HandoffCard` with the command.
+**Bakin never handles the secret and never runs the command.** Copy works
+everywhere; "Open in Terminal" appears only when the Terminal plugin is
+active, and types the command into a new session for the person to run
+(`useTerminalHandoff` from `@makinbakin/sdk/hooks`).
+
+Taking the command either way arms Home's handoff return channel
+(`handoffReturnChannel('home')`); when the person is back on Home (the
+page mounts again, the window regains focus, the tab becomes visible) the
+state is read again, once. "I've logged in. Check again" does the same by
+hand. The starters are listed but cannot be pressed: nothing that would
+fail is offered.
 
 ## Saying hello
 
@@ -148,7 +169,8 @@ until the next real decision.
 ## UI
 
 Patterns: `pages/page.stories.tsx` (standard width),
-`feedback/system-state.stories.tsx` for the placeholder states,
+`feedback/system-state.stories.tsx` for loading, errors and "unavailable",
+`feedback/handoff-card.stories.tsx` for logging in,
 `lists/list-rows.stories.tsx` (`InteractiveRows`) for starters, the
 conversation kit's `Composer`, and for the introduction
 `conversation/turns.stories.tsx`, `forms/form-composition.stories.tsx`,
@@ -160,7 +182,9 @@ conversation kit's `Composer`, and for the introduction
 
 `tests/plugins/home/`: content, decisions, state machine, fact gathering,
 the routes, the introduction's writes (a failure injected at each step),
-start-chat, and the page (ready, hello, the introduction, reopening).
+start-chat, and the page (ready, hello, the introduction, reopening,
+logging in). `tests/hooks/use-terminal-handoff.test.tsx` and
+`tests/plugins/health/handoff-return.test.tsx` cover the shared handoff.
 `tests/core/team-context-operator.test.ts` covers the person's name in
 global context. End to end:
 `tests/integration/onboarding/scenarios/home.test.ts` boots a real server

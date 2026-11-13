@@ -138,6 +138,11 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `useNow` | A render-safe clock: the instant at mount, refreshed on an interval (default 60 s). |
 | `useKeyedState` | useState that resets when a key changes — adjust state on a prop change without an effect. |
 | `useMediaQuery` | Whether a CSS media query matches, as an external-store read (false without matchMedia). |
+| `useTerminalHandoff` | Offer "Open in Terminal" for a command when the Terminal plugin is active: a session with the command prefilled, never executed. |
+| `TerminalHandoff` | Offer "Open in Terminal" for a command when the Terminal plugin is active: a session with the command prefilled, never executed. |
+| `handoffReturnChannel` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
+| `useHandoffReturn` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
+| `HandoffReturnChannel` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
 | `useOperation` | Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). |
 | `useSelfUpdateVerification` | Self-update verification after a restart handoff (#1007 D7.11). |
 | `SelfUpdateHandoff` | — |
@@ -363,6 +368,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `NodeCardTone` | — |
 | `PageAsideCollapsible` | — |
 | `PageAsideProps` | — |
+| `PageAsideResizable` | — |
 | `PageAsideSide` | — |
 | `PageAsideWidth` | — |
 | `PageBodyGap` | — |
@@ -794,5 +800,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>
