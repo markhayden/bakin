@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.48] - 2026-11-13
+
 A clean first run now finishes clean, the update banner shows on page load again, and search can be uninstalled.
 
 ### Added
@@ -958,5 +960,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.47...HEAD
 [0.0.1-rc.47]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.47
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.48...HEAD
+[0.0.1-rc.48]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.48
