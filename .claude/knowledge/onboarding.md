@@ -252,7 +252,10 @@ Where it shows: the finish screen (`OnboardingChecklist` inside
 `OnboardingSummary`, things to do before things done), plain lines for
 output that is not a terminal (`checklistLines`), and `checklist` on the
 `--json` summary line. `bakin onboard --check` shows the same list and still
-writes nothing. A blocked run (exit 1) shows its blocker and no checklist.
+writes nothing. A running server answers the same list at
+`GET /api/runtime/onboarding/checklist` (`{ adapter, checklist }`), and
+Home's suggestions read its `todo` items (`.claude/knowledge/home.md`
+§ Suggestions). A blocked run (exit 1) shows its blocker and no checklist.
 If the checklist cannot be built the run's result stands and it is simply
 not shown.
 
