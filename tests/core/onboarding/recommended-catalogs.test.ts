@@ -29,9 +29,9 @@ describe('official plugin onboarding recommendations', () => {
   it('derives official plugin choices from the unified catalog', () => {
     expect(RECOMMENDED_PLUGINS.map(plugin => plugin.id)).toEqual(['messaging', 'projects', 'terminal'])
     expect(RECOMMENDED_PLUGINS.every(plugin => plugin.trust === 'official')).toBe(true)
-    // Terminal is offered but not pre-selected: it grants agents shell access, so it stays opt-in.
+    // All three are pre-selected (Terminal joined them on 2026-11-12, the operator's call).
     expect(Object.fromEntries(RECOMMENDED_PLUGINS.map(plugin => [plugin.id, plugin.defaultSelected])))
-      .toEqual({ messaging: true, projects: true, terminal: false })
+      .toEqual({ messaging: true, projects: true, terminal: true })
     expect(RECOMMENDED_PLUGINS.every(plugin => plugin.source.startsWith('github:markhayden/bakin-bits-official#plugins/'))).toBe(true)
   })
 
@@ -48,9 +48,9 @@ describe('official agent onboarding recommendations', () => {
     expect(RECOMMENDED_AGENTS.every(agent => agent.source.startsWith('github:markhayden/bakin-bits-official#agents/'))).toBe(true)
   })
 
-  it('preserves the enrichment agent default selection', () => {
+  it('pre-selects the enrichment agent and the two starter agents', () => {
     const enrich = RECOMMENDED_AGENTS.find(agent => agent.id === 'enrich')
     expect(enrich?.defaultSelected).toBe(true)
-    expect(RECOMMENDED_AGENTS.filter(agent => agent.defaultSelected).map(a => a.id)).toEqual(['enrich'])
+    expect(RECOMMENDED_AGENTS.filter(agent => agent.defaultSelected).map(a => a.id)).toEqual(['pixel', 'jessica', 'enrich'])
   })
 })
