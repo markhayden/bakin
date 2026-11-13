@@ -1,299 +1,276 @@
 # Implementation plan: Home and the first-run experience
 
-Spec: `.claude/specs/home-first-run.md` (approved for planning 2026-11-13).
-Status: **draft 1, awaiting review.**
+Spec: `.claude/specs/home-first-run.md`.
+Status: **revision 2.** Revision 1 was reviewed by Codex (one round,
+2026-11-13: REVISE, 3 must-fix, 9 high). This revision takes every finding
+except the login spike, which the maintainer dropped: login is
+instructions for the MVP.
+
+## What changed from revision 1
+
+| Finding | Change |
+|---|---|
+| Login spike was under-scoped (private SDK methods, remote OAuth) | **Dropped.** No `bakin login`. Home shows instructions in the existing handoff card. |
+| Automatic greeting bypassed the spend gate; no once-only design | The greeting is a message the person sends ("Say hello to …"). No unprompted turn. |
+| PRs were not shippable alone | Home is built at `/home`; `/` switches only when all four states have screens (PR 3). |
+| "All or none" had no mechanism | Ordered, repeatable writes; "introduced" is a record written last. |
+| Home cannot import Team's rename function | A Team-owned identity hook, shared with its HTTP route (Task 2.1). |
+| A login is not the same as "the agent can answer" | Structured readiness: runtime reachable, credentials, main-agent model eligibility. |
+| The kit already has a handoff card | Use `feedback/handoff-card.stories.tsx` (`CanonicalUsage`, `WithTerminal`, `Failed`). |
+| Decisions store arrived after its first user | Moved to PR 1. |
+| Registration, sidebar order, fixtures, isolation were implicit | Named below. |
 
 ## Overview
 
-Eight stacked pull requests in three phases, after a spike. Each PR is
-shippable alone and leaves `main` working. One commit per task; every
-commit passes typecheck, lint, the cycle check and the tests it touches.
+Seven pull requests in three phases. One commit per task. Every commit
+passes typecheck, lint, the cycle check, `tests/architecture` and the
+tests it touches.
 
 | Phase | PR | Title | Size |
 |---|---|---|---|
-| 0 | 1 | `bakin login`: Pi's own login screen from inside Bakin | M |
-| 1 | 2 | Home exists: the page at `/`, its state, the prompt and starters | L |
-| 1 | 3 | Meet your agent: the three-question introduction | M |
-| 1 | 4 | Login from the browser, and the agent's first message | M |
-| 2 | 5 | Suggestions engine, checklist route, dismissals | M |
-| 2 | 6 | "Do more with Bakin" on Home and the sidebar count | S |
-| 3 | 7 | The tour modal | M |
-| 3 | 8 | Pages introduce themselves; real empty states | M |
+| 1 | 1 | Home at `/home`: state, the prompt, starters | L |
+| 1 | 2 | Meet your agent | M |
+| 1 | 3 | Login instructions; Home becomes `/` | M |
+| 2 | 4 | Suggestions engine, checklist route | M |
+| 2 | 5 | "Do more with Bakin" and the sidebar count | S |
+| 3 | 6 | The tour | M |
+| 3 | 7 | Pages introduce themselves; real empty states | M |
 
 ## Architecture decisions
 
-- **`home` is a core plugin** (the 15th), with a host route at `/`
-  rendering its page slot. Same shape as Explore. Home's server side reads
-  other plugins through the hook registry.
-- **One state answer.** `GET /api/plugins/home/state` returns everything
-  the page needs to choose what to show: the state name, the main agent's
-  identity, the login verdict and guidance, the starters this home can
-  run, and (Phase 2) suggestions. The state machine is a pure function;
-  the route only gathers its inputs.
-- **Decisions people made are the only stored state:**
-  `~/.bakin/plugin-data/home/decisions.json` holds "introduction skipped",
-  dismissed suggestions with timestamps, and closed page introductions.
-- **Curated content is data** in a new `home-content.json` beside the
-  curated catalog, with a zod schema: starters, personality presets,
-  suggestions, tour slides, page introductions. Not in the catalog file
-  itself: the catalog describes installable things; this describes copy.
-- **The terminal handoff moves to the SDK.** `useTerminalHandoff` and its
-  return-verification live inside the Health plugin today. Home needs the
-  same thing and plugins cannot import each other, so the hook moves to
-  `@makinbakin/sdk/hooks` and Health consumes it from there. **This grows
-  the public SDK surface and needs the maintainer's approval (see Ask
-  first).**
-- **The user's name** is written as a marked section of
-  `~/.bakin/team/context/global.md` by a core function, followed by the
-  existing agent sync, so every agent's instructions pick it up.
+- **`home` is a core plugin** with a host route rendering its page slot
+  (the Explore precedent). Registering one means: `CORE_PLUGIN_IDS`
+  (`src/lib/core-plugin-ids.ts`), `CORE_PLUGIN_IMPORTS`
+  (`src/lib/plugin-static-imports.ts`), the manifest and `client.tsx`
+  contributions in step, the embedded-assets manifest, the host route and
+  `router.ts`, and the plugin-count tests.
+- **One state answer, one pure function.** `GET /api/plugins/home/state`
+  gathers inputs; `homeState(inputs)` decides. GETs never start a turn or
+  write anything.
+- **Readiness is three structured facts**, never message text: runtime
+  reachable; credentials (`present | absent | unknown`); the main agent's
+  model eligible under them (the eligibility engine). Unknown is never
+  treated as absent.
+- **"Unnamed" is a defined predicate** over neutral runtime reads: the
+  main agent has no personality file AND its display name is the
+  runtime's seeded default. Unavailable evidence is not "unnamed".
+- **Decisions people made are the only stored state**, in
+  `~/.bakin/plugin-data/home/decisions.json` (schema-validated, serialized
+  writes): introduction skipped or completed (with its progress), dismissed
+  suggestions with timestamps, closed page introductions. Decisions
+  survive a downgrade and re-upgrade; unknown keys are kept.
+- **Curated content is data**: `packages/host/src/data/home-content.json`
+  with a zod schema (starters, presets, suggestions, tour slides, page
+  introductions).
+- **Plugins talk through hooks.** Home reaches Team through a new
+  `team.updateIdentity` hook and Chat through its HTTP routes from the
+  browser (create, then send).
+- **The terminal handoff is shared through the SDK** (ask first): the
+  hook moves to `@makinbakin/sdk/hooks`; return verification is scoped per
+  consumer so Home and Health cannot consume each other's pending recheck;
+  Terminal availability is re-read after an install.
 
-## UI patterns (to confirm against Storybook at each PR)
+## UI patterns
 
-| Surface | Closest public pattern |
+| Surface | Public story |
 |---|---|
-| Home page | `storybook/public/pages/page.stories.tsx` (page archetype) |
-| Introduction, greeting | `storybook/public/conversation/` (turn rendering, composer) |
+| Page | `storybook/public/pages/page.stories.tsx` |
+| Introduction, hello | `storybook/public/conversation/` (turns, composer) |
 | Prompt | conversation kit `Composer` |
-| Starters, suggestions | `storybook/public/lists/` or card patterns in `recipes/collection-patterns` |
-| Login card | `storybook/public/feedback/` (Alert) plus the handoff action |
-| Tour | `storybook/public/overlays/dialog.stories.tsx` |
-| Page introductions | `storybook/public/feedback/` (dismissible Alert) |
-| Empty states | the kit's empty-state pattern in `feedback/` |
+| Starters, suggestions | `recipes/collection-patterns.stories.tsx` |
+| Login | `feedback/handoff-card.stories.tsx` — `CanonicalUsage`, `WithTerminal`, `Failed` |
+| Unavailable, empty | `feedback/` system and empty states |
+| Tour | `overlays/dialog.stories.tsx` |
+| Page introductions | `feedback/` dismissible alert |
 
-**Likely gaps, raised for approval before they are built, not worked
-around:** a multi-slide dialog (the tour), and the low-fidelity
-illustration miniatures. If either is refused, the fallbacks are a plain
-dialog with Back / Next and text-and-icon slides.
+The exact export is named in each PR before any markup. Every PR that
+changes Home's UI runs Home's own fixture (`plugins/home/bakin.ui-test.ts`,
+`bun run test:ui`) and inspects its report, covering loading, error,
+disabled, narrow, long-content and keyboard states; pages changed in PR 7
+run theirs. `ui:conformance --quick` per commit, `--full` per PR.
 
----
+**Likely gaps, raised for approval before building:** a multi-slide
+dialog and the illustration miniatures (PR 6). Fallbacks: a plain dialog
+with Back / Next; text-and-icon slides.
 
-## Phase 0
+## Testing rules that apply to every task
 
-### PR 1: `bakin login`
-
-**Task 1.1: spike.** Run Pi's interactive login from the bundled SDK
-inside a Bakin process, honouring `PI_HOME`, in a throwaway home.
-- Acceptance: a provider can be logged in from source; the same from the
-  compiled Linux binary in a container (compiled binaries are killed on
-  this Mac); the terminal is restored on exit and on Ctrl-C.
-- Verify: `auth.json` appears in the throwaway Pi home; `bakin check llm`
-  reports ok there.
-- **Checkpoint: if this fails, stop and report.** Nothing else in the PR
-  is written; PR 4 falls back to the steps-only screen.
-- Commit: none (spike notes go in the PR description).
-
-**Task 1.2: the command.** `bakin login` runs the active runtime's login.
-Pi: the screen from 1.1. OpenClaw: prints its guidance and exits 0, since
-OpenClaw owns its own login.
-- Acceptance: refuses in a non-interactive shell with a clear message;
-  never reads or prints a credential; works with no server running and
-  with one.
-- Verify: harness test in a pseudo-terminal that the screen starts and
-  exits cleanly on Ctrl-C; unit test for the non-interactive refusal and
-  the OpenClaw branch.
-- Files: `src/cli/commands/runtime.ts` (or a new `login.ts`), `cli/bakin.ts`,
-  `src/core/cli/registry.ts`, `packages/adapter-pi/src/`.
-- Commit: `feat(cli): bakin login runs the runtime's own login screen`
-
-**Task 1.3: point everything at it.** Pi's `loginSteps`, the Health
-handoff command, onboarding's credentials screen and the setup doc say
-`bakin login`. The "install `pi`, needs Node 22.19" guidance and
-`cli-requirements.ts` are deleted.
-- Verify: the copy test; `grep` finds no remaining `npm install -g
-  @earendil-works`.
-- Commit: `fix(onboarding): logging in no longer needs the pi CLI installed`
-
-**Task 1.4: docs.** `onboarding.md`, `pi-adapter.md`, first-time-setup,
-generated CLI reference.
-- Commit: `docs: bakin login`
+From CLAUDE.md, restated because the reviewer found them missing: both
+content-dir resolvers mocked; OpenClaw home mocked; `PI_HOME` and
+`BAKIN_HOME` set before imports, caches reset after; `getBakinPaths` mocks
+include `db`; RTL files import `rtl-settle` and stay act-clean; plugin
+tests use `tests/plugins/test-helpers.ts`. End-to-end scenarios go through
+the onboarding harness (`tests/integration/onboarding/harness.ts`), never
+a hand-spawned CLI.
 
 ---
 
 ## Phase 1
 
-### PR 2: Home exists
+### PR 1: Home at `/home`
 
-**Task 2.1: the plugin skeleton and the route.** `plugins/home/` with a
-manifest, an empty page, the host route at `/` and the sidebar entry
-first. The `/tasks` redirect is removed.
-- Acceptance: `/` renders Home; the route-ranking and no-hard-navigation
-  tests pass; core plugin count tests updated.
-- Verify: `bun run build:plugins`, host route tests.
-- Commit: `feat(home): a home page at /`
+`/` keeps redirecting to Tasks. Home is reachable and complete for a home
+that is already set up; the other states render an honest placeholder
+that says what is missing and links to where it is fixed today.
 
-**Task 2.2: content data and schema.** `home-content.json` with the ten
-starters (spec §10) and the four presets, validated at load.
-- Verify: schema tests, including a rejected malformed entry.
-- Commit: `feat(home): curated starters and personality presets as data`
+- **1.1 Plugin registration and the route.** The files listed above; a
+  page at `/home`. Verify from source and from a packaged build.
+  `feat(home): a home plugin and its page`
+- **1.2 Content data and schema.** The ten starters and four presets,
+  each starter declaring `needs` (agent, capability-ready,
+  image-provider-ready, attachment).
+  `feat(home): curated starters and presets as data`
+- **1.3 Decisions store.**
+  `feat(home): remember what people decided`
+- **1.4 Readiness inputs.** The three facts, and the unnamed predicate,
+  with fixtures: implicit OpenClaw main, renamed agents, a seeded name
+  with a personality, absent versus empty personality files, unreadable
+  credentials, credentials for another provider.
+  `feat(home): can the main agent answer, as structured facts`
+- **1.5 The state machine.** Precedence: unavailable, meet-agent,
+  needs-login, ready. Starter filtering separates machine readiness (the
+  server's answer) from attachment readiness (the composer's).
+  `feat(home): what Home shows is one pure function of state`
+- **1.6 The state route.** `feat(home): the state route`
+- **1.7 Starting a chat.** Create, then send, from the browser. The chat
+  id is kept if the send fails so nothing typed is lost; a double submit
+  creates one chat; navigation lands in a streaming reply. An attachment
+  starter opens the picker first; a missing attachment is never an
+  "install something" suggestion.
+  `feat(home): start a conversation from Home`
+- **1.8 Ready and Unavailable views.**
+  `feat(home): ask for something, or pick a starter`
+- **1.9 Harness scenario and docs.** A real server on a throwaway home
+  serves `/home` and the state route; `.claude/knowledge/home.md`,
+  CLAUDE.md, README.
+  `test(home): Home on a real server` · `docs(home): the Home page`
 
-**Task 2.3: the state machine.** A pure function from inputs (main
-agent identity, login verdict, runtime reachable, decisions) to one of
-`meet-agent | needs-login | ready | unavailable`, plus which starters this
-home can run.
-- Verify: unit tests for every precedence case and starter filter.
-- Commit: `feat(home): what Home shows is one pure function of state`
+Acceptance for the PR: on a fresh home `/home` says the agent has not
+been introduced; on a named home without a login it says what is missing;
+on a ready home the prompt starts a chat.
 
-**Task 2.4: the state route.** `GET /api/plugins/home/state` gathers the
-inputs (Team hook for the main agent, the `llm` check for login, runtime
-capabilities and capability readiness for starter needs).
-- Verify: plugin route tests with a mocked runtime.
-- Commit: `feat(home): the state route`
+### PR 2: Meet your agent
 
-**Task 2.5: the Ready and Unavailable views.** The prompt (kit Composer),
-up to six starters, the unavailable state. Submitting creates a chat with
-the main agent and navigates to it.
-- Verify: component tests; a story if a new public pattern is used;
-  `ui:conformance --quick`.
-- Commit: `feat(home): ask for something, or pick a starter`
+- **2.1 `team.updateIdentity` hook.** Team's existing identity service
+  behind a hook and its HTTP route, keeping the audit record and
+  settings-cache reset.
+  `feat(team): identity updates are available as a hook`
+- **2.2 Resumable writes.** A fixed order: agent record, identity and
+  personality files, the person's name in global context, a local
+  operation-backed agent sync (`fetch: false`, every result inspected),
+  then the "introduced" record. Each step is safe to repeat; concurrent
+  submits serialize; a managed agent keeps its package name and gets only
+  what the package does not own. Fault-injection test after every write:
+  the introduction resumes and never disappears half done.
+  `feat(home): the introduction writes are resumable`
+- **2.3 The introduction view.** The three steps as a data script through
+  the conversation layout; Back; "Skip for now" (stored).
+  `feat(home): meet your main agent`
+- **2.4 Saying hello.** The last step, and a ready Home that has not yet
+  said hello, offer "Say hello to <name>": an ordinary first message with
+  a fixed chat title. `feat(home): say hello`
+- **2.5 Reopening** from Home and the agent's Team page.
+  `feat(home): the introduction can be reopened`
 
-**Task 2.6: docs and the end-to-end check.** `.claude/knowledge/home.md`,
-CLAUDE.md's plugin count and Key Patterns entry, README. Harness scenario:
-a booted server on a throwaway home serves Home and its state route.
-- Commit: `docs(home): the Home page` and `test(home): Home on a real server`
+### PR 3: Login instructions; Home becomes `/`
 
-### PR 3: Meet your agent
+- **3.1 The handoff hook moves to the SDK** (approval required), with
+  per-consumer return verification and availability refresh; Health
+  migrates. Test: returning to one consumer does not consume the other's
+  recheck. `refactor(sdk): the terminal handoff is a shared hook`
+- **3.2 The needs-login view.** The handoff card with the runtime's
+  steps; with Terminal active, "Open in Terminal" types the command and
+  the copy says to press Enter; "Check again"; locked starters.
+  `feat(home): how to log in, on the page that needs it`
+- **3.3 `/` is Home.** The redirect goes; Home is first in the sidebar
+  (`nav-placement.ts` primary ids and its tests).
+  `feat(home): Bakin opens on Home`
+- **3.4 Docs.** `docs(home): first run`
 
-**Task 3.1: detecting an unnamed main agent**, on Pi and OpenClaw, as an
-input to the state route.
-- Commit: `feat(home): know when the main agent has not been introduced`
+### Checkpoint A
 
-**Task 3.2: writing the answers.** One Home route takes name, preset or
-own words, and the user's name. It calls the Team identity route's
-underlying function for the agent and writes the user's name into global
-context, then runs the agent sync.
-- Acceptance: all three land or none do; a second submit is idempotent.
-- Verify: route tests; harness check that the Pi home's agent record and
-  personality file changed.
-- Commit: `feat(home): the introduction writes the agent and the person`
-
-**Task 3.3: the introduction view.** The three steps as a data script
-rendered through the conversation layout (spec D5a), with Back and "Skip
-for now"; skip is stored.
-- Verify: component tests driving the keyboard path; skip persists across
-  a reload.
-- Commit: `feat(home): meet your main agent`
-
-**Task 3.4: reachable again** from Home and the agent's Team page.
-- Commit: `feat(home): the introduction can be reopened`
-
-### PR 4: Login from the browser, and the first message
-
-**Task 4.1: the handoff hook moves to the SDK** (approval required).
-Health consumes it from `@makinbakin/sdk/hooks`; behaviour unchanged.
-- Verify: Health's existing handoff tests pass unmodified in substance;
-  SDK public-API inventory updated.
-- Commit: `refactor(sdk): the terminal handoff is a shared hook`
-
-**Task 4.2: the needs-login view.** Who the agent is, the handoff running
-`bakin login`, "Check again", locked starters; without Terminal, the steps
-and an offer to add it.
-- Verify: component tests for both branches and the return recheck.
-- Commit: `feat(home): log in without leaving the browser`
-
-**Task 4.3: the first message.** When the introduction is complete and a
-login exists, one greeting turn in a kept chat; Home shows it once.
-- Acceptance: exactly once per home; subject to the budget gate; a failed
-  turn leaves Home usable and says nothing false.
-- Verify: route tests with a mocked runtime, including "already greeted".
-- Commit: `feat(home): the agent says hello in its own voice`
-
-### Checkpoint A (end of Phase 1)
-
-- `bun run test:ci`, `ui:conformance --full`, docs validate.
-- A fresh home walked in a browser, start to first reply, by the
-  maintainer; once more from a second device over Tailscale.
-- Decide: is the scripted introduction organic enough, or does D5's
-  real-turn replacement come next?
-- Cut a release candidate.
+`bun run test:ci`, `ui:conformance --full`, docs validate. The maintainer
+walks a fresh home in a browser to a first reply, and again from a second
+device. Decide whether the scripted introduction is organic enough, and
+whether login instructions are enough or the Bakin-run login is next.
+Release candidate.
 
 ---
 
 ## Phase 2
 
-### PR 5: Suggestions engine, checklist route, dismissals
+### PR 4: Suggestions engine and the checklist route
 
-- **5.1** Decisions store (`decisions.json`), serialized writes, schema.
-  `feat(home): remember what people decided`
-- **5.2** Suggestions in the content data; the pure engine (conditions,
-  ordering, 30-day expiry, never spend limits or brands; a starter with a
-  missing need becomes a suggestion). `feat(home): suggestions from real state`
-- **5.3** `GET /api/runtime/onboarding/checklist`, and suggestions on the
-  state route; `POST …/home/suggestions/:id/dismiss`.
+- **4.1** Suggestions in the content data; the pure engine: conditions,
+  ordering, 30-day expiry, never spend limits or brands, a starter with a
+  missing machine need becomes a suggestion.
+  `feat(home): suggestions from real state`
+- **4.2** `GET /api/runtime/onboarding/checklist`; suggestions on the
+  state route; `POST /api/plugins/home/suggestions/:id/dismiss`.
   `feat(home): the checklist and suggestion routes`
-- Verify: engine unit tests for every rule; route tests; a time-travel
-  test for the 30 days.
+- Verify: engine tests for every rule; a time-travel test for 30 days.
 
-### PR 6: "Do more with Bakin" and the sidebar count
+### PR 5: "Do more with Bakin" and the sidebar count
 
-- **6.1** The Home section: up to three, each with its action and "Not
-  now". `feat(home): do more with Bakin`
-- **6.2** The sidebar card shows a count and links to the section.
-  `feat(shell): the promo card counts what is left`
-- **6.3** Docs. `docs(home): suggestions`
+- **5.1** The Home section, three at most. `feat(home): do more with Bakin`
+- **5.2** The promo card's count. `feat(shell): the promo card counts what is left`
+- **5.3** Docs.
 
 ### Checkpoint B
 
-Full gates; the maintainer checks the suggestions on a real home read as
-suggestions, not chores.
+Full gates. The maintainer checks the suggestions read as suggestions.
 
 ---
 
 ## Phase 3
 
-### PR 7: The tour modal
+### PR 6: The tour
 
-- **7.1** Tour slides in the content data.
-- **7.2** The slide dialog (approval required if the kit has no pattern).
-- **7.3** The six illustrations, low fidelity, kit-built; fallback text
-  and icon.
-- **7.4** The offer on Home. `feat(home): a two-minute tour`
+- **6.1** Slides as data. **6.2** The slide dialog (approval if a new
+  pattern). **6.3** Six low-fidelity illustrations (approval; fallback
+  text and icon). **6.4** The offer on Home.
 
-### PR 8: Pages introduce themselves
+### PR 7: Pages introduce themselves
 
-- **8.1** A shared, remembered "first visit" introduction, driven by the
-  content data and the decisions store.
-- **8.2 to 8.7** One commit per page (Chat, Tasks, Team, Assets, Schedule,
-  Health): the introduction and a real empty state. Messaging-style Bits
-  pages are out of scope.
-- **8.8** Docs.
+- **7.1** A shared remembered first-visit introduction.
+- **7.2 to 7.7** One commit per page: Chat, Tasks, Team, Assets,
+  Schedule, Health.
+- **7.8** Docs.
 
 ### Checkpoint C
 
-Full gates; `ui:conformance --full`; release.
+Full gates, `ui:conformance --full`, release.
 
 ---
 
 ## Commit and rollback strategy
 
-- One task, one commit, on a branch per PR, stacked in order. No amends
-  and no force-pushes; fixes are new commits.
-- Every commit passes the gates on its own, so any PR can be reverted as a
-  unit and any commit bisected.
-- PR 1 is independent of the rest and worth having even if Home were
-  dropped. PR 2 changes where `/` goes; reverting it restores the
-  redirect. PRs 3 and 4 add states to a page that already works without
-  them. Phases 2 and 3 only add.
-- Architecture tests run before every commit; no commit is chained after
-  an unread gate.
+- One task, one commit; a branch per PR, stacked. No amends, no
+  force-pushes.
+- **Revert in reverse order.** PR 3's `/` switch reverts alone and
+  restores the redirect. The SDK hook (3.1) cannot be reverted while Home
+  uses it: revert 3.2 first. PR 2 cannot be reverted while Team links to
+  the introduction (2.5): revert that commit first.
+- **Data outlives a revert.** A named agent, its personality, the
+  person's name in global context and the decisions file are the user's;
+  no revert deletes them, and re-applying the PRs reads them back without
+  repeating the introduction.
 
 ## Ask first (collected)
 
-1. Moving the terminal handoff hook into the public SDK (PR 4).
-2. A multi-slide dialog pattern, if the kit lacks one (PR 7).
-3. The illustration miniatures as a pattern (PR 7).
-4. Anything the spike shows `bakin login` needs that touches a credential.
+1. Moving the terminal handoff hook into the public SDK (3.1).
+2. A multi-slide dialog pattern (6.2).
+3. The illustration miniatures (6.3).
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| The spike fails | No in-browser login | Stop at 1.1; steps-only screen; PRs 2 and 3 are unaffected |
-| Terminal 0.3.5 (published) lacks something the handoff needs | Login handoff works only on the dev version | Verify against 0.3.5 in PR 4 before building on it |
-| Chat cannot be created with a first message in one call | Two requests and a visible gap | Read the chat routes first in 2.5; add a hook if needed |
-| Agent sync after writing the user's name is slow | The introduction feels stuck | Run it as an operation with progress; never block the next screen on it |
-| Six pages of empty states sprawl | PR 8 grows | One commit per page; any page can be dropped without affecting the others |
+| Login instructions stop a novice | The first reply never happens | Handoff card with a browser terminal where installed; watched at Checkpoint A; Bakin-run login is the follow-on |
+| The published Terminal (0.3.5) lacks what the handoff needs | Handoff works only on the dev version | Verify against 0.3.5 in 3.1 |
+| Agent sync after the introduction is slow | The introduction feels stuck | It is an operation with progress; "Say hello" waits for it so the agent knows the name |
+| Six pages of empty states sprawl | PR 7 grows | One commit per page; any can be dropped |
 
 ## Open questions
 
-None blocking. The three "ask first" items are decided when their PR
-starts, with the Storybook evidence in hand.
+None blocking.

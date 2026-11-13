@@ -36,9 +36,9 @@ One spec, so the page is designed once. Each phase ships on its own.
 
 ### Success criteria
 
-1. On a fresh Pi home, a person who has never used Bakin names their agent,
-   logs in to a provider and gets a reply from that agent **without leaving
-   the browser and without installing anything**.
+1. On a fresh Pi home, a person who has never used Bakin names their
+   agent, is shown exactly how to log in to a provider, and gets a reply
+   from that agent once they have.
 2. `/` renders Home on every install. Nothing redirects to `/tasks`.
 3. A home whose main agent is already named never sees the introduction.
 4. Home never offers an action that cannot work: with no provider logged
@@ -56,11 +56,11 @@ One spec, so the page is designed once. Each phase ships on its own.
 | D2 | Home is a real page at `/`, for everyone, with no "start on Tasks" setting. | One behaviour for `/`. If landing there grates, that is the signal the hub is needed sooner; a setting would hide it. |
 | D3 | Order: Engage, then Grow, then Tour. | A first success teaches more than a tour; Grow's engine mostly exists; the tour is best written once the rest has settled. |
 | D4 | The first thing on a fresh home is naming the main agent, its personality, and what it should call you. | A fresh Pi main agent is called "Main" with no personality. OpenClaw walks you through this; Pi does not. |
-| D5 | The introduction is scripted by Bakin and laid out as a conversation; then the agent speaks for real. | Works before any provider login and is predictable on a first impression. Built so a real agent turn can replace the script (D5a). |
+| D5 | The introduction is scripted by Bakin and laid out as a conversation; then the person says hello and the agent answers for real. | Works before any provider login and is predictable on a first impression. Built so a real agent turn can replace the script (D5a). |
 | D5a | The questions are one data script rendered through the conversation layout. | Swapping the driver for a real turn later must not change the screen. "Does it feel organic?" is judged after use. |
 | D6 | The prompt starts a chat with the main agent. | A reply in seconds, in the voice just chosen. The main agent creates tasks itself when the request is real work. |
 | D7 | Starters are a curated list (about ten), filtered to what this home can run. The first list is expected to change. | Curate, ship, then harden the ten against where the agent actually sends people. |
-| D8 | Login is a Terminal-plugin handoff running a Bakin command that launches Pi's own login screen. | No real terminal, works over Tailscale, nothing to install, and Bakin still never sees the secret. Reuses Health's existing handoff. Gated by a spike (section 8). |
+| D8 | Login is instructions, shown with the kit's existing handoff card. With the Terminal plugin active the card opens a browser terminal with the command typed in. No new login command. | Enough for the MVP. A Bakin-run login screen was considered and dropped: Pi's login is not exposed for it, and OAuth sign-in from a remote browser is unproven. Revisit after Phase 1. |
 | D9 | Suggestions: at most three, each with a payoff sentence and a one-step action; never spend limits or brands. "Not now" hides one for 30 days. | Suggestions, not a chore list. Thirty days catches changed needs without nagging. |
 | D10 | The sidebar's "Make Bakin Yours" card stays, shows a count when there are suggestions, and links to Home. | One card, no new sidebar element. |
 | D11 | Tour = a modal slide deck (Chat, Tasks, Team, Assets, Schedule, Health), offered on Home, never auto-opened. No spotlight over the live interface. | A modal over "What do you want to do?" interrupts the most valuable moment. Spotlights are brittle. |
@@ -79,19 +79,12 @@ One spec, so the page is designed once. Each phase ships on its own.
   handles pictures.
 - **"Unnamed" is detectable on either runtime:** the main agent has its
   seeded name and no personality file.
-- **The first real message starts a real chat** that is kept, so the first
-  thing typed is not lost. One short turn, metered as work class `chat`.
+- **The first real message is one the person sends.** The introduction
+  ends on "Say hello to <name>", which sends a first message through
+  Chat like any other. Bakin starts no turn nobody asked for, so spend
+  limits and titling behave as they do for every chat.
 
 ## 3. What gets built
-
-### Phase 0: spike (gates D8)
-
-Prove that a Bakin command can run Pi's own interactive login from the
-bundled SDK (`InteractiveMode` / the login dialog are exported), with
-`PI_HOME` honoured, both from source and from the compiled binary, inside a
-Terminal-plugin session. Output: a yes or no with evidence. **If no, stop
-and talk to the maintainer** before Phase 1's login step; the fallback is
-the steps-only screen.
 
 ### Phase 1: Home and Engage
 
@@ -120,12 +113,13 @@ agent's Team page.
 personality text written to the agent. "Describe it yourself" writes the
 person's own words into the same template.
 
-**Login.** One server answer says whether a provider is logged in (the
-existing `llm` check's verdict, exposed over HTTP) and carries the active
-runtime's login guidance from `RUNTIME_ADAPTER_SUPPORT`. With the Terminal
-plugin installed, the primary action opens a Terminal session running the
-login command; returning to Home rechecks. Without it, Home shows the steps
-and offers to add Terminal. "Check again" is always available.
+**Login.** One server answer says whether the main agent can answer:
+runtime reachable, a provider logged in, and the agent's model runnable
+with it (the model-eligibility engine's verdict, not only the login
+check). Home shows the active runtime's login steps in the kit's handoff
+card; with the Terminal plugin active, the card opens a terminal with the
+command typed in and the person presses Enter. "Check again" is always
+available, and returning to Home rechecks.
 
 **The prompt.** A composer from the conversation kit. Submitting creates a
 chat with the main agent carrying that message and navigates to it.
@@ -134,13 +128,15 @@ chat with the main agent carrying that message and navigates to it.
 one-line description, the prompt it sends and what it requires (an agent, a
 capability, an attachment). Home shows up to six that this home can run.
 
-**The first message.** When the introduction completes and a provider is
-logged in (in either order), Bakin starts one turn in which the agent
-greets the person by name in its new voice. Home shows it once.
+**Saying hello.** The introduction's last step, or the first visit to a
+ready Home after it, offers "Say hello to <name>": a first message the
+person sends, answered in the agent's new voice, in a chat that is kept.
 
-**CLI.** `bakin login`. Onboarding's
-login step and Pi's `loginSteps` point at it; the "install `pi`, needs Node
-22.19" guidance is removed.
+**Writes are resumable, not atomic.** The introduction's answers are
+several writes (agent record, identity and personality files, the
+person's name in global context). They run in a fixed order, each safe to
+repeat, and "introduced" is a record written last. A failure midway
+resumes; it never leaves the introduction hidden with half an agent.
 
 ### Phase 2: Grow
 
@@ -195,7 +191,6 @@ bun run onboard:rig --runtime pi --keep   # a fresh home to open in a browser
 | `packages/host/src/components/layout/` | Sidebar entry; the promo card's count |
 | `packages/host/src/data/curated-catalog.json` (+ schema) | Starters, personality presets, suggestions |
 | `src/core/onboarding/setup-checklist.ts` | Reused as an input; gains an HTTP route in Phase 2 |
-| `src/cli/commands/runtime.ts`, `packages/adapter-pi/` | The login command |
 | `storybook/public/` | Stories for anything new that is public |
 | `tests/plugins/home/`, `tests/host/`, `tests/integration/onboarding/` | Tests |
 | `.claude/knowledge/home.md` (new), `onboarding.md`, `docs/…/start/` | Docs |
@@ -254,8 +249,7 @@ use.
   the illustration miniatures are the likely ones).
 - Anything that would make Bakin read, hold or transmit a provider secret.
 - Changing what the CLI onboarding asks or installs.
-- Starting an agent turn the person did not ask for, beyond the single
-  first greeting.
+- Starting an agent turn the person did not ask for.
 
 **Never**
 - A browser setup wizard, a pre-onboarding server mode or a runtime choice
@@ -268,11 +262,10 @@ use.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Pi's login screen will not run inside Bakin's binary | D8 falls back to terminal steps; criterion 1 is missed | Phase 0 spike before anything depends on it |
+| Terminal login steps stop a novice | Criterion 1 is met on paper only | The handoff card with a browser terminal where Terminal is installed; watch real first runs; a Bakin-run login is the follow-on |
 | The main agent does not create tasks when it should | People chat forever and never find the board | Starters worded toward tracked work; the tour and page introductions explain the board; judged in use |
 | Home is thinner than the task board it replaces, until the hub | Daily users find the landing page a step back | Accepted (D2); the hub spec follows Phase 1 |
 | The tour modal or miniatures need a pattern the kit lacks | A conformance deviation | Raised for approval at plan time; text-and-icon fallback |
-| An unprompted greeting turn surprises someone with spend limits | Unexpected cost | One short turn, metered as `chat`, subject to the same budget gate as any turn |
 
 ## 10. The first starters
 
@@ -306,7 +299,7 @@ starter above runs on existing tools. The rule and the data shape
 1. **Starters:** the ten in section 10, as data.
 2. **Personality presets:** the implementer's choice; four, proposed in the
    plan, as data.
-3. **The login command:** `bakin login`.
+3. **Login:** instructions only for the MVP (D8); no new command.
 4. **Help menu:** Bakin has none. The tour is offered on Home only. Whether
    Bakin needs a help menu is a separate question, noted for later and not
    built here.
