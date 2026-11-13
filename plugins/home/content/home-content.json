@@ -25,5 +25,13 @@
     { "id": "add-agent", "title": "Add a specialist to your team", "payoff": "A researcher, a developer or an image artist your main agent can hand work to.", "action": { "label": "Browse agents", "href": "/explore?tab=agents" }, "when": { "kind": "only-main-agent" } },
     { "id": "channels", "title": "Hear from your agents in Discord", "payoff": "Get alerts and approve work from a channel, without opening Bakin.", "action": { "label": "Set up Discord", "href": "/settings?tab=channels" }, "when": { "kind": "checklist-todo", "item": "channels" } },
     { "id": "projects", "title": "Plan bigger work as a project", "payoff": "Keep a spec, its checklist and its tasks in one place your agents can read.", "action": { "label": "Add Projects", "href": "/explore?tab=plugins&item=plugin:projects" }, "when": { "kind": "plugin-missing", "plugin": "projects" } }
+  ],
+  "tour": [
+    { "id": "chat", "title": "Chat", "icon": "MessageSquare", "body": "Talk to any agent the way you would message a colleague. Attach a file, ask a follow-up, or come back to an old conversation; everything is kept and searchable.", "first": "Ask your main agent what it can help with this week.", "href": "/chat" },
+    { "id": "tasks", "title": "Tasks", "icon": "CheckSquare", "body": "The board is where work lives once it is more than a conversation. Agents pick tasks up, report progress as they go, and hand them back for your review.", "first": "Ask an agent to break a goal into tasks, then watch the board.", "href": "/tasks" },
+    { "id": "team", "title": "Team", "icon": "Users", "body": "Every agent has a name, a personality and things it is good at. Team is where you meet them, change how they come across, and add specialists.", "first": "Open your main agent and read how it describes itself.", "href": "/team" },
+    { "id": "assets", "title": "Assets", "icon": "FolderOpen", "body": "Anything an agent makes for you, a document, an image or a report, is saved here with its earlier versions. Nothing is lost in a chat scroll.", "first": "Ask for a draft, then find it here.", "href": "/assets" },
+    { "id": "schedule", "title": "Schedule", "icon": "CalendarClock", "body": "Work that should happen without you asking: a briefing every morning, a report every Friday. The calendar shows what is coming and what already ran.", "first": "Ask an agent to set up a daily briefing.", "href": "/schedule" },
+    { "id": "health", "title": "Health", "icon": "HeartPulse", "body": "Bakin watches itself. When something needs attention, Health says what is wrong in plain words and usually offers to fix it for you.", "first": "Look here first whenever something seems off.", "href": "/health" }
   ]
 }

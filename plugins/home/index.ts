@@ -16,13 +16,13 @@ import { getSetupChecklist } from '../../src/core/onboarding/setup-checklist'
 import { getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory'
 import { getSettings } from '../../src/core/settings'
 import { setOperatorName } from '../../src/core/team-context'
-import { HOME_CONTENT } from './lib/content'
+import { HOME_CONTENT, TOUR_ICONS } from './lib/content'
 import { introductionAnswersSchema, updateDecisions } from './lib/decisions'
 import { completeIntroduction, recordHello, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
 import { gatherHomeFacts } from './lib/readiness'
 import { availableStarters, homeState, offersHello, type HomeFacts } from './lib/state'
 import { MAX_SHOWN, suggestionsFor, type SuggestionFacts } from './lib/suggestions'
-import type { HomeStateResponse, HomeSuggestion } from './types'
+import type { HomeStateResponse, HomeSuggestion, HomeTourResponse } from './types'
 
 const log = createLogger('home')
 
@@ -194,6 +194,19 @@ const routes = [
     handler: async () => {
       recordHello()
       return Response.json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/tour',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'The tour of Bakin',
+    description: 'The slides of the tour Home offers: one per area, each with what it is for, one thing to do there first, and its page. Curated content; the same for every home.',
+    responses: { 200: z.object({ ok: z.literal(true), slides: z.array(z.object({ id: z.string(), title: z.string(), icon: z.enum(TOUR_ICONS), body: z.string(), first: z.string(), href: z.string() })) }) },
+    handler: async () => {
+      const body: HomeTourResponse = { ok: true, slides: HOME_CONTENT.tour }
+      return Response.json(body)
     },
   }),
 

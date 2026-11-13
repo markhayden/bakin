@@ -1,5 +1,5 @@
 /**
- * Home's curated content: starters, personality presets and suggestions. Copy a person
+ * Home's curated content: starters, personality presets, suggestions and the tour. Copy a person
  * wrote, kept as data so changing it is never a code change. Validated at
  * load; a malformed file is a startup error, never a silently empty Home.
  */
@@ -83,13 +83,31 @@ const suggestionSchema = z.object({
   when: suggestionConditionSchema,
 }).strict()
 
+/** The icons a tour slide may use; the page maps each name to a drawing. */
+export const TOUR_ICONS = ['MessageSquare', 'CheckSquare', 'Users', 'FolderOpen', 'CalendarClock', 'HeartPulse'] as const
+
+/** One slide of the tour: an area of Bakin, in a few sentences. */
+const tourSlideSchema = z.object({
+  id: slug,
+  /** The area's name, as the sidebar writes it. */
+  title: z.string().min(1).max(30),
+  icon: z.enum(TOUR_ICONS),
+  /** Two or three sentences: what the area is for. */
+  body: z.string().min(1).max(260),
+  /** One thing to do there first. */
+  first: z.string().min(1).max(100),
+  /** The area's own page. */
+  href: z.string().regex(/^\/[a-z][a-z0-9-]*$/, 'must be a top-level page'),
+}).strict()
+
 export const homeContentSchema = z.object({
   version: z.literal(1),
   starters: z.array(starterSchema).min(1),
   personalities: z.array(personalitySchema).min(1),
   suggestions: z.array(suggestionSchema),
+  tour: z.array(tourSlideSchema).min(1),
 }).strict().superRefine((content, ctx) => {
-  for (const key of ['starters', 'personalities', 'suggestions'] as const) {
+  for (const key of ['starters', 'personalities', 'suggestions', 'tour'] as const) {
     const seen = new Set<string>()
     for (const [index, entry] of content[key].entries()) {
       if (seen.has(entry.id)) ctx.addIssue({ code: 'custom', path: [key, index, 'id'], message: `duplicate id "${entry.id}"` })
@@ -104,6 +122,7 @@ export type StarterNeeds = Starter['needs']
 export type PersonalityPreset = HomeContent['personalities'][number]
 export type Suggestion = HomeContent['suggestions'][number]
 export type SuggestionCondition = Suggestion['when']
+export type TourSlide = HomeContent['tour'][number]
 
 export function parseHomeContent(value: unknown): HomeContent {
   return homeContentSchema.parse(value)
