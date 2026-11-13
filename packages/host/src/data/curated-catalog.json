@@ -455,6 +455,25 @@
       "builtin": true
     },
     {
+      "id": "home",
+      "kind": "plugin",
+      "name": "Home",
+      "emoji": "🏠",
+      "description": "The page Bakin opens on: ask your main agent for something, or start from a suggestion.",
+      "category": "Platform",
+      "tags": [
+        "home",
+        "getting-started"
+      ],
+      "useCases": [
+        "Ask your main agent for anything from one place",
+        "Start from a ready-made request when you are not sure what to ask",
+        "See what your home is missing before it gets in the way"
+      ],
+      "trust": "official",
+      "builtin": true
+    },
+    {
       "id": "web-search-brave",
       "kind": "skill-pack",
       "name": "Web Search (Brave)",
