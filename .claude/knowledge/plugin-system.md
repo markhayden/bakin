@@ -43,7 +43,8 @@ zod to the provided set, so a v1 artifact (its own zod inside) still loads on
 a v2 host, while a v2 artifact on a v1 host is refused (it would 404 on
 `zod`); neither old hosts nor new hosts accept artifacts from a different
 family. The release guard (`scripts/check-plugin-contract.ts`) only gates
-FAMILY changes, so v1 → v2 shipped guard-free.
+FAMILY changes for the contract itself, so v1 → v2 shipped guard-free (its
+manifest check runs on every release — see below).
 
 A family change is therefore a fleet event, and two things keep it from
 stranding users (rc.41 left projects + terminal dark on margo until Bits
@@ -56,6 +57,13 @@ published):
   must already have a published release that runs on the new contract and
   this version (its `bakinRange` may require it) for every release platform,
   or the release refuses. Publish Bits first, then cut Bakin.
+  On EVERY release (family changed or not) it also downloads the release each
+  official plugin would be installed at (`newestCompatibleVersion`, sha256
+  pinned) and runs this host's manifest check on its `bakin-plugin.json`. A
+  manifest rule can tighten without the contract moving: rc.47 required
+  `args` on dispatched CLI commands inside an unchanged family, and the
+  published Messaging and Projects would have been refused at install and
+  at boot (`manifest_invalid`) had Bits not published first.
 - **Compatible upgrades** — `src/core/whiskit/compatible-version.ts`
   (`newestCompatibleVersion`) is the ONE answer to "which published version
   can THIS host run" (contract + `bakinRange`, newest first, platform then

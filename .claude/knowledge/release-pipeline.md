@@ -62,7 +62,7 @@ and its tests use; it is not a separate tagging command.
 
 `.github/workflows/release.yml` runs on strict `v*` release tags:
 
-1. Plugin contract guard (`scripts/check-plugin-contract.ts`, before the tag is created): if the externals-contract FAMILY changed since the previous release tag, every official Bits plugin must already have a published release that runs on it, or the release refuses. Release prep (`bun run release …`) runs the same guard. See `plugin-system.md`.
+1. Plugin contract guard (`scripts/check-plugin-contract.ts`, before the tag is created): if the externals-contract FAMILY changed since the previous release tag, every official Bits plugin must already have a published release that runs on it, or the release refuses. Release prep (`bun run release …`) runs the same guard. On every release it also checks that the release each official plugin would be installed at passes this host's manifest check (rc.47: a tightened manifest rule inside an unchanged family). See `plugin-system.md`.
 2. Validate tag grammar and ensure the tag commit is on `main`.
 3. Install dependencies, lint, typecheck, test.
 4. Build production browser assets and all three binaries.
