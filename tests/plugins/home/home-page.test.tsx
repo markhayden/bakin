@@ -37,6 +37,9 @@ const drafts: Array<[string, string]> = []
 let lastSend: 'resolved' | 'rejected' | null = null
 mock.module('@makinbakin/sdk/conversation', () => ({
   writeComposerDraft: (key: string, text: string) => { drafts.push([key, text]) },
+  // The introduction's exchange: who is speaking and what was said is all a test needs.
+  AgentTurn: ({ turn, agent }: { turn: { items: Array<{ content: string }> }; agent: { name: string } }) => <p data-said-by={agent.name}>{turn.items[0]!.content}</p>,
+  UserMessage: ({ turn }: { turn: { content: string } }) => <p data-said-by="you">{turn.content}</p>,
   Composer: ({ onSend, inputLabel, busy }: { onSend: (content: string) => void | Promise<void>; inputLabel?: string; busy?: boolean }) => (
     <form onSubmit={(event) => {
       event.preventDefault()
@@ -56,7 +59,7 @@ const requests: Array<{ path: string; body: unknown }> = []
 let holdCreate: Promise<void> | null = null
 mock.module('@makinbakin/sdk/utils', () => ({
   pluginFetch: async (_pluginId: string, path: string, init?: RequestInit) => {
-    requests.push({ path, body: JSON.parse(String(init?.body)) })
+    requests.push({ path, body: init?.body === undefined ? null : JSON.parse(String(init.body)) })
     if (path === 'chats' && holdCreate) await holdCreate
     const answer = answers.shift()
     if (!answer || answer instanceof Error) throw answer ?? new Error('unscripted request')
@@ -188,14 +191,6 @@ describe('Home: not ready', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('an unnamed main agent: says so and links to its Team page; no prompt is offered', async () => {
-    await show({ ok: true, state: { name: 'meet-agent', agent: { id: 'main', name: 'Main' } }, starters: STARTERS })
-    expect(screen.getByText('Your main agent has no name yet')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Open Main' }).getAttribute('href')).toBe('/team/main')
-    expect(screen.queryByLabelText(/^Ask /)).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Brainstorm ideas' })).toBeNull()
-  })
-
   it('no provider logged in: names the agent and points at Health; nothing that would fail is offered', async () => {
     await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Nova' } }, starters: STARTERS })
     expect(screen.getByText("Nova can't answer yet")).toBeTruthy()
@@ -210,5 +205,120 @@ describe('Home: not ready', () => {
     await show({ ok: true, state: { name: 'unavailable', reason: 'model_cannot_run', detail: 'no credentials for openai', href: '/models' }, starters: [] })
     expect(screen.getByText(/no credentials for openai/)).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Open Models' }).getAttribute('href')).toBe('/models')
+  })
+})
+
+describe('Home: meet your agent', () => {
+  const meet = (resume?: { agentName: string; personality: { kind: 'preset'; id: string } | { kind: 'custom'; description: string }; userName: string }): Shown => ({
+    ok: true, state: { name: 'meet-agent', agent: { id: 'main', name: 'Main' }, ...(resume ? { resume } : {}) }, starters: STARTERS,
+  })
+  const type = (label: string, value: string) => { fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } }) }
+  const press = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+  const said = (by: string) => Array.from(document.querySelectorAll(`[data-said-by="${by}"]`)).map((node) => node.textContent)
+
+  it('opens on the first question, with no prompt and no starters', async () => {
+    await show(meet())
+    expect(screen.getByRole('heading', { level: 1, name: 'Meet your main agent' })).toBeTruthy()
+    expect(said('Your main agent')).toEqual(["Hi. I don't have a name yet. What would you like to call me?"])
+    expect(screen.queryByLabelText(/^Ask /)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Brainstorm ideas' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Back' })).toBeNull()
+  })
+
+  it('three answers, shown back as a conversation, are saved once and Home looks again', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    await show(meet())
+    type("Your agent's name", '  Nova ')
+    await press('Continue')
+    expect(said('Nova')).toEqual(["Hi. I don't have a name yet. What would you like to call me?", 'Nova. I like it. How should I come across?'])
+    expect(said('you')).toEqual(['Nova'])
+    await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /Direct and efficient/ })) })
+    await press('Continue')
+    expect(said('you')).toEqual(['Nova', 'Direct and efficient'])
+    expect(requests).toEqual([])
+    type('Your name', 'Mark')
+    await press('Finish')
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toEqual([{ path: 'introduction', body: { agentName: 'Nova', personality: { kind: 'preset', id: 'direct' }, userName: 'Mark' } }])
+  })
+
+  it('a blank answer does not move on', async () => {
+    await show(meet())
+    type("Your agent's name", '   ')
+    await press('Continue')
+    expect(screen.getByLabelText("Your agent's name", { exact: false })).toBeTruthy()
+    expect(said('you')).toEqual([])
+  })
+
+  it('"Describe it yourself" asks for the words and sends them as written', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    await show(meet())
+    type("Your agent's name", 'Nova')
+    await press('Continue')
+    await act(async () => { fireEvent.click(screen.getByRole('radio', { name: 'Describe it yourself' })) })
+    await press('Continue')
+    expect(said('you')).toEqual(['Nova'])
+    type('In your own words', 'Like a patient teacher')
+    await press('Continue')
+    type('Your name', 'Mark')
+    await press('Finish')
+    await waitFor(() => expect(requests).toHaveLength(1))
+    expect(requests[0]!.body).toEqual({ agentName: 'Nova', personality: { kind: 'custom', description: 'Like a patient teacher' }, userName: 'Mark' })
+  })
+
+  it('Back returns to the earlier question with the answer still there', async () => {
+    await show(meet())
+    type("Your agent's name", 'Nova')
+    await press('Continue')
+    await press('Back')
+    expect((screen.getByLabelText("Your agent's name", { exact: false }) as HTMLInputElement).value).toBe('Nova')
+    expect(said('you')).toEqual([])
+  })
+
+  it('a save that fails says which part, keeps every answer, and finishes on a second try', async () => {
+    answers = [{ status: 502, body: { ok: false, step: 'sync', error: 'install-state is busy' } }, { status: 200, body: { ok: true } }]
+    await show(meet())
+    type("Your agent's name", 'Nova')
+    await press('Continue')
+    await press('Continue')
+    type('Your name', 'Mark')
+    await press('Finish')
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('your agents have not been told yet'))
+    expect(refresh).not.toHaveBeenCalled()
+    expect((screen.getByLabelText('Your name', { exact: false }) as HTMLInputElement).value).toBe('Mark')
+    await press('Finish')
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toHaveLength(2)
+    expect(requests[1]).toEqual(requests[0])
+  })
+
+  it('a server that cannot be reached says so and keeps the answers', async () => {
+    answers = [new Error('connection refused')]
+    await show(meet({ agentName: 'Nova', personality: { kind: 'preset', id: 'warm' }, userName: 'Mark' }))
+    await press('Finish')
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain("Bakin couldn't be reached"))
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('answers that were given but not all saved come back on the last step, ready to finish', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    await show(meet({ agentName: 'Nova', personality: { kind: 'custom', description: 'Dry and brief' }, userName: 'Mark' }))
+    expect(said('you')).toEqual(['Nova', 'Dry and brief'])
+    expect((screen.getByLabelText('Your name', { exact: false }) as HTMLInputElement).value).toBe('Mark')
+    expect(screen.getByRole('alert').textContent).toContain("setup didn't finish")
+    await press('Finish')
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests[0]!.body).toEqual({ agentName: 'Nova', personality: { kind: 'custom', description: 'Dry and brief' }, userName: 'Mark' })
+  })
+
+  it('"Skip for now" records the skip and Home looks again; a skip that fails stays put and says so', async () => {
+    answers = [{ status: 500, body: { error: 'disk full' } }, { status: 200, body: { ok: true } }]
+    await show(meet())
+    await press('Skip for now')
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain("Skipping couldn't be saved"))
+    expect(refresh).not.toHaveBeenCalled()
+    await press('Skip for now')
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toEqual([{ path: 'introduction/skip', body: null }, { path: 'introduction/skip', body: null }])
   })
 })

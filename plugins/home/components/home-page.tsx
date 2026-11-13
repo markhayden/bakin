@@ -4,7 +4,8 @@
  * Patterns: `storybook/public/pages/page.stories.tsx` (CanonicalUsage,
  * StandardWidth), `feedback/system-state.stories.tsx` (StateMatrix) for
  * every non-ready state, `lists/list-rows.stories.tsx` (InteractiveRows)
- * for starters, and the conversation kit's `Composer` for the prompt.
+ * for starters, and the conversation kit's `Composer` for the prompt. The
+ * introduction is `introduction.tsx`.
  */
 import { Suspense, useCallback, useRef, useState } from 'react'
 import { Composer } from '@makinbakin/sdk/conversation'
@@ -13,6 +14,7 @@ import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Button, SystemState } from '@makinbakin/sdk/ui'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
+import { Introduction } from './introduction'
 import type { HomeStarter, HomeState, HomeStateResponse } from '../types'
 
 const STATE_TIMEOUT_MS = 15_000
@@ -21,6 +23,7 @@ const STARTER_LIMIT = 6
 
 function titleFor(state: HomeState | undefined): string {
   if (state?.name === 'ready') return 'What do you want to do?'
+  if (state?.name === 'meet-agent') return 'Meet your main agent'
   return 'Home'
 }
 
@@ -91,7 +94,7 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
 }
 
 /** States that have no screen of their own yet say what is true and where it is fixed today. */
-function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' }> }) {
+function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' | 'meet-agent' }> }) {
   if (state.name === 'unavailable') {
     const model = state.reason === 'model_cannot_run'
     return (
@@ -103,17 +106,6 @@ function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' }> 
           ? `A provider is logged in, but not one this agent's model belongs to${state.detail ? ` (${state.detail})` : ''}. Pick a model that can run on the Models page.`
           : 'The agent runtime is not answering. Health shows what is wrong and how to fix it.'}
         action={<Button render={<PluginLink to={state.href} />}>{model ? 'Open Models' : 'Open Health'}</Button>}
-      />
-    )
-  }
-  if (state.name === 'meet-agent') {
-    return (
-      <SystemState
-        kind="initial-empty"
-        scope="page"
-        title="Your main agent has no name yet"
-        description="Give it a name and a personality on its Team page. A guided introduction is coming to this page."
-        action={<Button render={<PluginLink to={`/team/${encodeURIComponent(state.agent.id)}`} />}>Open {state.agent.name}</Button>}
       />
     )
   }
@@ -146,6 +138,8 @@ function HomePageInner() {
             description="Bakin could not work out what to show. Try again; if it keeps happening, check Health."
             action={<Button variant="outline" onClick={() => { void refresh() }}>Try again</Button>}
           />
+        ) : state.name === 'meet-agent' ? (
+          <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
           <ReadyView agent={state.agent} starters={data.starters} />
         ) : (
