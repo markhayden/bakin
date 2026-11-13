@@ -135,9 +135,12 @@ describe('CLI onboard command', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    const liveOutput = harness.writeOutput()
-    expect(liveOutput).toContain('Onboard')
-    expect(liveOutput).not.toContain("┃ 🐷 Bakin'")
+    // The progress view collapses once the run finishes, so what it drew on
+    // the way is a matter of timing; that it never drew the brand is not.
+    expect(harness.writeOutput()).not.toContain("┃ 🐷 Bakin'")
+    const output = harness.output()
+    expect(output).toContain('Onboarding')
+    expect(output).not.toContain("┃ 🐷 Bakin'")
   })
 
   it('renders already-onboarded state with shared onboarding UI in a TTY', async () => {
