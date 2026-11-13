@@ -66,8 +66,10 @@ describe('Pi login steps state the Pi command line tool\'s own requirements', ()
     expect(floor).toBeDefined()
     expect(manifest.bin).toHaveProperty('pi')
 
-    const factory = readFileSync(join(ROOT, FACTORY), 'utf-8')
-    expect(factory).toContain(`npm install -g ${manifest.name}`)
-    expect(factory).toContain(`needs Node ${floor} or newer`)
+    // Pi's facts live in the Pi adapter; the factory only composes them into the step.
+    const requirements = readFileSync(join(ROOT, 'packages', 'adapter-pi', 'src', 'cli-requirements.ts'), 'utf-8')
+    expect(requirements).toContain(`PI_CLI_PACKAGE = '${manifest.name}'`)
+    expect(requirements).toContain(`PI_CLI_MIN_NODE = '${floor}'`)
+    expect(readFileSync(join(ROOT, FACTORY), 'utf-8')).toContain('${PI_CLI_INSTALL_HINT}')
   })
 })

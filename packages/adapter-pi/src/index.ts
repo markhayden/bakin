@@ -16,6 +16,7 @@ import { PiRuntimeAdapter, type PiRuntimeAdapterOptions } from './runtime'
 
 export { createPiHealthChecks } from './health-checks'
 export { isPiPresent } from './presence'
+export { PI_CLI_INSTALL_HINT, PI_CLI_MIN_NODE, PI_CLI_PACKAGE } from './cli-requirements'
 
 export function createPiRuntimeAdapter(options: PiRuntimeAdapterOptions = {}): AgentRuntimeAdapter {
   return new PiRuntimeAdapter(options)
