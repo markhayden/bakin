@@ -274,10 +274,36 @@ use.
 | The tour modal or miniatures need a pattern the kit lacks | A conformance deviation | Raised for approval at plan time; text-and-icon fallback |
 | An unprompted greeting turn surprises someone with spend limits | Unexpected cost | One short turn, metered as `chat`, subject to the same budget gate as any turn |
 
-## 10. Open questions
+## 10. The first starters
 
-1. **The ten starters.** A first list is proposed in the plan; which ten is
-   the maintainer's call.
+Simple asks with little overhead, each doable with tools agents already
+have. "Needs" is what the home must have for the starter to be shown.
+
+| # | Starter | What the agent uses | Needs |
+|---|---|---|---|
+| 1 | Create an image | image generation | a provider that can make images |
+| 2 | Research a topic | web search, then a written brief | the web search capability, with its key |
+| 3 | Schedule a recurring task | the schedule tools | nothing extra |
+| 4 | Summarize a document | PDF and file reading | an attachment |
+| 5 | Break a goal into tasks | the task tools | nothing extra |
+| 6 | Draft something for me | writing only | nothing extra |
+| 7 | Brainstorm ideas | writing only | nothing extra |
+| 8 | Edit an image | image editing | an attachment; an image-capable provider |
+| 9 | Set up a daily briefing | the schedule briefing tool | nothing extra |
+| 10 | Show me what you can do | a short guided example | nothing extra |
+
+**A starter whose need is missing is not hidden for good: it becomes a
+reason.** "Research a topic" on a home with no search key appears under
+"Do more with Bakin" as "Let agents search the web: add the key". This is
+the same rule that will later carry starters that need connections Bakin
+does not have yet. "Clear my inbox each morning" would lead with "to do
+that, let's connect Gmail". **No such connectivity is built here**: every
+starter above runs on existing tools. The rule and the data shape
+(`needs`) are what this spec provides for that future.
+
+## 11. Open questions
+
+1. **The starters above:** edit freely; the list is data.
 2. **The four personality presets** and their sample lines: wording.
 3. **The command's name:** `bakin runtime login`, or something a novice
    would guess.
