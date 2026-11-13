@@ -129,8 +129,10 @@ unsupported.
   counts, stays-behind lines, target credential status — with ZERO writes:
   no backup, no flip, no provisioning, no target-home mutation, no audit
   trace. The target is a read-only secondary adapter instance (the factory
-  is pure and `initialize()` is write-free by conformance pin — seeding and
-  config writes are provisioning concerns). One scoped exception: probing an
+  is pure and a READ-ONLY `initialize()` — `readOnly: true`, which the dry
+  run and every check pass — is write-free by conformance pin; seeding and
+  config writes are provisioning concerns. An ordinary Pi initialize lets
+  the SDK create its empty auth and catalog-cache files, #1048). One scoped exception: probing an
   OpenClaw TARGET shells its CLI, which lazily materializes internal state
   (`.openclaw/state/`, `.openclaw/identity/`) on any first read — the same
   lazy init `bakin check` triggers; never config/roster/workspace content.

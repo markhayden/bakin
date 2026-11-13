@@ -212,10 +212,15 @@ const target: RuntimeConformanceTarget = {
     const freshHome = join(testDir, `pi-fresh-${randomUUID()}`)
     process.env.PI_HOME = freshHome
     resetPiHome()
+    // The model registry is process-global and already built for the main
+    // target's home: without this the fresh adapter never opens a store in
+    // the fresh home, and the check passed while a real first initialize
+    // created models-store.json there (#1048).
+    resetModelRegistry()
     const fresh = createPiRuntimeAdapter()
     return {
       homeDir: freshHome,
-      initialize: () => fresh.initialize({ contentDir: join(testDir, 'bakin'), execTools: execToolProvider, settings: {} }),
+      initialize: () => fresh.initialize({ contentDir: join(testDir, 'bakin'), execTools: execToolProvider, settings: {}, readOnly: true }),
       cleanup: () => {
         process.env.PI_HOME = join(testDir, 'pi')
         resetPiHome()

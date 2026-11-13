@@ -161,7 +161,7 @@ const target: RuntimeConformanceTarget = {
     return {
       homeDir: freshHome,
       initialize: () =>
-        fresh.initialize({ contentDir: freshHome, bakinMcpBaseUrl: 'http://localhost:3737' }),
+        fresh.initialize({ contentDir: freshHome, bakinMcpBaseUrl: 'http://localhost:3737', readOnly: true }),
       cleanup: () => {
         mockHome = harnessHome
       },

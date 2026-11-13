@@ -107,11 +107,14 @@ export interface RuntimeConformanceTarget {
   makeUnserveableRuntime?(): Promise<Pick<AgentRuntimeAdapter, 'ping'>> | Pick<AgentRuntimeAdapter, 'ping'>
   /**
    * For the write-free-initialize pin: a FRESH uninitialized adapter of this
-   * runtime pointed at a pristine home. The check snapshots `homeDir` before
-   * and after `initialize()` and fails on ANY tree change — initialization
-   * must be read-only (seeding/config writes belong to provisioning; the
-   * runtime-switch dry-run relies on this to construct a secondary target
-   * adapter with zero side effects). `cleanup` restores whatever env/global
+   * runtime pointed at a pristine home, initialized the way a read-only
+   * consumer does it (`readOnly: true`). The check snapshots `homeDir`
+   * before and after `initialize()` and fails on ANY tree change —
+   * seeding/config writes belong to provisioning, and `bakin check` and the
+   * runtime-switch dry-run rely on this to construct an adapter with zero
+   * side effects. The scenario must also clear any process-global state a
+   * previous target left behind, or the fresh adapter never opens its
+   * stores in the fresh home and the check proves nothing (#1048). `cleanup` restores whatever env/global
    * state the scenario re-pointed; always invoked.
    */
   makeFreshInitScenario?(): Promise<FreshInitScenario> | FreshInitScenario
@@ -1030,11 +1033,14 @@ export const runtimeConformanceChecks = {
   },
 
   /**
-   * initialize() performs no filesystem writes to the adapter home (D4 of
-   * the runtime-switch-carry spec). Seeding and config writes are
-   * provisioning concerns — every supported boot/install/switch path calls
-   * provisionToolAccess, while read-only consumers (bakin check, dry-run
-   * secondary construction) call only initialize and must stay write-free.
+   * A read-only initialize() performs no filesystem writes to the adapter
+   * home (D4 of the runtime-switch-carry spec). Seeding and config writes
+   * are provisioning concerns — every supported boot/install/switch path
+   * calls provisionToolAccess, while read-only consumers (bakin check,
+   * dry-run secondary construction) call only `initialize({ readOnly: true })`
+   * and must stay write-free. An ordinary initialize is followed by
+   * provisioning, which owns home writes anyway; Pi's SDK creates its empty
+   * auth and catalog-cache files there the first time its stores open.
    */
   async initializeIsWriteFree(target: RuntimeConformanceTarget): Promise<void> {
     if (!target.makeFreshInitScenario) return
@@ -1045,7 +1051,7 @@ export const runtimeConformanceChecks = {
       const after = snapshotTree(scenario.homeDir)
       if (before !== after) {
         fail(
-          `initialize() wrote to the adapter home — initialization must be read-only (provisioning owns writes).\n`
+          `initialize() wrote to the adapter home — a read-only initialization must write nothing (provisioning owns writes).\n`
           + `before:\n${before || '<empty>'}\nafter:\n${after || '<empty>'}`,
         )
       }
@@ -1239,7 +1245,7 @@ export function runRuntimeConformanceSuite(
       await runtimeConformanceChecks.resolveIdIsHonest(getTarget())
     })
 
-    it('initialize() is write-free (provisioning owns home writes)', async () => {
+    it('a read-only initialize() is write-free (provisioning owns home writes)', async () => {
       await runtimeConformanceChecks.initializeIsWriteFree(getTarget())
     })
 

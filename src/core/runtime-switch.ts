@@ -683,11 +683,13 @@ export function runtimeSwitchOperation(request: RuntimeSwitchRequest, origin: Op
 }
 
 /**
- * The dry-run secondary target: constructed and initialized (write-free by
- * conformance-pinned contract) with the same opts a real flip would hand it
- * — but NEVER registered as app services, NEVER provisioned, and with a
- * no-op audit sink (a preview leaves no trace anywhere, audit.jsonl
- * included). Callers own shutdown().
+ * The dry-run secondary target: constructed and initialized READ-ONLY
+ * (write-free by conformance-pinned contract) with the same opts a real
+ * flip would hand it — but NEVER registered as app services, NEVER
+ * provisioned, and with a no-op audit sink (a preview leaves no trace
+ * anywhere, audit.jsonl included). Without `readOnly` a preview of a switch
+ * to Pi created empty auth and catalog-cache files in a Pi home that had
+ * never been used (#1048). Callers own shutdown().
  */
 async function createSecondaryTargetRuntime(target: RuntimeAdapterName): Promise<AgentRuntimeAdapter> {
   const { createRuntimeExecToolProvider } = await import('./exec-tools/provider')
@@ -701,6 +703,7 @@ async function createSecondaryTargetRuntime(target: RuntimeAdapterName): Promise
     execTools: createRuntimeExecToolProvider(),
     bakinMcpBaseUrl: resolveBakinMcpBaseUrl(),
     getMcpCredential,
+    readOnly: true,
   })
   return runtime
 }

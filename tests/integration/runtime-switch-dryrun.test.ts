@@ -192,6 +192,10 @@ describe('switchRuntime — dry run is a full preview with ZERO writes', () => {
     expect(snapshotTree(pathJoin(testDir, 'pi'))).toBe(piBefore)
     expect(snapshotTree(testDir, OPENCLAW_CLI_STATE_RE)).toBe(homeBefore)
     expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'bakin-agents.json'))).toBe(false)
+    // Nor the Pi SDK's catalog cache: the secondary target is initialized
+    // read-only. The warm-up dry run above used to create this file, which
+    // is why the byte-identical snapshots never noticed it (#1048).
+    expect(existsSync(pathJoin(testDir, 'pi', 'agent', 'models-store.json'))).toBe(false)
   })
 
   it('a dry run against the already-active adapter is rejected like a real switch', async () => {
