@@ -1123,6 +1123,19 @@ bakin search:reset [--yes]
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="uninstall-search" name="uninstall search" summary="Stop the search service and remove its registration." description="The reverse of `bakin install search`, for retiring or moving a home: stops the engine and removes the background service this home registered. Refuses a service another home owns and an externally managed endpoint. `--data` also deletes this home's index data; `--engine` also deletes the engine and its models, which every Bakin home on the machine shares. Run it with Bakin stopped. Your content is never touched.">
+```sh frame="terminal"
+bakin uninstall search [--data] [--engine] [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--data]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--engine]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="brands-list" name="brands list" summary="List brand records." description="Lists all brands (drafts flagged) plus honestly-surfaced invalid records.">
 ```sh frame="terminal"
 bakin brands list
