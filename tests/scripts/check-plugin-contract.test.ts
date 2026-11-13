@@ -1,8 +1,10 @@
 /** The release contract guard: a family change ships only when every official plugin has a compatible release. */
 import { describe, expect, it } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkContractTransition, checkPublishedManifests, contractFromSource, officialPlugins, reportContractGuard } from '../../scripts/check-plugin-contract'
+import { checkContractTransition, checkPublishedManifests, contractFromSource, officialPlugins, readArtifactManifest, reportContractGuard } from '../../scripts/check-plugin-contract'
 import type { ArtifactsIndex } from '../../src/core/whiskit/artifacts-index'
 
 const SHA = 'b'.repeat(64)
@@ -166,5 +168,25 @@ describe('checkPublishedManifests: what this release would install must pass its
     const report = reportContractGuard({ ok: true, reason: 'same-family', checked: [], contract: 'react19-sdk-focused-v2', manifests: { ok: true, checked: [{ id: 'projects', version: '0.14.0' }] } })
     expect(report).toContain('unchanged family')
     expect(report).toContain('projects 0.14.0')
+  })
+})
+
+describe('readArtifactManifest', () => {
+  it('reads the manifest from an artifact laid out the way published ones are (members under ./)', async () => {
+    // `tar -C dir .` names members `./bakin-plugin.json`, exactly like the
+    // release artifacts. GNU tar will not extract that by its bare name.
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-test-contract-artifact-'))
+    try {
+      const src = join(dir, 'src')
+      mkdirSync(join(src, 'dist'), { recursive: true })
+      writeFileSync(join(src, 'bakin-plugin.json'), '{"id":"projects"}')
+      writeFileSync(join(src, 'dist', 'client.js'), '')
+      const tarball = join(dir, 'artifact.tar.gz')
+      execFileSync('tar', ['-czf', tarball, '-C', src, '.'])
+      expect(execFileSync('tar', ['-tzf', tarball]).toString()).toContain('./bakin-plugin.json')
+      expect(await readArtifactManifest(tarball)).toBe('{"id":"projects"}')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
