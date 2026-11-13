@@ -66,13 +66,18 @@ mock.module('@makinbakin/sdk/utils', () => ({
 
 import { HomePage } from '../../../plugins/home/components/home-page'
 
+const PERSONALITIES = [
+  { id: 'warm', label: 'Warm and encouraging', sample: 'Nice, that is a solid start.' },
+  { id: 'direct', label: 'Direct and efficient', sample: 'Done. Three issues found.' },
+]
 const STARTERS = [
   { id: 'brainstorm', title: 'Brainstorm ideas', description: 'Think out loud', prompt: 'Brainstorm with me.', needsAttachment: false },
   { id: 'summarize-document', title: 'Summarize a document', description: 'Attach a file', prompt: 'Please summarize the attached document.', needsAttachment: true },
 ]
-const ready = (starters = STARTERS): HomeStateResponse => ({ ok: true, state: { name: 'ready', agent: { id: 'main', name: 'Nova' } }, starters })
-const show = async (data: HomeStateResponse | null, over: Partial<typeof response> = {}) => {
-  response = { data, loading: false, error: null, ...over }
+type Shown = Omit<HomeStateResponse, 'personalities'>
+const ready = (starters = STARTERS): Shown => ({ ok: true, state: { name: 'ready', agent: { id: 'main', name: 'Nova' } }, starters })
+const show = async (data: Shown | null, over: Partial<typeof response> = {}) => {
+  response = { data: data ? { ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
   await actRender(() => render(<HomePage />))
 }
 const ask = async (text: string) => {

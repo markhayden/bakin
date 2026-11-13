@@ -19,6 +19,16 @@
         "method": "GET",
         "path": "/state",
         "summary": "What Home shows now"
+      },
+      {
+        "method": "POST",
+        "path": "/introduction",
+        "summary": "Introduce the main agent"
+      },
+      {
+        "method": "POST",
+        "path": "/introduction/skip",
+        "summary": "Skip the introduction"
       }
     ],
     "slots": [

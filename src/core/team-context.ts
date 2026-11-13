@@ -109,6 +109,37 @@ export function seedContextFiles(): { created: string[] } {
   return { created }
 }
 
+/** The block in global context that says who the agents work with. */
+export const OPERATOR_BLOCK_ID = 'operator'
+
+/**
+ * Record what the agents should call the person they work with, in global
+ * context, so every agent learns it on the next sync. Only this block is
+ * written: everything else in the file is the person's own and is kept
+ * byte for byte. Writing the same name twice changes nothing. Returns
+ * whether the file changed.
+ */
+export function setOperatorName(name: string): boolean {
+  const trimmed = name.trim()
+  if (!trimmed) throw new Error('setOperatorName needs a name')
+  const path = getGlobalContextPath()
+  const existing = existsSync(path) ? readFileSync(path, 'utf-8') : GLOBAL_SEED
+  const body = `## Who you work with\n\nYou work with ${trimmed}. Call them ${trimmed}.`
+  const next = injectBlock(existing, OPERATOR_BLOCK_ID, body)
+  if (existsSync(path) && next === existing) return false
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, next, 'utf-8')
+  return true
+}
+
+/** The name recorded by `setOperatorName`, or null. */
+export function getOperatorName(): string | null {
+  const path = getGlobalContextPath()
+  if (!existsSync(path)) return null
+  const body = extractBlock(readFileSync(path, 'utf-8'), OPERATOR_BLOCK_ID)
+  return body ? (/^You work with (.+?)\. Call them /m.exec(body)?.[1] ?? null) : null
+}
+
 /**
  * Refresh the Bakin-managed block inside each role context file to the
  * current shipped defaults. User content outside the block is preserved
