@@ -12,7 +12,7 @@ const testDir = pathJoin(tmpdir(), `bakin-test-agent-sync-install-${Date.now()}-
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 process.env.BAKIN_HOME = testDir
 
-import { describe, it, expect, afterAll, mock } from 'bun:test'
+import { describe, it, expect, afterAll, afterEach, mock } from 'bun:test'
 import { rmSync } from 'fs'
 import { join } from 'path'
 
@@ -42,8 +42,10 @@ mock.module('../../../src/core/team-context', () => ({
 
 // One drifted pack finding; no agents to sync.
 const packFinding = { type: 'projection-drift', severity: 'warn', packageId: 'websearch@1.0.0', message: 'skill drifted' }
+const driftReport = { findings: [packFinding], agentsScanned: 0, blocksOk: 0, projectionsOk: 0, migrationNeeded: false }
+let scanReport: { findings: Array<Record<string, unknown>>; agentsScanned: number; blocksOk: number; projectionsOk: number; migrationNeeded: boolean } = driftReport
 mock.module('../../../src/core/agent-packages/sync-scanner', () => ({
-  scanAgentSync: async () => ({ findings: [packFinding], agentsScanned: 0, blocksOk: 0, projectionsOk: 0 }),
+  scanAgentSync: async () => scanReport,
 }))
 mock.module('../../../packages/core/src/agent-packages/lockfile', () => ({
   readLockfile: () => ({ packages: { 'websearch@1.0.0': { kind: 'skill-pack', version: '1.0.0' } } }),
@@ -83,5 +85,29 @@ describe('agent-sync install() — pack repair honesty', () => {
     expect(result.status).toBe('installed')
     expect(result.message).toContain('1 pack(s)')
     expect(result.message).not.toContain('failed')
+  })
+})
+
+describe('agent-sync check() — what onboarding may repair on its own', () => {
+  afterEach(() => { scanReport = driftReport })
+
+  it('drift the local sync clears is a repairable warning', async () => {
+    const check = await agentSyncComponent.check()
+    expect(check.status).toBe('warn')
+    expect(check.repairable).toBe(true)
+  })
+
+  it('the one-time block migration is confirmed by a person, never repaired implicitly', async () => {
+    scanReport = { ...driftReport, migrationNeeded: true }
+    const check = await agentSyncComponent.check()
+    expect(check.status).toBe('warn')
+    expect(check.repairable).toBeUndefined()
+  })
+
+  it('an error finding is an error, not something to repair in passing', async () => {
+    scanReport = { ...driftReport, findings: [{ ...packFinding, severity: 'error' }] }
+    const check = await agentSyncComponent.check()
+    expect(check.status).toBe('error')
+    expect(check.repairable).toBeUndefined()
   })
 })

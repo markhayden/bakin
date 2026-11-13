@@ -26,13 +26,6 @@ async function piHome(): Promise<OnboardingHome> {
 
 const realFetch: typeof fetch = (Bun as unknown as { fetch?: typeof fetch }).fetch ?? fetch
 
-/**
- * A booted server repairs what it safely can on its own (plugin assets,
- * agent sync), so those two steps may already be done when the CLI checks
- * them. Every other step must come out exactly as it does in-process.
- */
-const SERVER_MAY_HAVE_FINISHED = new Set(['plugin-assets', 'agent-sync'])
-
 describe('server running vs not', () => {
   test('the same home reaches the same outcomes through both modes', async () => {
     const inProcessHome = await piHome()
@@ -46,10 +39,10 @@ describe('server running vs not', () => {
     const local = statuses(inProcess)
     const remote = statuses(viaServer)
     expect(Object.keys(remote), describeRun(viaServer)).toEqual(Object.keys(local))
-    for (const [component, status] of Object.entries(local)) {
-      if (SERVER_MAY_HAVE_FINISHED.has(component) && remote[component] === 'ok') continue
-      expect({ component, status: remote[component] }).toEqual({ component, status })
-    }
+    // Every step, with no exceptions: plugin assets and agent sync used to
+    // differ (a booted server had repaired them; the in-process run only
+    // warned), and onboarding now repairs them itself in both modes.
+    expect(remote).toEqual(local)
     expect(readMarker(inProcessHome)?.components.runtime).toBe('ok')
     expect(readMarker(serverHome)?.components.runtime).toBe('ok')
 
