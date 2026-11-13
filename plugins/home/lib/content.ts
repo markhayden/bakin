@@ -1,5 +1,5 @@
 /**
- * Home's curated content: starters, personality presets, suggestions and the tour. Copy a person
+ * Home's curated content: starters, personality presets, suggestions, the tour and each page's introduction. Copy a person
  * wrote, kept as data so changing it is never a code change. Validated at
  * load; a malformed file is a startup error, never a silently empty Home.
  */
@@ -100,14 +100,23 @@ const tourSlideSchema = z.object({
   href: z.string().regex(/^\/[a-z][a-z0-9-]*$/, 'must be a top-level page'),
 }).strict()
 
+/** What a page says about itself the first time someone opens it. `id` is the page's plugin. */
+const pageIntroductionSchema = z.object({
+  id: slug,
+  title: z.string().min(1).max(60),
+  /** Two sentences: what the page is for and what happens on it. */
+  body: z.string().min(1).max(200),
+}).strict()
+
 export const homeContentSchema = z.object({
   version: z.literal(1),
   starters: z.array(starterSchema).min(1),
   personalities: z.array(personalitySchema).min(1),
   suggestions: z.array(suggestionSchema),
   tour: z.array(tourSlideSchema).min(1),
+  pageIntroductions: z.array(pageIntroductionSchema),
 }).strict().superRefine((content, ctx) => {
-  for (const key of ['starters', 'personalities', 'suggestions', 'tour'] as const) {
+  for (const key of ['starters', 'personalities', 'suggestions', 'tour', 'pageIntroductions'] as const) {
     const seen = new Set<string>()
     for (const [index, entry] of content[key].entries()) {
       if (seen.has(entry.id)) ctx.addIssue({ code: 'custom', path: [key, index, 'id'], message: `duplicate id "${entry.id}"` })
@@ -123,6 +132,7 @@ export type PersonalityPreset = HomeContent['personalities'][number]
 export type Suggestion = HomeContent['suggestions'][number]
 export type SuggestionCondition = Suggestion['when']
 export type TourSlide = HomeContent['tour'][number]
+export type PageIntroduction = HomeContent['pageIntroductions'][number]
 
 export function parseHomeContent(value: unknown): HomeContent {
   return homeContentSchema.parse(value)

@@ -36,11 +36,11 @@ describe('home decisions', () => {
 
   it('keeps keys a newer version wrote, across a change made by this one', () => {
     mkdirSync(dirname(decisionsPath()), { recursive: true })
-    writeFileSync(decisionsPath(), JSON.stringify({ version: 1, closedPageIntroductions: { tasks: '2026-11-01T00:00:00.000Z' } }))
+    writeFileSync(decisionsPath(), JSON.stringify({ version: 1, somethingNewer: { tasks: '2026-11-01T00:00:00.000Z' } }))
     updateDecisions((current) => ({ ...current, introduction: { status: 'completed', at: '2026-11-13T12:00:00.000Z' } }))
     expect(JSON.parse(readFileSync(decisionsPath(), 'utf-8'))).toEqual({
       version: 1,
-      closedPageIntroductions: { tasks: '2026-11-01T00:00:00.000Z' },
+      somethingNewer: { tasks: '2026-11-01T00:00:00.000Z' },
       introduction: { status: 'completed', at: '2026-11-13T12:00:00.000Z' },
     })
   })

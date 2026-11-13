@@ -33,5 +33,13 @@
     { "id": "assets", "title": "Assets", "icon": "FolderOpen", "body": "Anything an agent makes for you, a document, an image or a report, is saved here with its earlier versions. Nothing is lost in a chat scroll.", "first": "Ask for a draft, then find it here.", "href": "/assets" },
     { "id": "schedule", "title": "Schedule", "icon": "CalendarClock", "body": "Work that should happen without you asking: a briefing every morning, a report every Friday. The calendar shows what is coming and what already ran.", "first": "Ask an agent to set up a daily briefing.", "href": "/schedule" },
     { "id": "health", "title": "Health", "icon": "HeartPulse", "body": "Bakin watches itself. When something needs attention, Health says what is wrong in plain words and usually offers to fix it for you.", "first": "Look here first whenever something seems off.", "href": "/health" }
+  ],
+  "pageIntroductions": [
+    { "id": "chat", "title": "This is where you talk to your agents", "body": "Pick an agent and ask for anything, the way you would message a colleague. Conversations are kept here, so you can pick one up again later." },
+    { "id": "tasks", "title": "This is the board", "body": "Work your agents are doing lives here as tasks. They move across the columns as agents pick them up, and land in Review when one needs you." },
+    { "id": "team", "title": "These are your agents", "body": "Each one has a name, a personality and things it is good at. Open an agent to change how it comes across, or add a specialist from Explore." },
+    { "id": "assets", "title": "Everything your agents make is kept here", "body": "Documents, images and reports are saved with their earlier versions, so nothing is lost in a conversation. Search finds them by what is in them." },
+    { "id": "schedule", "title": "This is work that happens without asking", "body": "A briefing every morning, a report every Friday. Ask an agent to schedule something and it appears here, with what ran and what is coming." },
+    { "id": "health", "title": "Bakin watches itself here", "body": "When something needs attention, it is listed here in plain words, usually with a button that fixes it. A quiet page means everything is working." }
   ]
 }

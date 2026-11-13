@@ -49,6 +49,8 @@ const decisionsSchema = z.object({
   saidHello: z.object({ at: isoInstant }).optional(),
   /** Suggestions put away with "Not now", by id, with when. Each one stays hidden for a while, not for good. */
   dismissedSuggestions: z.record(z.string(), z.object({ at: isoInstant })).optional(),
+  /** Page introductions the person closed, by page, with when. Closed is closed for good. */
+  closedPageIntroductions: z.record(z.string(), z.object({ at: isoInstant })).optional(),
 }).passthrough()
 
 export type HomeDecisions = z.infer<typeof decisionsSchema>

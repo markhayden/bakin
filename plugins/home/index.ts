@@ -17,8 +17,9 @@ import { getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory
 import { getSettings } from '../../src/core/settings'
 import { setOperatorName } from '../../src/core/team-context'
 import { HOME_CONTENT, TOUR_ICONS } from './lib/content'
-import { introductionAnswersSchema, updateDecisions } from './lib/decisions'
+import { introductionAnswersSchema, readDecisions, updateDecisions } from './lib/decisions'
 import { completeIntroduction, recordHello, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
+import { openPageIntroductions } from './lib/page-introductions'
 import { gatherHomeFacts } from './lib/readiness'
 import { availableStarters, homeState, offersHello, type HomeFacts } from './lib/state'
 import { MAX_SHOWN, suggestionsFor, type SuggestionFacts } from './lib/suggestions'
@@ -207,6 +208,37 @@ const routes = [
     handler: async () => {
       const body: HomeTourResponse = { ok: true, slides: HOME_CONTENT.tour }
       return Response.json(body)
+    },
+  }),
+
+  defineRoute({
+    path: '/page-introductions',
+    method: 'GET',
+    activityClass: 'routine',
+    summary: 'The pages that still introduce themselves',
+    description:
+      'The first-visit introductions not yet closed on this home, by page. Empty on a home where nobody went through Home\'s introduction: ' +
+      'its people already know their way around. Read-only.',
+    responses: { 200: z.object({ ok: z.literal(true), introductions: z.array(z.object({ id: z.string(), title: z.string(), body: z.string() })) }) },
+    handler: async () => Response.json({ ok: true, introductions: openPageIntroductions(HOME_CONTENT.pageIntroductions, readDecisions()) }),
+  }),
+
+  defineRoute({
+    path: '/page-introductions/:id/close',
+    method: 'POST',
+    summary: 'Close a page\'s introduction',
+    description: 'Records that the person closed the introduction on that page; it is not shown again. 404 for a page that has none.',
+    params: z.object({ id: z.string() }),
+    responses: { 200: okResponse, 404: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      if (!HOME_CONTENT.pageIntroductions.some((introduction) => introduction.id === params.id)) {
+        return Response.json({ ok: false, error: `No introduction for "${params.id}"` }, { status: 404 })
+      }
+      const at = new Date().toISOString()
+      updateDecisions((current) => ({ ...current, closedPageIntroductions: { ...current.closedPageIntroductions, [params.id]: { at } } }))
+      // Closed here is closed in every open browser.
+      ctx.events.emit('home.page_introduction_closed', { id: params.id })
+      return Response.json({ ok: true })
     },
   }),
 
