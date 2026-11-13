@@ -807,6 +807,54 @@ describe('team plugin — PUT /:agentId/identity', () => {
 })
 
 // ---------------------------------------------------------------------------
+// team.updateIdentity hook — the same service as the route, for other plugins
+// ---------------------------------------------------------------------------
+
+describe('team plugin — team.updateIdentity hook', () => {
+  let activated: ActivatedPlugin
+
+  beforeAll(async () => {
+    activated = await activatePlugin(teamPlugin, testDir)
+  })
+
+  beforeEach(() => {
+    runtimeMocks.update.mockClear()
+    runtimeMocks.writeWorkspaceFile.mockClear()
+    rosterAgents.current = [{ id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' }]
+  })
+
+  /** The plugin harness records registrations; this calls the handler Team registered. */
+  const updateIdentity = (data: Record<string, unknown>): Promise<{ updated: string[] }> => {
+    const register = activated.ctx.hooks.register as unknown as { mock: { calls: Array<[string, (data: unknown) => Promise<{ updated: string[] }>]> } }
+    const registered = register.mock.calls.find(([name]) => name === 'team.updateIdentity')
+    if (!registered) throw new Error('team.updateIdentity is not registered')
+    return registered[1](data)
+  }
+
+  it('renames the agent, writes its personality, and reports what changed', async () => {
+    const result = await updateIdentity({
+      agentId: 'main', name: 'Nova', vibe: 'Warm and encouraging', soul: 'You are warm.',
+    })
+    expect(result).toEqual({ updated: ['name', 'vibe', 'soul'] })
+    expect(runtimeMocks.update).toHaveBeenCalledWith('main', expect.objectContaining({ name: 'Nova' }))
+    expect(runtimeMocks.writeWorkspaceFile).toHaveBeenCalledWith('main', { path: 'SOUL.md', content: 'You are warm.' })
+  })
+
+  it('ignores fields it does not know and values that are not text', async () => {
+    const result = await updateIdentity({
+      agentId: 'main', name: 'Nova', model: 'x/y', soul: 42, emoji: '',
+    })
+    expect(result).toEqual({ updated: ['name'] })
+    expect(runtimeMocks.writeWorkspaceFile).not.toHaveBeenCalledWith('main', expect.objectContaining({ path: 'SOUL.md' }))
+  })
+
+  it('refuses a call with no agent, and an unknown agent is a typed not_found', async () => {
+    await expect(updateIdentity({ name: 'Nova' })).rejects.toThrow(/needs an agentId/)
+    await expect(updateIdentity({ agentId: 'ghost', name: 'Nova' })).rejects.toMatchObject({ kind: 'not_found' })
+  })
+})
+
+// ---------------------------------------------------------------------------
 // PUT /:agentId/permissions
 // ---------------------------------------------------------------------------
 

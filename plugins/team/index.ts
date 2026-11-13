@@ -46,6 +46,7 @@ import {
   updateRuntimeAgentIdentity,
   setRuntimeSubagentPermissions,
 } from './lib/runtime-agents'
+import { applyAgentIdentity, identityUpdateFrom } from './lib/identity-service'
 import {
   agentLessonFileToId,
   agentLessonKeyToFilePath,
@@ -284,6 +285,16 @@ const teamPlugin: BakinPlugin = definePlugin({
       const agents = await listRuntimeAgentMetas(ctx.runtime)
       return agents.find((a) => a.id === id) ?? null
     }, { label: 'Get an agent.', summary: 'Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.', hookKind: 'rpc' })
+    ctx.hooks.register('team.updateIdentity', async (d: Record<string, unknown>) => {
+      const agentId = typeof d.agentId === 'string' ? d.agentId : ''
+      if (!agentId) throw new Error('team.updateIdentity needs an agentId')
+      const updated = await applyAgentIdentity(
+        { runtime: ctx.runtime, audit: (event, actor, data) => ctx.activity.audit(event, actor, data) },
+        agentId,
+        identityUpdateFrom(d),
+      )
+      return { updated }
+    }, { hookKind: 'rpc', label: 'Update an agent\'s identity.', summary: 'Changes an agent\'s name, emoji, role, vibe or persona files and returns the fields that changed. The same service as the Team page: it audits the change. Use it when a plugin lets a person name or describe an agent.' })
     ctx.hooks.register('team.getAgentIds', () => getRuntimeAgentIds(ctx.runtime), { label: 'List agent ids.', summary: 'Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.', hookKind: 'rpc' })
     ctx.hooks.register('team.resolveProfile', (d: Record<string, unknown>) => {
       return getRuntimeAgentProfile(ctx.runtime, d.id as string)
