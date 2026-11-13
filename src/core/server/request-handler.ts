@@ -267,6 +267,21 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: IncomingMe
       return
     }
 
+    // The setup checklist: what is still worth doing on this home, as a
+    // projection of what the existing engines answer. Reads only.
+    if (url.pathname === '/api/runtime/onboarding/checklist' && req.method === 'GET') {
+      ;(async () => {
+        const { getSetupChecklist } = require('../onboarding/setup-checklist') as typeof import('../onboarding/setup-checklist')
+        return { adapter: getSettings().runtime.adapter, checklist: await getSetupChecklist() }
+      })()
+        .then((payload) => jsonResponse(res, 200, payload))
+        .catch((err) => {
+          log.error('Setup checklist failed', err)
+          jsonResponse(res, 500, { error: err instanceof Error ? err.message : String(err) })
+        })
+      return
+    }
+
     // One onboarding component install as an operation (#895 D11): the
     // runtime hub's one-click fix and the CLI's server mode.
     if (url.pathname === '/api/runtime/onboarding/install' && req.method === 'POST') {

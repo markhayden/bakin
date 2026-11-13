@@ -22,6 +22,8 @@ const facts = (over: Partial<HomeFacts> = {}): HomeFacts => ({
   model: { status: 'runnable' },
   decisions: {},
   starters: NOTHING_EXTRA,
+  capabilities: [],
+  imageProvider: false,
   ...over,
 })
 const UNNAMED = { id: 'main', name: 'Main', introduced: false } as const

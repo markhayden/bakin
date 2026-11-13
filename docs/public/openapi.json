@@ -35162,6 +35162,49 @@
                         "docsUrl"
                       ],
                       "additionalProperties": false
+                    },
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "payoff": {
+                            "type": "string"
+                          },
+                          "action": {
+                            "type": "object",
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "label",
+                              "href"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "payoff",
+                          "action"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "suggestionCount": {
+                      "type": "number"
                     }
                   },
                   "required": [
@@ -35170,7 +35213,9 @@
                     "starters",
                     "personalities",
                     "hello",
-                    "introductionSkipped"
+                    "introductionSkipped",
+                    "suggestions",
+                    "suggestionCount"
                   ],
                   "additionalProperties": false
                 }
@@ -35181,7 +35226,7 @@
         "tags": [
           "Home"
         ],
-        "description": "The Home state (unavailable, meet-agent, needs-login or ready) and the starters this home can run, derived from the runtime, credentials, the main agent and capability readiness. Read-only: it never writes and never starts a turn.",
+        "description": "The Home state (unavailable, meet-agent, needs-login or ready), the starters this home can run and, once it is ready, the first suggestions that apply (with how many apply in all), derived from the runtime, credentials, the main agent, capability readiness and the setup checklist. Read-only: it never writes and never starts a turn.",
         "x-bakin-full-path": "/api/plugins/home/state"
       }
     },
@@ -35398,6 +35443,96 @@
         ],
         "description": "Called after the first hello was sent, or put away with \"Not now\", so Home stops offering it. The message itself is an ordinary chat message the person sent.",
         "x-bakin-full-path": "/api/plugins/home/hello"
+      }
+    },
+    "/api/plugins/home/suggestions/{id}/dismiss": {
+      "post": {
+        "operationId": "home.post.suggestions-id-dismiss",
+        "summary": "Put a suggestion away",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "\"Not now\": records the time, and Home stops showing that suggestion for thirty days. It comes back afterwards if it still applies. 404 for an id that is not a suggestion.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/home/suggestions/:id/dismiss"
       }
     },
     "/api/plugins/home/introduction/skip": {
@@ -54673,6 +54808,135 @@
         ],
         "description": "Starts a reset operation (#895) owning search-engine — not cancellable: stop → wipe derived engine data → clean start → repair reindex, as stages. 202 { operationId, bootId }; the result is { ok, message, reindex }. Disabled search or an adapter without reset answers 409 { ok: false, message }.",
         "x-bakin-full-path": "/api/search/reset"
+      }
+    },
+    "/api/runtime/onboarding/checklist": {
+      "get": {
+        "operationId": "core.get.api-runtime-onboarding-checklist",
+        "summary": "Get the setup checklist",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "adapter": {
+                      "type": "string"
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string",
+                                "enum": [
+                                  "done",
+                                  "todo",
+                                  "unknown"
+                                ]
+                              },
+                              "detail": {
+                                "type": "string"
+                              },
+                              "command": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "state",
+                              "detail"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "notes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "detail": {
+                                "type": "string"
+                              },
+                              "command": {
+                                "type": "string"
+                              },
+                              "href": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "detail"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "notes"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "adapter",
+                    "checklist"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "What is still worth doing on this home, in the order someone would do it: each item is done, todo or unknown (the engine behind it could not answer), with the command or page that does it; notes are next steps that carry no state. A projection of the existing checks (login, search, channels, capability keys, model plan); it probes nothing of its own and changes nothing.",
+        "x-bakin-full-path": "/api/runtime/onboarding/checklist"
       }
     },
     "/api/runtime/onboarding/install": {

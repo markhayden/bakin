@@ -9,6 +9,7 @@
  */
 import type { HomeDecisions, IntroductionAnswers } from './decisions'
 import type { Starter } from './content'
+import type { InstalledCapability } from './suggestions'
 
 /** The main agent as Home needs it. `null` when the roster could not be read. */
 export interface MainAgentFacts {
@@ -45,8 +46,12 @@ export interface HomeFacts {
   mainAgent: MainAgentFacts | null
   credentials: CredentialFact
   model: ModelFact
-  decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>
+  decisions: Pick<HomeDecisions, 'introduction' | 'saidHello' | 'dismissedSuggestions'>
   starters: StarterReadiness
+  /** Every installed capability pack, ready or not; `unknown` when they could not be read. */
+  capabilities: readonly InstalledCapability[] | 'unknown'
+  /** Whether a provider can make images; `unknown` when nobody could say. */
+  imageProvider: boolean | 'unknown'
 }
 
 export type HomeStateName = 'unavailable' | 'meet-agent' | 'needs-login' | 'ready'

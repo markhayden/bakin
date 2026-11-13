@@ -28,6 +28,19 @@ export interface HomeStateResponse {
   introductionSkipped: boolean
   /** How to log a provider in on this runtime. Present only when the state is `needs-login`. */
   login?: HomeLogin
+  /** "Do more with Bakin": the first few suggestions that apply. Empty unless the state is `ready`. */
+  suggestions: HomeSuggestion[]
+  /** How many apply in all, shown or not. */
+  suggestionCount: number
+}
+
+/** Something worth adding, with the one step that adds it. */
+export interface HomeSuggestion {
+  id: string
+  title: string
+  /** One sentence: what the person gets. */
+  payoff: string
+  action: { label: string; href: string }
 }
 
 export interface HomeLogin {

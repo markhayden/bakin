@@ -90,10 +90,10 @@ const STARTERS = [
   { id: 'brainstorm', title: 'Brainstorm ideas', description: 'Think out loud', prompt: 'Brainstorm with me.', needsAttachment: false },
   { id: 'summarize-document', title: 'Summarize a document', description: 'Attach a file', prompt: 'Please summarize the attached document.', needsAttachment: true },
 ]
-type Shown = Omit<HomeStateResponse, 'personalities' | 'hello' | 'introductionSkipped'> & { hello?: boolean; introductionSkipped?: boolean }
+type Shown = Omit<HomeStateResponse, 'personalities' | 'hello' | 'introductionSkipped' | 'suggestions' | 'suggestionCount'> & { hello?: boolean; introductionSkipped?: boolean }
 const ready = (starters = STARTERS): Shown => ({ ok: true, state: { name: 'ready', agent: { id: 'main', name: 'Nova' } }, starters })
 const show = async (data: Shown | null, over: Partial<typeof response> = {}) => {
-  response = { data: data ? { hello: false, introductionSkipped: false, ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
+  response = { data: data ? { hello: false, introductionSkipped: false, suggestions: [], suggestionCount: 0, ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
   await actRender(() => render(<HomePage />))
 }
 const ask = async (text: string) => {

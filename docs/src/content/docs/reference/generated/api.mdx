@@ -458,6 +458,13 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="core.get.api-runtime-onboarding-checklist">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/runtime/onboarding/checklist'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="core.post.api-runtime-onboarding-install">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1432,6 +1439,14 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/home/state'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="home.post.suggestions-id-dismiss">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/suggestions/<id>/dismiss'
 ```
 </OpenApiReference>
 

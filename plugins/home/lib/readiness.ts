@@ -10,6 +10,7 @@ import { createLogger } from '../../../src/core/logger'
 import { getModelEligibility } from '../../../src/core/model-eligibility'
 import { readDecisions } from './decisions'
 import type { CredentialFact, HomeFacts, MainAgentFacts, ModelFact, StarterReadiness } from './state'
+import type { InstalledCapability } from './suggestions'
 
 const log = createLogger('home')
 
@@ -68,19 +69,42 @@ async function model(runtime: AgentRuntimeAdapter, agent: RuntimeAgent): Promise
   }
 }
 
-async function starterReadiness(agents: readonly RuntimeAgent[], canGenerateImage: () => Promise<boolean | undefined>): Promise<StarterReadiness> {
+/** What is installed and usable, read once: starters and suggestions are both decided from it. */
+interface Evidence {
+  capabilities: HomeFacts['capabilities']
+  imageProvider: HomeFacts['imageProvider']
+}
+
+async function evidence(canGenerateImage: () => Promise<boolean | undefined>): Promise<Evidence> {
   const [capabilities, imageProvider] = await Promise.all([
-    listCapabilities().catch((err: unknown) => {
-      log.debug('Could not read capability readiness', { error: String(err) })
-      return []
-    }),
-    canGenerateImage().catch(() => undefined),
+    listCapabilities().then(
+      (packs): InstalledCapability[] => packs.map((pack) => ({
+        capability: pack.capability,
+        ready: pack.ready,
+        needsKey: pack.secrets.some((secret) => secret.required && secret.status === 'missing'),
+      })),
+      (err: unknown) => {
+        log.debug('Could not read capability readiness', { error: String(err) })
+        return 'unknown' as const
+      },
+    ),
+    canGenerateImage().then((answer) => answer ?? ('unknown' as const), () => 'unknown' as const),
   ])
+  return { capabilities, imageProvider }
+}
+
+/** Starters lean the safe way: what could not be read is not offered. */
+function starterReadiness(agents: readonly RuntimeAgent[], found: Evidence): StarterReadiness {
+  const packs = found.capabilities === 'unknown' ? [] : found.capabilities
   return {
-    readyCapabilities: [...new Set(capabilities.filter((capability) => capability.ready).map((capability) => capability.capability))],
-    imageProvider: imageProvider === true,
+    readyCapabilities: [...new Set(packs.filter((pack) => pack.ready).map((pack) => pack.capability))],
+    imageProvider: found.imageProvider === true,
     agents: agents.map((agent) => agent.id),
   }
+}
+
+const NOTHING_READ: Evidence & { starters: StarterReadiness } = {
+  capabilities: 'unknown', imageProvider: 'unknown', starters: { readyCapabilities: [], imageProvider: false, agents: [] },
 }
 
 export interface GatherDeps {
@@ -91,30 +115,28 @@ export interface GatherDeps {
 
 export async function gatherHomeFacts(deps: GatherDeps): Promise<HomeFacts> {
   const { runtime } = deps
-  const { introduction, saidHello } = readDecisions()
-  const decisions = { introduction, saidHello }
+  const { introduction, saidHello, dismissedSuggestions } = readDecisions()
+  const decisions = { introduction, saidHello, dismissedSuggestions }
   let agents: RuntimeAgent[]
   try {
     agents = await runtime.agents.list()
   } catch (err) {
     log.warn('Home could not read the runtime roster', { error: String(err) })
     return {
-      runtimeReachable: false, mainAgent: null, credentials: 'unknown', model: { status: 'unknown' }, decisions,
-      starters: { readyCapabilities: [], imageProvider: false, agents: [] },
+      runtimeReachable: false, mainAgent: null, credentials: 'unknown', model: { status: 'unknown' }, decisions, ...NOTHING_READ,
     }
   }
   const main = selectRuntimeMainAgent(agents)
   if (!main) {
     return {
-      runtimeReachable: true, mainAgent: null, credentials: 'unknown', model: { status: 'unknown' }, decisions,
-      starters: { readyCapabilities: [], imageProvider: false, agents: [] },
+      runtimeReachable: true, mainAgent: null, credentials: 'unknown', model: { status: 'unknown' }, decisions, ...NOTHING_READ,
     }
   }
-  const [isIntroduced, credentialFact, modelFact, starters] = await Promise.all([
+  const [isIntroduced, credentialFact, modelFact, found] = await Promise.all([
     introduced(runtime, main),
     credentials(runtime, main.id),
     model(runtime, main),
-    starterReadiness(agents, deps.canGenerateImage),
+    evidence(deps.canGenerateImage),
   ])
   return {
     runtimeReachable: true,
@@ -122,6 +144,7 @@ export async function gatherHomeFacts(deps: GatherDeps): Promise<HomeFacts> {
     credentials: credentialFact,
     model: modelFact,
     decisions,
-    starters,
+    starters: starterReadiness(agents, found),
+    ...found,
   }
 }
