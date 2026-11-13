@@ -232,16 +232,20 @@ describe('checkAntflyDependency identity + cancellation (#1007 D7.9)', () => {
     writeFileSync(managedBinary, `#!/bin/sh\necho $$ > ${JSON.stringify(pidFile)}\nexec sleep 30\n`, { mode: 0o755 })
     // A probe that did not finish did not answer: the engine records a failed
     // attempt and keeps its last good observation (#1007 review r1 #5). The
-    // signal fires once the child is provably running (its pid file exists), so
-    // a loaded machine cannot abort before the shell even started.
+    // signal fires once the child is provably running, so a loaded machine
+    // cannot abort before the shell even started. "Running" is the pid being
+    // IN the file: the shell's redirect creates the file before `echo` writes
+    // to it, and an abort landing in between killed the child with the file
+    // still empty (pid read as 0, twice on CI).
     const controller = new AbortController()
     const probe = checkDependency(makePin(), DEFAULT_SETTINGS, serviceIo, { signal: controller.signal })
-    await waitUntil(() => existsSync(pidFile), { label: 'the hung child wrote its pid' })
+    const writtenPid = () => (existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8').trim()) : 0)
+    await waitUntil(() => writtenPid() > 0, { label: 'the hung child wrote its pid' })
     const startedAt = Date.now()
     controller.abort(new Error('check timed out after 20s'))
     await expect(probe).rejects.toMatchObject({ name: 'CommandInterruptedError', reason: 'abort' })
     expect(Date.now() - startedAt).toBeLessThan(5_000)
-    const pid = Number(readFileSync(pidFile, 'utf8').trim())
+    const pid = writtenPid()
     expect(pid).toBeGreaterThan(0)
     await waitUntil(() => { try { process.kill(pid, 0); return false } catch { return true } }, { label: 'the hung child is gone' })
   })

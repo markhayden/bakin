@@ -182,7 +182,13 @@ describe('query deadlines (rc.18 timeout_ms)', () => {
       },
     ])
     await client.query('t', { text: 'x', deadlineMs: 1500 })
-    expect(bodies[0]!.timeout_ms).toBe(1500)
+    // What reaches the wire is the budget LEFT: the client takes off whatever
+    // it spent before sending (index discovery), so a millisecond of that
+    // makes it 1499 — which an exact 1500 failed on, on CI. It is never more
+    // than was asked for and never a different order of magnitude.
+    const sent = bodies[0]!.timeout_ms as number
+    expect(sent).toBeLessThanOrEqual(1500)
+    expect(sent).toBeGreaterThan(1000)
   })
 
   it('a server 504 (deadline expired) with semantic degrades to a labeled fts retry', async () => {
