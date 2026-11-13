@@ -24,6 +24,8 @@ export interface HomeStateResponse {
   personalities: HomePersonality[]
   /** Offer "Say hello": the introduction was completed and no hello has been sent. */
   hello: boolean
+  /** The introduction was skipped: Home keeps a quiet way back to it. */
+  introductionSkipped: boolean
 }
 
 export interface HomePersonality {

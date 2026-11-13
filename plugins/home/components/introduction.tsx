@@ -25,8 +25,8 @@ const STEPS: readonly StepId[] = ['name', 'personality', 'you']
 const OWN_WORDS = '__own__'
 
 /** What the agent asks at each step. The name asked for earlier is used once it is known. */
-function questionFor(step: StepId, agentName: string): string {
-  if (step === 'name') return "Hi. I don't have a name yet. What would you like to call me?"
+function questionFor(step: StepId, agentName: string, again: boolean): string {
+  if (step === 'name') return again ? "Let's start over. What would you like to call me?" : "Hi. I don't have a name yet. What would you like to call me?"
   if (step === 'personality') return `${agentName}. I like it. How should I come across?`
   return 'Got it. And what should I call you?'
 }
@@ -39,9 +39,9 @@ interface Draft {
   userName: string
 }
 
-function draftFrom(resume: IntroductionAnswers | undefined, personalities: readonly HomePersonality[]): Draft {
+function draftFrom(resume: IntroductionAnswers | undefined, personalities: readonly HomePersonality[], currentName: string): Draft {
   return {
-    agentName: resume?.agentName ?? '',
+    agentName: resume?.agentName ?? currentName,
     personality: resume ? (resume.personality.kind === 'preset' ? resume.personality.id : OWN_WORDS) : (personalities[0]?.id ?? OWN_WORDS),
     ownWords: resume?.personality.kind === 'custom' ? resume.personality.description : '',
     userName: resume?.userName ?? '',
@@ -83,12 +83,17 @@ export interface IntroductionProps {
   personalities: readonly HomePersonality[]
   /** Answers given earlier that were not all saved: finish from here. */
   resume?: IntroductionAnswers
+  /**
+   * The introduction was reopened by the person: the agent already has the
+   * name it goes by, and leaving is a plain cancel that records nothing.
+   */
+  again?: { onCancel: () => void }
   /** The introduction is done, or skipped: Home should look again. */
   onFinished: () => void
 }
 
-export function Introduction({ agent, personalities, resume, onFinished }: IntroductionProps) {
-  const [draft, setDraft] = useState<Draft>(() => draftFrom(resume, personalities))
+export function Introduction({ agent, personalities, resume, again, onFinished }: IntroductionProps) {
+  const [draft, setDraft] = useState<Draft>(() => draftFrom(resume, personalities, again ? agent.name : ''))
   // Resuming lands on the last step, with every earlier answer shown.
   const [stepIndex, setStepIndex] = useState(resume ? STEPS.length - 1 : 0)
   const [saving, setSaving] = useState(false)
@@ -97,7 +102,7 @@ export function Introduction({ agent, personalities, resume, onFinished }: Intro
   )
   const step = STEPS[stepIndex]!
   const shownName = draft.agentName.trim() || agent.name
-  const speaker = { id: agent.id, name: stepIndex === 0 ? 'Your main agent' : shownName }
+  const speaker = { id: agent.id, name: stepIndex === 0 && !again ? 'Your main agent' : shownName }
 
   const finish = useCallback(async () => {
     setSaving(true)
@@ -146,7 +151,7 @@ export function Introduction({ agent, personalities, resume, onFinished }: Intro
     key: `intro-${id}`,
     status: 'complete',
     // 'markdown' is the kit's prose format; 'plain' is drawn as a code block.
-    items: [{ type: 'text', format: 'markdown', content: questionFor(id, shownName) }],
+    items: [{ type: 'text', format: 'markdown', content: questionFor(id, shownName, again !== undefined) }],
   })
 
   return (
@@ -211,7 +216,9 @@ export function Introduction({ agent, personalities, resume, onFinished }: Intro
         ) : null}
 
         <FormActions align="between">
-          <Button type="button" variant="ghost" disabled={saving} onClick={() => { void skip() }}>Skip for now</Button>
+          {again
+            ? <Button type="button" variant="ghost" disabled={saving} onClick={again.onCancel}>Cancel</Button>
+            : <Button type="button" variant="ghost" disabled={saving} onClick={() => { void skip() }}>Skip for now</Button>}
           {stepIndex > 0 ? <Button type="button" variant="outline" disabled={saving} onClick={() => setStepIndex(stepIndex - 1)}>Back</Button> : null}
           <SubmitButton busyLabel="Saving…">{stepIndex < STEPS.length - 1 ? 'Continue' : 'Finish'}</SubmitButton>
         </FormActions>

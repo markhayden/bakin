@@ -40,6 +40,7 @@ const stateResponse = z.object({
   })),
   personalities: z.array(z.object({ id: z.string(), label: z.string(), sample: z.string() })),
   hello: z.boolean(),
+  introductionSkipped: z.boolean(),
 })
 
 const okResponse = z.object({ ok: z.literal(true) })
@@ -85,6 +86,7 @@ const routes = [
           })),
           personalities: HOME_CONTENT.personalities.map(({ id, label, sample }) => ({ id, label, sample })),
           hello: offersHello(facts.decisions),
+          introductionSkipped: facts.decisions.introduction?.status === 'skipped',
         }
         return Response.json(body)
       } catch (err) {

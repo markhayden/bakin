@@ -213,3 +213,23 @@ describe('AgentDetail — tab URL contract', () => {
     expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeDefined()
   })
 })
+
+describe('AgentDetail — the introduction can be redone from the main agent', () => {
+  const openActions = async () => {
+    const trigger = await waitFor(() => screen.getByRole('button', { name: 'Agent actions' }))
+    await act(async () => { fireEvent.click(trigger) })
+  }
+
+  it('the main agent offers it; any other agent does not', async () => {
+    queryState.tab = ''
+    const main = render(<AgentDetail agentId="main" />)
+    await openActions()
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Redo the introduction' })).toBeTruthy())
+    main.unmount()
+
+    render(<AgentDetail agentId="explorer" />)
+    await openActions()
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: 'Change image' })).toBeTruthy())
+    expect(screen.queryByRole('menuitem', { name: 'Redo the introduction' })).toBeNull()
+  })
+})

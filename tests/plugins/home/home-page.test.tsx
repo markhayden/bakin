@@ -27,7 +27,11 @@ mock.module('@makinbakin/sdk/hooks', () => ({
 }))
 
 const pushed: string[] = []
+/** The page's query string, as the one key it reads. */
+let query: Record<string, string> = {}
+const querySets: Array<[string, string]> = []
 mock.module('@makinbakin/sdk/navigation', () => ({
+  useQueryState: (key: string, fallback = '') => [query[key] ?? fallback, (value: string) => { querySets.push([key, value]) }, () => {}],
   PluginLink: ({ to, children }: { to: string; children?: ReactNode }) => <a href={to}>{children}</a>,
   useRouter: () => ({ push: (path: string) => { pushed.push(path) } }),
 }))
@@ -77,10 +81,10 @@ const STARTERS = [
   { id: 'brainstorm', title: 'Brainstorm ideas', description: 'Think out loud', prompt: 'Brainstorm with me.', needsAttachment: false },
   { id: 'summarize-document', title: 'Summarize a document', description: 'Attach a file', prompt: 'Please summarize the attached document.', needsAttachment: true },
 ]
-type Shown = Omit<HomeStateResponse, 'personalities' | 'hello'> & { hello?: boolean }
+type Shown = Omit<HomeStateResponse, 'personalities' | 'hello' | 'introductionSkipped'> & { hello?: boolean; introductionSkipped?: boolean }
 const ready = (starters = STARTERS): Shown => ({ ok: true, state: { name: 'ready', agent: { id: 'main', name: 'Nova' } }, starters })
 const show = async (data: Shown | null, over: Partial<typeof response> = {}) => {
-  response = { data: data ? { hello: false, ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
+  response = { data: data ? { hello: false, introductionSkipped: false, ...data, personalities: PERSONALITIES } : null, loading: false, error: null, ...over }
   await actRender(() => render(<HomePage />))
 }
 const ask = async (text: string) => {
@@ -92,6 +96,8 @@ beforeEach(() => {
   answers = []
   requests.length = 0
   pushed.length = 0
+  query = {}
+  querySets.length = 0
   drafts.length = 0
   lastSend = null
   holdCreate = null
@@ -367,5 +373,60 @@ describe('Home: meet your agent', () => {
     await press('Skip for now')
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
     expect(requests).toEqual([{ path: 'introduction/skip', body: null }, { path: 'introduction/skip', body: null }])
+  })
+})
+
+describe('Home: the introduction can be reopened', () => {
+  const press = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole('button', { name })) }) }
+
+  it('a skipped introduction leaves a quiet way back on Home; one that was never skipped does not', async () => {
+    await show({ ...ready(), introductionSkipped: true })
+    expect(screen.getByRole('link', { name: 'Meet Nova' }).getAttribute('href')).toBe('/home?introduce=1')
+    cleanup()
+    await show({ ok: true, state: { name: 'needs-login', agent: { id: 'main', name: 'Main' } }, starters: [], introductionSkipped: true })
+    expect(screen.getByRole('link', { name: 'Meet Main' })).toBeTruthy()
+    cleanup()
+    await show(ready())
+    expect(screen.queryByRole('link', { name: /^Meet / })).toBeNull()
+  })
+
+  it('?introduce=1 opens the introduction over a ready Home, starting from the name the agent has', async () => {
+    query = { introduce: '1' }
+    await show(ready())
+    expect(screen.getByRole('heading', { level: 1, name: 'Meet your main agent' })).toBeTruthy()
+    expect(screen.queryByLabelText(/^Ask /)).toBeNull()
+    expect(document.querySelector('[data-said-by="Nova"]')?.textContent).toBe("Let's start over. What would you like to call me?")
+    expect((screen.getByLabelText("Your agent's name", { exact: false }) as HTMLInputElement).value).toBe('Nova')
+  })
+
+  it('Cancel leaves without recording anything: no skip is written over a finished introduction', async () => {
+    query = { introduce: '1' }
+    await show(ready())
+    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
+    await press('Cancel')
+    expect(querySets).toEqual([['introduce', '']])
+    expect(requests).toEqual([])
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('finishing saves the new answers, closes the introduction, and Home looks again', async () => {
+    answers = [{ status: 200, body: { ok: true } }]
+    query = { introduce: '1' }
+    await show(ready())
+    fireEvent.change(screen.getByLabelText("Your agent's name", { exact: false }), { target: { value: 'Juno' } })
+    await press('Continue')
+    await press('Continue')
+    fireEvent.change(screen.getByLabelText('Your name', { exact: false }), { target: { value: 'Mark' } })
+    await press('Finish')
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(requests).toEqual([{ path: 'introduction', body: { agentName: 'Juno', personality: { kind: 'preset', id: 'warm' }, userName: 'Mark' } }])
+    expect(querySets).toEqual([['introduce', '']])
+  })
+
+  it('a home that cannot read its agents shows that, whatever the URL asks for', async () => {
+    query = { introduce: '1' }
+    await show({ ok: true, state: { name: 'unavailable', reason: 'runtime_unreachable', href: '/health' }, starters: [] })
+    expect(screen.getByText("Bakin can't reach its agents right now")).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   })
 })

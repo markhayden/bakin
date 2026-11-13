@@ -11,7 +11,7 @@
 import { Suspense, useCallback, useRef, useState } from 'react'
 import { Composer } from '@makinbakin/sdk/conversation'
 import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
-import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
@@ -23,9 +23,13 @@ const STATE_TIMEOUT_MS = 15_000
 /** How many starters Home offers at once. */
 const STARTER_LIMIT = 6
 
-function titleFor(state: HomeState | undefined): string {
+/** `/home?introduce=1`: the person asked to go through the introduction (again). */
+const INTRODUCE_PARAM = 'introduce'
+const INTRODUCE_PATH = `/home?${INTRODUCE_PARAM}=1`
+
+function titleFor(state: HomeState | undefined, introducing: boolean): string {
+  if (state?.name === 'meet-agent' || introducing) return 'Meet your main agent'
   if (state?.name === 'ready') return 'What do you want to do?'
-  if (state?.name === 'meet-agent') return 'Meet your main agent'
   return 'Home'
 }
 
@@ -172,10 +176,14 @@ function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' | '
 function HomePageInner() {
   const { data, loading, error, refresh } = usePluginJsonFetch<HomeStateResponse>('home', 'state', { timeoutMs: STATE_TIMEOUT_MS })
   const state = data?.state
+  const [introduce, setIntroduce] = useQueryState(INTRODUCE_PARAM)
+  // Reopening needs an agent to introduce; a home that cannot read its roster shows that instead.
+  const reopened = introduce === '1' && state !== undefined && state.name !== 'unavailable' && state.name !== 'meet-agent'
+  const closeIntroduction = useCallback(() => { setIntroduce('') }, [setIntroduce])
 
   return (
     <Page width="standard">
-      <PageHeader title={titleFor(state)} />
+      <PageHeader title={titleFor(state, reopened)} />
       <PageBody label="Home">
         {loading && !data ? (
           <SystemState kind="loading" scope="page" title="Loading Home" description="Checking what your agents can do." />
@@ -187,6 +195,13 @@ function HomePageInner() {
             description="Bakin could not work out what to show. Try again; if it keeps happening, check Health."
             action={<Button variant="outline" onClick={() => { void refresh() }}>Try again</Button>}
           />
+        ) : reopened ? (
+          <Introduction
+            agent={state.agent}
+            personalities={data.personalities}
+            again={{ onCancel: closeIntroduction }}
+            onFinished={() => { closeIntroduction(); void refresh() }}
+          />
         ) : state.name === 'meet-agent' ? (
           <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
@@ -194,6 +209,11 @@ function HomePageInner() {
         ) : (
           <NotReadyView state={state} />
         )}
+        {data?.introductionSkipped && state && !reopened && (state.name === 'ready' || state.name === 'needs-login') ? (
+          <p className="text-bakin-text-muted">
+            You skipped the introduction. <PluginLink to={INTRODUCE_PATH}>Meet {state.agent.name}</PluginLink> whenever you like.
+          </p>
+        ) : null}
       </PageBody>
     </Page>
   )

@@ -172,8 +172,11 @@ describe('POST /introduction', () => {
 
 describe('POST /introduction/skip', () => {
   it('records the skip; Home stops opening on the introduction', async () => {
+    expect((await state()).introductionSkipped).toBe(false)
     const res = await callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
     expect(res.status).toBe(200)
+    // Home keeps a way back to an introduction that was skipped.
+    expect((await state()).introductionSkipped).toBe(true)
     expect((await state()).state.name).toBe('needs-login')
   })
 })
@@ -196,6 +199,10 @@ describe('saying hello', () => {
     expect(res.status).toBe(200)
     expect((await state()).hello).toBe(false)
     expect(readDecisions().introduction?.status).toBe('completed')
+    // Doing it again later (reopened) keeps both records.
+    expect((await callRoute(findRoute(activated.routes, 'POST', '/introduction')!, activated.ctx, { body: { ...ANSWERS, agentName: 'Juno' } })).status).toBe(200)
+    const again = await state()
+    expect([again.state, again.hello, again.introductionSkipped]).toEqual([{ name: 'needs-login', agent: { id: 'main', name: 'Juno' } }, false, false])
   })
 
   it('is not offered after a skip: nobody was introduced', async () => {
