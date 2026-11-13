@@ -248,8 +248,68 @@ async function cmdSearchReset(options: { yes: boolean }): Promise<void> {
   exitOnFailure(operation)
 }
 
+/**
+ * `bakin uninstall search` (#1049) — the reverse of `bakin install search`:
+ * stop the engine and remove the OS registration this home owns. Index data
+ * and the shared engine + models are kept unless `--data` / `--engine` ask.
+ * Runs in this process and only with Bakin stopped: a running server uses
+ * the engine and would start it again.
+ */
+async function cmdUninstallSearch(options: { yes: boolean; data: boolean; engine: boolean }): Promise<void> {
+  const { currentOperationMode } = await import('../operation-mode')
+  const mode = currentOperationMode()
+  if (mode.kind === 'server') {
+    console.error(mode.source === 'env'
+      ? 'BAKIN_URL is set. Uninstalling acts on this machine\'s own home; unset BAKIN_URL and run it there.'
+      : 'Bakin is running for this home and is using search. Stop it first (`bakin stop`), then run this again.')
+    process.exit(1)
+  }
+  if (!options.yes) {
+    const also = [
+      options.data ? 'delete this home\'s index data (a reindex rebuilds it)' : null,
+      options.engine ? 'delete the search engine and its downloaded models, which every Bakin home on this machine shares' : null,
+    ].filter(Boolean)
+    const confirmed = await confirmPrompt(
+      `This stops the search service and removes its registration for this home.${also.length > 0 ? `\nIt will also ${also.join(', and ')}.` : '\nIndex data, the engine and its models are kept (--data / --engine delete them).'}\nYour content is never touched. Continue?`,
+    )
+    if (!confirmed) {
+      console.log('Aborted. (Use --yes to skip this prompt.)')
+      return
+    }
+  }
+  const [{ getOperationRegistry }, { OperationRejectedError }, { searchUninstallOperation }, { followLocalAndRender }, { createOperationRenderer, operationExitCode }] = await Promise.all([
+    import('../../core/operations'),
+    import('@bakin/core/operations'),
+    import('../../core/search-operations'),
+    import('../component-install'),
+    import('../operation-renderer'),
+  ])
+  let operationId: string
+  try {
+    ({ operationId } = await getOperationRegistry().start(searchUninstallOperation({ origin: 'cli', removeData: options.data, removeEngine: options.engine })))
+  } catch (err) {
+    if (!(err instanceof OperationRejectedError)) throw err
+    const body = err.body as { message?: unknown } | null
+    console.error(typeof body?.message === 'string' ? body.message : 'Search cannot be uninstalled here.')
+    process.exit(1)
+  }
+  const renderer = process.stdout.isTTY
+    ? createOperationRenderer({ mode: 'tty', write: (text) => { process.stdout.write(text) } })
+    : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
+  // The renderer's closing line carries the outcome's own message.
+  process.exit(operationExitCode(await followLocalAndRender(operationId, { renderer })))
+}
+
 export async function run(args: string[]): Promise<void> {
   const cmd = args[0]
+  if (cmd === 'uninstall') {
+    if (args[1] !== 'search') await exitUsage('bakin uninstall search [--data] [--engine] [--yes]')
+    const flags = args.slice(2)
+    const known = new Set(['--data', '--engine', '--yes', '-y'])
+    if (flags.some((flag) => !known.has(flag))) await exitUsage('bakin uninstall search [--data] [--engine] [--yes]')
+    await cmdUninstallSearch({ yes: flags.includes('--yes') || flags.includes('-y'), data: flags.includes('--data'), engine: flags.includes('--engine') })
+    return
+  }
   if (cmd === 'search:stats') {
     await cmdSearchStats()
     return

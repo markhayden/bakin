@@ -140,6 +140,7 @@ export async function main(): Promise<void> {
       case 'search':
       case 'search:stats':
       case 'search:reset':
+      case 'uninstall':
         await (await import('../src/cli/commands/search')).run(args)
         break
 
