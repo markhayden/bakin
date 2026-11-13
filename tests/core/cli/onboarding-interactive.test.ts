@@ -34,7 +34,10 @@ const scriptedAnswers: unknown[] = []
 const screens: Array<Record<string, unknown>> = []
 mock.module('ink', () => ({
   Box: ({ children }: { children?: unknown }) => children ?? null,
-  render: (element: { props: { title?: string; onSubmit: (value: unknown) => void; items?: unknown[] } }) => {
+  render: (frame: { props: { screen: (answer: (value: unknown) => void) => { props: { title?: string; onSubmit: (value: unknown) => void; items?: unknown[] } }; onSettled: (value: unknown) => void } }) => {
+    // Every screen arrives inside the collapsing frame; the screen itself
+    // is what the frame draws while it waits, and its answer settles the frame.
+    const element = frame.props.screen((value) => frame.props.onSettled(value))
     titles.push(String(element.props.title))
     screens.push(element.props as unknown as Record<string, unknown>)
     let exited: () => void = () => {}

@@ -282,6 +282,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
     resetSettingsCache()
   }
   const decided = chosen.kind === 'use' ? { adapter: chosen.adapter, source: chosen.source } : undefined
+  // One brand per run: whichever screen comes first carries it.
+  const runtimeAsked = decided?.source === 'asked'
   const runtimeProposal = chosen.kind === 'use' && chosen.persist ? chosen.adapter : undefined
 
   // Early exit for already-onboarded machines unless --force or --check
@@ -329,6 +331,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
     let busyFrame = 0
     let busyDetail: string | undefined
     let busyShowsBrand = true
+    let busyFinished = false
+    let ranToEnd = false
     const completedOutcomes: Array<{
       name: string
       status: 'complete' | 'warning' | 'skipped' | 'blocked'
@@ -348,6 +352,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
       completed: completedOutcomes,
       totalSteps: COMPONENT_ORDER.length,
       showBrand: busyShowsBrand,
+      finished: busyFinished,
     })
     // The busy view starts once the bootstrap phase is done and the wizard
     // (if any) has had the terminal: the wizard's intro carries the brand,
@@ -368,6 +373,12 @@ async function cmdOnboard(args: string[]): Promise<void> {
     const stopBusy = () => {
       if (busyTimer) clearInterval(busyTimer)
       busyTimer = undefined
+      // A finished run's summary repeats every row, so only the brand
+      // stays. A cancelled or interrupted run keeps what it had reached.
+      if (ranToEnd) {
+        busyFinished = true
+        busy?.rerender(renderBusy())
+      }
       busy?.unmount()
       busy = null
     }
@@ -423,6 +434,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
         // has already been provisioned by the bootstrap phase.
         afterBootstrap: async (bootstrap) => {
           if (!baseOpts.interactive) {
+            if (runtimeAsked) busyShowsBrand = false
             startBusy()
             return undefined
           }
@@ -443,16 +455,19 @@ async function cmdOnboard(args: string[]): Promise<void> {
               runtimeLabel: support.label,
               steps: support.loginSteps,
               docsUrl: support.docsUrl,
+              // The runtime question already put the brand on screen.
+              showBrand: !runtimeAsked,
             })
             askedForLogin = waited.asked
           }
-          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady, brandShown: askedForLogin || decided?.source === 'asked', declined: declinedComponents })
-          if (selections.renderedWizardScreens || askedForLogin) busyShowsBrand = false
+          const selections = await collectOnboardingSelections(baseOpts, { runtimeReady, brandShown: askedForLogin || runtimeAsked, declined: declinedComponents })
+          if (selections.renderedWizardScreens || askedForLogin || runtimeAsked) busyShowsBrand = false
           startBusy()
           const { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents } = selections
           return { selectedRecommendedPluginIds, selectedRecommendedAgentIds, approvedComponents }
         },
       })
+      ranToEnd = true
     } catch (err) {
       if (err instanceof OnboardingCancelledError) cancelled = true
       else if (err instanceof OnboardingInterruptedError) interrupted = err

@@ -17,6 +17,8 @@ import {
   OnboardingDecisionPrompt,
   OnboardingIntro,
   OnboardingRuntimePrompt,
+  PromptFrame,
+  type PromptReceipt,
   type RuntimeChoiceOption,
 } from "./ui/onboarding";
 import { renderToString } from "./ui/render-to-string";
@@ -156,15 +158,23 @@ export class OnboardingCancelledError extends Error {
  * the event loop drains and the process exits 0 as if onboarding had
  * finished. An exit without an answer is a cancellation.
  */
-function ask<T>(screen: (answer: (value: T) => void) => ReactElement): Promise<T> {
+function ask<T>(
+  screen: (answer: (value: T) => void) => ReactElement,
+  opts: { receipt: PromptReceipt<T>; showBrand?: boolean },
+): Promise<T> {
   return new Promise((resolve, reject) => {
     let answered = false;
     const app = render(
-      screen((value) => {
-        answered = true;
-        app.unmount();
-        resolve(value);
-      }),
+      <PromptFrame
+        screen={screen}
+        receipt={opts.receipt}
+        showBrand={opts.showBrand}
+        onSettled={(value) => {
+          answered = true;
+          app.unmount();
+          resolve(value);
+        }}
+      />,
     );
     const cancelled = () => {
       if (!answered) reject(new OnboardingCancelledError());
@@ -192,17 +202,31 @@ export async function waitForCredentials(input: {
 }): Promise<{ outcome: "ready" | "skipped"; asked: boolean }> {
   let attempts = 0
   for (;;) {
-    if (await input.loggedIn()) return { outcome: "ready", asked: attempts > 0 }
+    if (await input.loggedIn()) {
+      if (attempts > 0) {
+        console.log(renderToString(
+          <FindingRows rows={[{ status: "ok", label: "Login", message: `Logged in to ${input.runtimeLabel}.` }]} />,
+        ))
+      }
+      return { outcome: "ready", asked: attempts > 0 }
+    }
+    const showBrand = (input.showBrand ?? true) && attempts === 0
     const answer = await ask<"recheck" | "skip">((submit) => (
       <OnboardingCredentialsPrompt
         runtimeLabel={input.runtimeLabel}
         steps={input.steps}
         docsUrl={input.docsUrl}
         attempts={attempts}
-        showBrand={(input.showBrand ?? true) && attempts === 0}
+        showBrand={showBrand}
         onSubmit={submit}
       />
-    ))
+    ), {
+      showBrand,
+      // A recheck leaves nothing: the next screen (or the login row) says how it went.
+      receipt: (value) => value === "skip"
+        ? { status: "warn", label: "Login", message: `Skipped. Agents run once you log in to ${input.runtimeLabel}.` }
+        : null,
+    })
     attempts += 1
     if (answer === "skip") return { outcome: "skipped", asked: true }
   }
@@ -215,7 +239,14 @@ export async function promptRuntimeChoice(
 ): Promise<string> {
   return await ask<string>((answer) => (
     <OnboardingRuntimePrompt options={options} preselected={preselected} onSubmit={answer} />
-  ));
+  ), {
+    showBrand: true,
+    receipt: (adapter) => ({
+      status: "ok",
+      label: "Runtime",
+      message: options.find((option) => option.adapter === adapter)?.label ?? adapter,
+    }),
+  });
 }
 
 export async function promptMultiSelect(
@@ -227,7 +258,16 @@ export async function promptMultiSelect(
 
   return await ask<string[]>((answer) => (
     <MultiSelectPrompt title={title} items={items} showBrand={opts.showBrand} onSubmit={answer} />
-  ));
+  ), {
+    showBrand: opts.showBrand ?? true,
+    receipt: (ids) => ({
+      status: ids.length > 0 ? "ok" : "skip",
+      label: title.toLowerCase().includes("agent") ? "Agents" : "Plugins",
+      message: ids.length > 0
+        ? ids.map((id) => items.find((item) => item.id === id)?.label ?? id).join(", ")
+        : "None",
+    }),
+  });
 }
 
 async function promptConfirm(
@@ -244,7 +284,14 @@ async function promptConfirm(
       showBrand={opts.showBrand}
       onSubmit={answer}
     />
-  ));
+  ), {
+    showBrand: opts.showBrand ?? true,
+    receipt: (approved) => ({
+      status: approved ? "ok" : "skip",
+      label: title,
+      message: approved ? "Yes" : "Skipped",
+    }),
+  });
 }
 
 export async function collectOnboardingSelections(
@@ -296,8 +343,11 @@ export async function collectOnboardingSelections(
     pluginCheck,
     agentCheck,
   ].some((check) => check.status === "missing" || check.status === "broken");
-  if (hasWizardSteps) {
-    console.log(renderToString(<OnboardingIntro showBrand={bootstrap.brandShown !== true} />));
+  // The intro opens a run whose first screen is the wizard. After the
+  // runtime question or the login step the run is already under way, and
+  // the intro would only sit between one answered step and the next.
+  if (hasWizardSteps && bootstrap.brandShown !== true) {
+    console.log(renderToString(<OnboardingIntro />));
   }
 
   const approvedComponents: string[] = [];
