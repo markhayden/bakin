@@ -143,6 +143,9 @@ import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 | `handoffReturnChannel` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
 | `useHandoffReturn` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
 | `HandoffReturnChannel` | Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. |
+| `usePageIntroduction` | A page's first-visit introduction, remembered per home: what to show (or null) and how to close it for good. |
+| `PageIntroduction` | A page's first-visit introduction, remembered per home: what to show (or null) and how to close it for good. |
+| `UsePageIntroductionResult` | A page's first-visit introduction, remembered per home: what to show (or null) and how to close it for good. |
 | `useOperation` | Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). |
 | `useSelfUpdateVerification` | Self-update verification after a restart handoff (#1007 D7.11). |
 | `SelfUpdateHandoff` | — |

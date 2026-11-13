@@ -49,7 +49,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@makinbakin/sdk/ui'
-import { useRuntimeStatus } from '@makinbakin/sdk/hooks'
+import { useRuntimeStatus, usePageIntroduction } from '@makinbakin/sdk/hooks'
 import { useAgentStore, useMainAgentId, usePackageState, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 import { buildGraph } from '../lib/build-graph'
@@ -216,6 +216,20 @@ const nodeTypes: NodeTypes = {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TeamGrid() {
+  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
+  const { introduction, close: closeIntroduction } = usePageIntroduction('team')
+  const pageIntroduction = introduction ? (
+    // This page's body runs edge to edge: the panel takes the same inset as the row above it.
+    <div className="min-w-0 px-bakin-4 @md/page-shell:px-bakin-6">
+      <Alert tone="accent" data-page-introduction="team">
+        <AlertTitle>{introduction.title}</AlertTitle>
+        <AlertDescription>{introduction.body}</AlertDescription>
+        <AlertAction>
+          <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
+        </AlertAction>
+      </Alert>
+    </div>
+  ) : null
   // `?recover=1`: Health's roster findings, named on the page (self-healing 1.4b).
   const [recoverParam, setRecoverParam] = useQueryState('recover', '')
   const router = useRouter()
@@ -378,8 +392,9 @@ export function TeamGrid() {
           <PageBody
             gap="content"
             className="h-full min-h-0 flex-1"
-            feedback={runtimeStatus.pending || recoverParam === '1' ? (
-              <>
+            feedback={pageIntroduction || runtimeStatus.pending || recoverParam === '1' ? (
+              <div className="grid min-w-0 gap-bakin-3">
+              {pageIntroduction}
               {recoverParam === '1' ? <RosterRecoverPanel onDismiss={() => setRecoverParam('')} onChanged={() => { void reload() }} /> : null}
               {runtimeStatus.pending ? (
               <Alert tone="attention">
@@ -402,7 +417,7 @@ export function TeamGrid() {
                 ) : null}
               </Alert>
               ) : null}
-              </>
+              </div>
             ) : undefined}
           >
             <PageCanvas

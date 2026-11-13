@@ -1435,6 +1435,21 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="home.get.page-introductions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/home/page-introductions'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="home.post.page-introductions-id-close">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/page-introductions/<id>/close'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="home.get.state">
 ```sh frame="terminal" showLineNumbers
 curl -sS \

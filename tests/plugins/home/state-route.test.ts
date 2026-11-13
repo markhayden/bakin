@@ -359,3 +359,42 @@ describe('GET /tour', () => {
     expect(slides[1]).toMatchObject({ href: '/tasks' })
   })
 })
+
+describe('pages introducing themselves', () => {
+  const open = async () => {
+    const res = await callRoute(findRoute(activated.routes, 'GET', '/page-introductions')!, activated.ctx)
+    expect(res.status).toBe(200)
+    return (res.body as unknown as { introductions: Array<{ id: string; title: string; body: string }> }).introductions
+  }
+  const close = (id: string) => callRoute(findRoute(activated.routes, 'POST', '/page-introductions/:id/close')!, activated.ctx, { path: `/page-introductions/${id}/close` })
+  const skip = () => callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
+
+  it('a home nobody started on Home has none, and asking writes nothing', async () => {
+    expect(await open()).toEqual([])
+    expect(existsSync(decisionsPath())).toBe(false)
+  })
+
+  it('once the introduction is finished or skipped, every page has one', async () => {
+    await skip()
+    const introductions = await open()
+    expect(introductions.map((introduction) => introduction.id)).toEqual(['chat', 'tasks', 'team', 'assets', 'schedule', 'health'])
+    expect(introductions[1]).toEqual({ id: 'tasks', title: 'This is the board', body: expect.stringContaining('Review') })
+  })
+
+  it('closing one records when, keeps the others, and tells every open browser', async () => {
+    await skip()
+    const told: unknown[] = []
+    const stop = activated.ctx.events.on('home.page_introduction_closed', (data) => { told.push(data) })
+    expect((await close('tasks')).status).toBe(200)
+    expect((await close('health')).status).toBe(200)
+    stop()
+    expect(told).toHaveLength(2)
+    expect(Object.keys(readDecisions().closedPageIntroductions ?? {})).toEqual(['tasks', 'health'])
+    expect((await open()).map((introduction) => introduction.id)).toEqual(['chat', 'team', 'assets', 'schedule'])
+  })
+
+  it('refuses a page that has no introduction, and writes nothing', async () => {
+    expect((await close('spend')).status).toBe(404)
+    expect(existsSync(decisionsPath())).toBe(false)
+  })
+})

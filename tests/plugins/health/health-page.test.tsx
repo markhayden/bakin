@@ -24,8 +24,12 @@ const repairIncident = {
 
 // Captured BEFORE the module is mocked (live namespace binding): the SDK's render helpers (useKeyedState, useNow, useMediaQuery) stay real under the narrow mock.
 import * as realSdkHooks from '@makinbakin/sdk/hooks'
+let pageIntroduction: { title: string; body: string } | null = null
+let introductionClosed = 0
 mock.module('@makinbakin/sdk/hooks', () => ({
   ...realSdkHooks,
+  // The page's first-visit introduction has its own tests; here it must not reach for a server.
+  usePageIntroduction: () => ({ introduction: pageIntroduction, close: () => { introductionClosed += 1 } }),
   usePathname: () => currentPath,
   useQueryState: (_key: string, defaultValue: string) => {
     const [value, setValue] = useState(requestedTab || defaultValue)
@@ -284,6 +288,19 @@ describe('HealthPage tab shell', () => {
     expect(overviewRunChecks).toHaveBeenCalledTimes(1) // never the sweep
     act(() => { window.dispatchEvent(new Event('focus')) })
     expect(runCalls).toHaveLength(1) // one-shot
+  })
+
+  it('introduces itself on a first visit, and closing is the person\'s to do', async () => {
+    pageIntroduction = { title: 'Bakin watches itself here', body: 'A quiet page means everything is working.' }
+    introductionClosed = 0
+    try {
+      render(<HealthPage />)
+      expect(screen.getByText('Bakin watches itself here')).toBeDefined()
+      fireEvent.click(screen.getByRole('button', { name: 'Got it' }))
+      expect(introductionClosed).toBe(1)
+    } finally {
+      pageIntroduction = null
+    }
   })
 
   it('keeps Overview unmounted while another tab runs checks on demand', async () => {

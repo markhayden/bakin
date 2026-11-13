@@ -68,6 +68,8 @@ export { useMediaQuery } from '@bakin/ui/behaviors'
 export { useTerminalHandoff, type TerminalHandoff } from './use-terminal-handoff'
 /** Return verification for a handed-off command: arm a per-consumer channel, and recheck once when the person is back on the page. */
 export { handoffReturnChannel, useHandoffReturn, type HandoffReturnChannel } from './use-terminal-handoff'
+/** A page's first-visit introduction, remembered per home: what to show (or null) and how to close it for good. */
+export { usePageIntroduction, type PageIntroduction, type UsePageIntroductionResult } from './use-page-introduction'
 /** Follow one server operation live (rev/boot guards, reconcile, expired vs restarted vs unreachable). */
 export { useOperation } from './use-operation'
 
