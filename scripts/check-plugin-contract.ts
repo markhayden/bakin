@@ -20,8 +20,9 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { downloadText, downloadToFile, extractTarMember } from '@bakin/core/net/download'
+import { downloadText, downloadToFile } from '@bakin/core/net/download'
 import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
+import { safeExtractArtifact } from '../src/core/whiskit/artifact'
 import { INDEX_FILENAME, parseArtifactsIndex, type ArtifactEntry, type ArtifactsIndex } from '../src/core/whiskit/artifacts-index'
 import { newestCompatibleVersion } from '../src/core/whiskit/compatible-version'
 import { EXTERNALS_CONTRACT } from '../src/core/whiskit/externals'
@@ -179,13 +180,30 @@ async function fetchIndex(source: string): Promise<ArtifactsIndex> {
   return parseArtifactsIndex(JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`)))
 }
 
+/**
+ * The manifest inside a plugin artifact, read the way an install reads it:
+ * the guarded extractor, then the file. Published artifacts name their
+ * members `./bakin-plugin.json`; asking tar for the bare name works with
+ * bsdtar (macOS) and fails with GNU tar (the release runner), which is how
+ * the guard's first real run refused every plugin (rc.48).
+ */
+export async function readArtifactManifest(tarballPath: string): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'bakin-contract-guard-'))
+  try {
+    await safeExtractArtifact(tarballPath, dir)
+    return readFileSync(join(dir, 'bakin-plugin.json'), 'utf-8')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 /** Download a published artifact (sha256-pinned by its index entry) and read its manifest. */
 async function fetchManifest(entry: ArtifactEntry): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'bakin-contract-guard-'))
   try {
     const tarball = join(dir, 'artifact.tar.gz')
     await downloadToFile(entry.url, tarball, { sha256: entry.sha256 })
-    return readFileSync(await extractTarMember(tarball, 'bakin-plugin.json', dir, { label: 'Plugin artifact' }), 'utf-8')
+    return await readArtifactManifest(tarball)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
