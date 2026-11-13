@@ -17,6 +17,9 @@ createRoot(document.getElementById('root')!).render(<PluginUiFixtureHost
         { id: 'goal-into-tasks', title: 'Break a goal into tasks', description: "Say what you're trying to get done; get it on the board", prompt: 'x', needsAttachment: false },
         { id: 'draft-something', title: 'Draft something for me', description: 'An email, a post, an announcement, or anything else that needs words and a reader in mind', prompt: 'x', needsAttachment: false },
       ],
+      personalities: [],
+      hello: false,
+      introductionSkipped: false,
     } },
   ] }}
   registrations={[{ id: 'home', routes: { '/home': HomePage } }]} />)

@@ -20,4 +20,20 @@ export interface HomeStateResponse {
   state: HomeState
   /** The starters this home can run, in curated order. */
   starters: HomeStarter[]
+  /** The personality presets the introduction offers. */
+  personalities: HomePersonality[]
+  /** Offer "Say hello": the introduction was completed and no hello has been sent. */
+  hello: boolean
+  /** The introduction was skipped: Home keeps a quiet way back to it. */
+  introductionSkipped: boolean
 }
+
+export interface HomePersonality {
+  id: string
+  label: string
+  /** One line in this voice. */
+  sample: string
+}
+
+export type { IntroductionAnswers } from './lib/decisions'
+export type { IntroductionResult, IntroductionStep } from './lib/introduction'

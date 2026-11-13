@@ -7,7 +7,7 @@
  * logged-in person to the login screen, and unavailable evidence must not
  * make a named agent look unnamed.
  */
-import type { HomeDecisions } from './decisions'
+import type { HomeDecisions, IntroductionAnswers } from './decisions'
 import type { Starter } from './content'
 
 /** The main agent as Home needs it. `null` when the roster could not be read. */
@@ -45,7 +45,7 @@ export interface HomeFacts {
   mainAgent: MainAgentFacts | null
   credentials: CredentialFact
   model: ModelFact
-  decisions: Pick<HomeDecisions, 'introduction'>
+  decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>
   starters: StarterReadiness
 }
 
@@ -59,14 +59,16 @@ export type UnavailableReason =
 
 export type HomeState =
   | { name: 'unavailable'; reason: UnavailableReason; detail?: string; href: string }
-  | { name: 'meet-agent'; agent: { id: string; name: string } }
+  | { name: 'meet-agent'; agent: { id: string; name: string }; resume?: IntroductionAnswers }
   | { name: 'needs-login'; agent: { id: string; name: string } }
   | { name: 'ready'; agent: { id: string; name: string } }
 
 /**
  * Precedence, first match wins:
  *  1. unavailable — nothing below can be trusted without a readable runtime
- *  2. meet-agent  — known to be unintroduced, and not skipped or completed
+ *  2. meet-agent  — an introduction is half written (resume it), or the
+ *                    agent is known to be unintroduced and it was neither
+ *                    skipped nor completed
  *  3. needs-login — credentials are known to be absent
  *  4. unavailable — logged in, but the agent's model is known not to run
  *  5. ready
@@ -76,7 +78,10 @@ export function homeState(facts: HomeFacts): HomeState {
     return { name: 'unavailable', reason: 'runtime_unreachable', href: '/health' }
   }
   const agent = { id: facts.mainAgent.id, name: facts.mainAgent.name }
-  if (facts.mainAgent.introduced === false && facts.decisions.introduction === undefined) {
+  const introduction = facts.decisions.introduction
+  // Answers were given but not all written: finish that first, whatever the agent is called by now.
+  if (introduction?.status === 'pending') return { name: 'meet-agent', agent, resume: introduction.answers }
+  if (facts.mainAgent.introduced === false && introduction === undefined) {
     return { name: 'meet-agent', agent }
   }
   if (facts.credentials === 'absent') return { name: 'needs-login', agent }
@@ -96,6 +101,15 @@ export function starterBlockedBy(starter: Starter, readiness: StarterReadiness):
   if (needs.imageProvider && !readiness.imageProvider) return 'image-provider'
   if (needs.agent && !readiness.agents.includes(needs.agent)) return 'agent'
   return null
+}
+
+/**
+ * Whether to offer "Say hello": the introduction was completed here and the
+ * person has not said hello yet. A skipped introduction offers nothing, and
+ * neither does a home whose agent was named somewhere else.
+ */
+export function offersHello(decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>): boolean {
+  return decisions.introduction?.status === 'completed' && decisions.saidHello === undefined
 }
 
 /** The starters this home can run, in curated order. */

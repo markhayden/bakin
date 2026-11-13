@@ -3,11 +3,12 @@
 The page Bakin opens on. Spec: `.claude/specs/home-first-run.md`; plan:
 `.claude/specs/home-first-run-plan.md`. This file describes what is built.
 
-**Built so far (plan PR 1):** the `home` core plugin, its page at `/home`,
-the state route, the ready screen (prompt and starters) and honest
-placeholders for the other states. `/` still redirects to `/tasks`; it
-switches to Home when every state has a screen (plan PR 3). Home has no
-sidebar entry until then.
+**Built so far (plan PRs 1 and 2):** the `home` core plugin, its page at
+`/home`, the state route, the ready screen (prompt and starters), the
+introduction ("Meet your main agent"), the first hello, and honest
+placeholders for the remaining states (`needs-login`, `unavailable`). `/`
+still redirects to `/tasks`; it switches to Home when every state has a
+screen (plan PR 3). Home has no sidebar entry until then.
 
 ## The rule
 
@@ -24,7 +25,7 @@ turn.
 | State | When |
 |---|---|
 | `unavailable` (`runtime_unreachable`) | the runtime roster cannot be read, or there is no main agent |
-| `meet-agent` | the main agent is known to be unintroduced, and the introduction was neither skipped nor completed |
+| `meet-agent` | an introduction is half written (answers recorded, not all saved: it carries them as `resume`), or the main agent is known to be unintroduced and the introduction was neither skipped nor completed |
 | `needs-login` | credentials are known to be absent |
 | `unavailable` (`model_cannot_run`) | a provider is logged in, but the main agent's own model cannot run with it |
 | `ready` | otherwise |
@@ -87,24 +88,80 @@ renames them, `tests/plugins/home/start-chat.test.ts` is where it shows.
 
 A second submit while the first is still creating its chat is ignored.
 
+## The introduction
+
+Three questions, scripted by Bakin with no model involved, so it works
+before any provider login: the agent's name, how it comes across (four
+presets from `home-content.json`, or the person's own words), and what to
+call the person. The screen (`components/introduction.tsx`) draws the
+script with the conversation kit's own `AgentTurn` / `UserMessage`, so a
+real agent turn can replace it later without changing the layout.
+
+`POST /introduction` (`lib/introduction.ts`) makes several separate writes
+that cannot be atomic, so they are **resumable**:
+
+1. the answers are recorded as `introduction: pending` in the decisions file;
+2. `identity`: Team's `team.updateIdentity` hook renames the agent and
+   writes its vibe and personality file;
+3. `person`: `setOperatorName` (`src/core/team-context.ts`) writes a
+   "Who you work with" block into `team/context/global.md`, which reaches
+   every agent;
+4. `sync`: a local agent sync, run as an operation, so the agent knows
+   the name before anyone says hello;
+5. `introduction: completed`.
+
+Every step is safe to repeat. A failure answers `502 { ok: false, step,
+error }`, the answers stay pending, and Home keeps showing the
+introduction on its last step with everything filled in. An unknown
+personality or a blank name is refused (400) before anything is recorded.
+The audit record is `home.introduction_completed` (the host prefixes the
+plugin id; the plugin declares `events.emit`).
+
+"Skip for now" (`POST /introduction/skip`) records the skip; Home moves on
+and keeps a quiet link back (`introductionSkipped` on the state response).
+
+**Reopening:** `/home?introduce=1` opens the introduction over any Home
+that has an agent, starting from the name the agent goes by. Leaving is a
+plain Cancel that records nothing, so a finished introduction is never
+overwritten by a skip. The main agent's Team page links there ("Redo the
+introduction" in the agent actions menu). It is a link by URL: Team
+imports nothing from Home.
+
+## Saying hello
+
+The state response carries `hello: true` when the introduction was
+completed on this home and no hello is recorded (`offersHello`). A ready
+Home then offers "Say hello to <name>": an ordinary first message
+("Hello, <name>!") the person sends, in a chat titled "Meeting <name>".
+Sending it, or "Not now", calls `POST /hello` and the offer is over. A
+skipped introduction offers nothing, and neither does an agent that was
+named somewhere else.
+
 ## Decisions
 
 `~/.bakin/plugin-data/home/decisions.json` (`lib/decisions.ts`). Today:
-whether the introduction was skipped or completed. Keys this version does
-not know are kept across a write. A file that cannot be parsed means
-"nothing decided" and is left as it is until the next real decision.
+`introduction` (`skipped`, `completed`, or `pending` with the answers) and
+`saidHello`. Keys this version does not know are kept across a write. A
+file that cannot be parsed means "nothing decided" and is left as it is
+until the next real decision.
 
 ## UI
 
 Patterns: `pages/page.stories.tsx` (standard width),
-`feedback/system-state.stories.tsx` for every non-ready state,
-`lists/list-rows.stories.tsx` (`InteractiveRows`) for starters, and the
-conversation kit's `Composer`. Home's fixture
+`feedback/system-state.stories.tsx` for the placeholder states,
+`lists/list-rows.stories.tsx` (`InteractiveRows`) for starters, the
+conversation kit's `Composer`, and for the introduction
+`conversation/turns.stories.tsx`, `forms/form-composition.stories.tsx`,
+`primitives/radio-group.stories.tsx` and `feedback/alert.stories.tsx`
+(also the hello offer). Home's fixture
 (`plugins/home/tests/ui.fixture.tsx`) is enrolled in the conformance suite.
 
 ## Tests
 
 `tests/plugins/home/`: content, decisions, state machine, fact gathering,
-the route, start-chat, and the page. End to end:
+the routes, the introduction's writes (a failure injected at each step),
+start-chat, and the page (ready, hello, the introduction, reopening).
+`tests/core/team-context-operator.test.ts` covers the person's name in
+global context. End to end:
 `tests/integration/onboarding/scenarios/home.test.ts` boots a real server
 on a throwaway home.

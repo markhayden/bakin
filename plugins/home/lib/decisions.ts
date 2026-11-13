@@ -19,17 +19,34 @@ const log = createLogger('home')
 
 const isoInstant = z.string().min(1)
 
+/** What the person said in the introduction. */
+export const introductionAnswersSchema = z.object({
+  agentName: z.string().trim().min(1).max(40),
+  personality: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('preset'), id: z.string().min(1) }),
+    z.object({ kind: z.literal('custom'), description: z.string().trim().min(1).max(600) }),
+  ]),
+  userName: z.string().trim().min(1).max(60),
+}).strict()
+export type IntroductionAnswers = z.infer<typeof introductionAnswersSchema>
+
 const decisionsSchema = z.object({
   version: z.literal(1),
   /**
    * The "meet your agent" introduction. Absent = never decided. `skipped`
-   * hides it until reopened; `completed` is written LAST, after every
-   * answer has landed, so a half-written introduction is never hidden.
+   * hides it until reopened; `pending` holds the answers while they are
+   * written; `completed` is written LAST, after every answer has landed.
    */
-  introduction: z.object({
-    status: z.enum(['skipped', 'completed']),
-    at: isoInstant,
-  }).optional(),
+  introduction: z.discriminatedUnion('status', [
+    z.object({ status: z.literal('skipped'), at: isoInstant }),
+    z.object({ status: z.literal('completed'), at: isoInstant }),
+    // The answers were given and are being written. Recorded BEFORE the first
+    // write, so a failure midway resumes from here instead of leaving a
+    // renamed agent with no personality and the introduction gone.
+    z.object({ status: z.literal('pending'), at: isoInstant, answers: introductionAnswersSchema }),
+  ]).optional(),
+  /** The person sent their first hello after the introduction; the offer is not shown again. */
+  saidHello: z.object({ at: isoInstant }).optional(),
 }).passthrough()
 
 export type HomeDecisions = z.infer<typeof decisionsSchema>

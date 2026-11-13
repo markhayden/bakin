@@ -4,22 +4,31 @@
  * Patterns: `storybook/public/pages/page.stories.tsx` (CanonicalUsage,
  * StandardWidth), `feedback/system-state.stories.tsx` (StateMatrix) for
  * every non-ready state, `lists/list-rows.stories.tsx` (InteractiveRows)
- * for starters, and the conversation kit's `Composer` for the prompt.
+ * for starters, `feedback/alert.stories.tsx` (action) for the first hello,
+ * and the conversation kit's `Composer` for the prompt. The
+ * introduction is `introduction.tsx`.
  */
 import { Suspense, useCallback, useRef, useState } from 'react'
 import { Composer } from '@makinbakin/sdk/conversation'
 import { toast, usePluginJsonFetch } from '@makinbakin/sdk/hooks'
-import { PluginLink, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
-import { Button, SystemState } from '@makinbakin/sdk/ui'
+import { Alert, AlertAction, AlertDescription, AlertTitle, Button, SystemState } from '@makinbakin/sdk/ui'
+import { pluginFetch } from '@makinbakin/sdk/utils'
 import { draftChatWith, startChat } from '../lib/client/start-chat'
+import { Introduction } from './introduction'
 import type { HomeStarter, HomeState, HomeStateResponse } from '../types'
 
 const STATE_TIMEOUT_MS = 15_000
 /** How many starters Home offers at once. */
 const STARTER_LIMIT = 6
 
-function titleFor(state: HomeState | undefined): string {
+/** `/home?introduce=1`: the person asked to go through the introduction (again). */
+const INTRODUCE_PARAM = 'introduce'
+const INTRODUCE_PATH = `/home?${INTRODUCE_PARAM}=1`
+
+function titleFor(state: HomeState | undefined, introducing: boolean): string {
+  if (state?.name === 'meet-agent' || introducing) return 'Meet your main agent'
   if (state?.name === 'ready') return 'What do you want to do?'
   return 'Home'
 }
@@ -27,9 +36,22 @@ function titleFor(state: HomeState | undefined): string {
 interface ReadyViewProps {
   agent: { id: string; name: string }
   starters: HomeStarter[]
+  /** The introduction just finished and nobody has said hello yet. */
+  hello: boolean
+  /** The hello offer was used or put away: Home should look again. */
+  onHelloSettled: () => void
 }
 
-function ReadyView({ agent, starters }: ReadyViewProps) {
+/** The offer is over once this is recorded; a failure only means it is offered again. */
+async function recordHello(): Promise<void> {
+  try {
+    await pluginFetch('home', 'hello', { method: 'POST' })
+  } catch {
+    // Nothing is lost: Home offers the hello again next time.
+  }
+}
+
+function ReadyView({ agent, starters, hello, onHelloSettled }: ReadyViewProps) {
   const router = useRouter()
   const [sending, setSending] = useState(false)
   // A second submit while the first is still creating its chat must not make a second chat.
@@ -55,6 +77,30 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
     }
   }, [agent.id, agent.name, router])
 
+  const sayHello = useCallback(async () => {
+    if (inFlight.current) return
+    inFlight.current = true
+    setSending(true)
+    try {
+      const result = await startChat(agent.id, `Hello, ${agent.name}!`, { title: `Meeting ${agent.name}` })
+      if (!result.chatId) {
+        toast(`Couldn't start a conversation with ${agent.name}. Try again.`, 'error')
+        return
+      }
+      await recordHello()
+      if (!result.sent) toast("Message didn't send. Your text is waiting in the composer.", 'error')
+      router.push(`/chat/${encodeURIComponent(result.chatId)}`)
+    } finally {
+      inFlight.current = false
+      setSending(false)
+    }
+  }, [agent.id, agent.name, router])
+
+  const notNow = useCallback(async () => {
+    await recordHello()
+    onHelloSettled()
+  }, [onHelloSettled])
+
   const pick = useCallback((starter: HomeStarter) => {
     if (starter.needsAttachment) {
       router.push(draftChatWith(agent.id, starter.prompt))
@@ -65,6 +111,16 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
 
   return (
     <div className="flex flex-col gap-bakin-6">
+      {hello ? (
+        <Alert tone="accent" role="status">
+          <AlertTitle>{agent.name} is ready to meet you</AlertTitle>
+          <AlertDescription>Say hello and see how {agent.name} answers. You can change the name or personality any time on the Team page.</AlertDescription>
+          <AlertAction>
+            <Button size="xs" variant="ghost" disabled={sending} onClick={() => { void notNow() }}>Not now</Button>
+            <Button size="xs" disabled={sending} onClick={() => { void sayHello() }}>Say hello to {agent.name}</Button>
+          </AlertAction>
+        </Alert>
+      ) : null}
       <Composer
         storageKey="home"
         onSend={send}
@@ -91,7 +147,7 @@ function ReadyView({ agent, starters }: ReadyViewProps) {
 }
 
 /** States that have no screen of their own yet say what is true and where it is fixed today. */
-function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' }> }) {
+function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' | 'meet-agent' }> }) {
   if (state.name === 'unavailable') {
     const model = state.reason === 'model_cannot_run'
     return (
@@ -103,17 +159,6 @@ function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' }> 
           ? `A provider is logged in, but not one this agent's model belongs to${state.detail ? ` (${state.detail})` : ''}. Pick a model that can run on the Models page.`
           : 'The agent runtime is not answering. Health shows what is wrong and how to fix it.'}
         action={<Button render={<PluginLink to={state.href} />}>{model ? 'Open Models' : 'Open Health'}</Button>}
-      />
-    )
-  }
-  if (state.name === 'meet-agent') {
-    return (
-      <SystemState
-        kind="initial-empty"
-        scope="page"
-        title="Your main agent has no name yet"
-        description="Give it a name and a personality on its Team page. A guided introduction is coming to this page."
-        action={<Button render={<PluginLink to={`/team/${encodeURIComponent(state.agent.id)}`} />}>Open {state.agent.name}</Button>}
       />
     )
   }
@@ -131,10 +176,14 @@ function NotReadyView({ state }: { state: Exclude<HomeState, { name: 'ready' }> 
 function HomePageInner() {
   const { data, loading, error, refresh } = usePluginJsonFetch<HomeStateResponse>('home', 'state', { timeoutMs: STATE_TIMEOUT_MS })
   const state = data?.state
+  const [introduce, setIntroduce] = useQueryState(INTRODUCE_PARAM)
+  // Reopening needs an agent to introduce; a home that cannot read its roster shows that instead.
+  const reopened = introduce === '1' && state !== undefined && state.name !== 'unavailable' && state.name !== 'meet-agent'
+  const closeIntroduction = useCallback(() => { setIntroduce('') }, [setIntroduce])
 
   return (
     <Page width="standard">
-      <PageHeader title={titleFor(state)} />
+      <PageHeader title={titleFor(state, reopened)} />
       <PageBody label="Home">
         {loading && !data ? (
           <SystemState kind="loading" scope="page" title="Loading Home" description="Checking what your agents can do." />
@@ -146,11 +195,25 @@ function HomePageInner() {
             description="Bakin could not work out what to show. Try again; if it keeps happening, check Health."
             action={<Button variant="outline" onClick={() => { void refresh() }}>Try again</Button>}
           />
+        ) : reopened ? (
+          <Introduction
+            agent={state.agent}
+            personalities={data.personalities}
+            again={{ onCancel: closeIntroduction }}
+            onFinished={() => { closeIntroduction(); void refresh() }}
+          />
+        ) : state.name === 'meet-agent' ? (
+          <Introduction agent={state.agent} personalities={data.personalities} resume={state.resume} onFinished={() => { void refresh() }} />
         ) : state.name === 'ready' ? (
-          <ReadyView agent={state.agent} starters={data.starters} />
+          <ReadyView agent={state.agent} starters={data.starters} hello={data.hello} onHelloSettled={() => { void refresh() }} />
         ) : (
           <NotReadyView state={state} />
         )}
+        {data?.introductionSkipped && state && !reopened && (state.name === 'ready' || state.name === 'needs-login') ? (
+          <p className="text-bakin-text-muted">
+            You skipped the introduction. <PluginLink to={INTRODUCE_PATH}>Meet {state.agent.name}</PluginLink> whenever you like.
+          </p>
+        ) : null}
       </PageBody>
     </Page>
   )

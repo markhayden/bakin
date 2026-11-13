@@ -34945,6 +34945,68 @@
                                 "name"
                               ],
                               "additionalProperties": false
+                            },
+                            "resume": {
+                              "type": "object",
+                              "properties": {
+                                "agentName": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 40
+                                },
+                                "personality": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "preset"
+                                        },
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 1
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "id"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "custom"
+                                        },
+                                        "description": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 600
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "description"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                "userName": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 60
+                                }
+                              },
+                              "required": [
+                                "agentName",
+                                "personality",
+                                "userName"
+                              ],
+                              "additionalProperties": false
                             }
                           },
                           "required": [
@@ -35045,12 +35107,44 @@
                         ],
                         "additionalProperties": false
                       }
+                    },
+                    "personalities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "sample": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "label",
+                          "sample"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "hello": {
+                      "type": "boolean"
+                    },
+                    "introductionSkipped": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
                     "ok",
                     "state",
-                    "starters"
+                    "starters",
+                    "personalities",
+                    "hello",
+                    "introductionSkipped"
                   ],
                   "additionalProperties": false
                 }
@@ -35063,6 +35157,254 @@
         ],
         "description": "The Home state (unavailable, meet-agent, needs-login or ready) and the starters this home can run, derived from the runtime, credentials, the main agent and capability readiness. Read-only: it never writes and never starts a turn.",
         "x-bakin-full-path": "/api/plugins/home/state"
+      }
+    },
+    "/api/plugins/home/introduction": {
+      "post": {
+        "operationId": "home.post.introduction",
+        "summary": "Introduce the main agent",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad gateway.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "step": {
+                      "type": "string",
+                      "enum": [
+                        "identity",
+                        "person",
+                        "sync"
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "step",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "Writes the introduction's answers: the main agent's name and personality, what to call the person, then a local agent sync. The writes are resumable, not atomic: on a failure the answers stay pending, GET /state keeps answering meet-agent with them, and posting again finishes the job.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agentName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "personality": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "preset"
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "custom"
+                          },
+                          "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 600
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "description"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "userName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "agentName",
+                  "personality",
+                  "userName"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/home/introduction"
+      }
+    },
+    "/api/plugins/home/hello": {
+      "post": {
+        "operationId": "home.post.hello",
+        "summary": "Record that the person said hello",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "Called after the first hello was sent, or put away with \"Not now\", so Home stops offering it. The message itself is an ordinary chat message the person sent.",
+        "x-bakin-full-path": "/api/plugins/home/hello"
+      }
+    },
+    "/api/plugins/home/introduction/skip": {
+      "post": {
+        "operationId": "home.post.introduction-skip",
+        "summary": "Skip the introduction",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "Records that the person skipped the introduction, so Home stops opening on it. It can be reopened at any time.",
+        "x-bakin-full-path": "/api/plugins/home/introduction/skip"
       }
     },
     "/api/plugins/images/profiles": {

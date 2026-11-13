@@ -29,6 +29,7 @@ import { resetSettingsCache } from '../../../../src/core/settings'
 import { getAllAgentUsage } from '../../../../src/core/agent-usage'
 import { getStatsByMs } from '../../../../src/core/usage'
 import { readLatestSessionTranscript } from '../session-reader'
+import { applyAgentIdentity, identityUpdateFrom } from '../identity-service'
 import { listRunsByAgent } from '../../../../src/core/execution-ledger'
 import { queryAuditEvents } from '../../../../src/core/audit'
 import {
@@ -48,7 +49,6 @@ import {
   addToRuntimeAllowlists,
   removeFromRuntimeAllowlists,
   removeRuntimeAgent,
-  updateRuntimeAgentIdentity,
   setRuntimeSubagentPermissions,
   SelfDispatchError,
   listRuntimeSkills,
@@ -305,19 +305,11 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
         if (!agentId) return Response.json({ error: 'agentId is required' }, { status: 400 })
 
         const body = await req.json() as Record<string, unknown>
-        const updated = await updateRuntimeAgentIdentity(ctx.runtime, agentId, {
-          name: body.name as string | undefined,
-          emoji: body.emoji as string | undefined,
-          role: body.role as string | undefined,
-          vibe: body.vibe as string | undefined,
-          primaryFunction: body.primaryFunction as string | undefined,
-          defaultMode: body.defaultMode as string | undefined,
-          soul: body.soul as string | undefined,
-          tools: body.tools as string | undefined,
-        })
-
-        ctx.activity.audit('agent.identity_updated', 'system', { agent: agentId, updated })
-        resetSettingsCache()
+        const updated = await applyAgentIdentity(
+          { runtime: ctx.runtime, audit: (event, actor, data) => ctx.activity.audit(event, actor, data) },
+          agentId,
+          identityUpdateFrom(body),
+        )
 
         return Response.json({ ok: true, id: agentId, updated })
       } catch (err) {

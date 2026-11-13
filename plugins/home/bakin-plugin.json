@@ -11,7 +11,8 @@
     "storage.read",
     "storage.write",
     "runtime.read",
-    "runtime.agents"
+    "runtime.agents",
+    "events.emit"
   ],
   "contributes": {
     "apiRoutes": [
@@ -19,6 +20,21 @@
         "method": "GET",
         "path": "/state",
         "summary": "What Home shows now"
+      },
+      {
+        "method": "POST",
+        "path": "/hello",
+        "summary": "Record that the person said hello"
+      },
+      {
+        "method": "POST",
+        "path": "/introduction",
+        "summary": "Introduce the main agent"
+      },
+      {
+        "method": "POST",
+        "path": "/introduction/skip",
+        "summary": "Skip the introduction"
       }
     ],
     "slots": [
