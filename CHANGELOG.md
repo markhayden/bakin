@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.48] - 2026-11-13
+
+A clean first run now finishes clean, the update banner shows on page load again, and search can be uninstalled.
+
+### Added
+- **`bakin uninstall search [--data] [--engine]` (#1064).** The reverse of `bakin install search`, for retiring or moving a home: stops the engine and removes the background service this home registered. `--data` also deletes this home's index data; `--engine` also deletes the engine and its models, which every Bakin home on the machine shares. It refuses a service another home owns, an externally managed endpoint, and a home whose server is still running. Your content is never touched.
+
+### Changed
+- **A clean first run no longer ends on two warnings (#1063).** Onboarding now installs Bakin's own plugin skills and syncs agents itself, instead of finishing on "plugin assets need install" and "agent-sync findings" for the server to clear at its first start.
+- **An agent package's model is not applied when this home cannot run it (#1063).** The agent is created on the home's default model and the install says why. Before, a recommended agent could open the first Health page on a critical incident.
+- **A failed plugin or agent install says what went wrong in one sentence (#1063)**, without the clone's temporary path.
+- **Pi's login steps say how to install `pi` and that it needs Node 22.19 or newer (#1059).**
+
+### Fixed
+- **The update banner appears on page load again (#1067).** A new Bakin release showed only after the next scheduled check, up to six hours later, or after pressing Check for updates. A page load now asks the engine to look, at most once every 10 minutes.
+- **Previewing a switch to Pi no longer writes into a Pi home that was never used (#1065).**
+- **The release guard refuses a release that would reject the official plugins' manifests (#1060)**, which is how rc.47 nearly shipped ahead of Messaging and Projects.
+
 ## [0.0.1-rc.47] - 2026-11-13
 
 First-time setup works on a machine that has only Pi: `bakin onboard` picks or asks for the runtime, waits while you log in, and finishes with a list of what is left.
@@ -942,5 +960,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.46]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.46
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.47...HEAD
 [0.0.1-rc.47]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.47
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.48...HEAD
+[0.0.1-rc.48]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.48
