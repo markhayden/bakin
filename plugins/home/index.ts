@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { resolveAgentAvatar } from '@bakin/core/agents/avatar'
 import { createLogger } from '../../src/core/logger'
 import { installableComponent } from '../../src/core/onboarding/index'
 import { componentInstallOperation } from '../../src/core/onboarding/operation'
@@ -15,13 +16,13 @@ import { getOperationRegistry } from '../../src/core/operations'
 import { getSetupChecklist } from '../../src/core/onboarding/setup-checklist'
 import { getRuntimeAdapterSupport } from '../../src/core/runtime-adapter-factory'
 import { getSettings } from '../../src/core/settings'
-import { setOperatorName } from '../../src/core/team-context'
+import { getOperatorName, setOperatorName } from '../../src/core/team-context'
 import { HOME_CONTENT, TOUR_ICONS } from './lib/content'
 import { introductionAnswersSchema, readDecisions, updateDecisions } from './lib/decisions'
-import { completeIntroduction, recordHello, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
+import { completeIntroduction, recordFirstRequest, skipIntroduction, UnknownPersonalityError } from './lib/introduction'
 import { openPageIntroductions } from './lib/page-introductions'
 import { gatherHomeFacts } from './lib/readiness'
-import { availableStarters, homeState, offersHello, type HomeFacts } from './lib/state'
+import { availableStarters, homeState, isFirstDay, type HomeFacts } from './lib/state'
 import { MAX_SHOWN, suggestionsFor, type SuggestionFacts } from './lib/suggestions'
 import type { HomeStateResponse, HomeSuggestion, HomeTourResponse } from './types'
 
@@ -44,7 +45,8 @@ const stateResponse = z.object({
     needsAttachment: z.boolean(),
   })),
   personalities: z.array(z.object({ id: z.string(), label: z.string(), sample: z.string() })),
-  hello: z.boolean(),
+  person: z.string().optional(),
+  firstDay: z.boolean(),
   introductionSkipped: z.boolean(),
   login: z.object({ runtime: z.string(), steps: z.array(z.string()), command: z.string().optional(), docsUrl: z.string() }).optional(),
   suggestions: z.array(z.object({ id: z.string(), title: z.string(), payoff: z.string(), action: z.object({ label: z.string(), href: z.string() }) })),
@@ -83,6 +85,22 @@ async function applicableSuggestions(facts: HomeFacts): Promise<HomeSuggestion[]
   }
   return suggestionsFor(HOME_CONTENT.suggestions, suggestionFacts, facts.decisions.dismissedSuggestions ?? {}, Date.now())
     .map(({ id, title, payoff, action }) => ({ id, title, payoff, action }))
+}
+
+/** Whether a starter's `when` holds: the avatar starter until the main agent has a face, the image starter after. */
+function starterApplies(when: 'main-agent-has-avatar' | 'main-agent-has-no-avatar' | undefined, hasAvatar: boolean): boolean {
+  if (when === undefined) return true
+  return when === 'main-agent-has-avatar' ? hasAvatar : !hasAvatar
+}
+
+/** What the person asked to be called; null when it was never recorded or cannot be read. */
+function operatorName(): string | null {
+  try {
+    return getOperatorName()
+  } catch (err) {
+    log.debug('Could not read the operator name', { error: String(err) })
+    return null
+  }
 }
 
 /** The active runtime's own way to log a provider in. Bakin shows it; the person does it. */
@@ -128,12 +146,15 @@ const routes = [
           canGenerateImage: () => ctx.hooks.invoke<boolean>('images.canGenerate', {}),
         })
         const state = homeState(facts)
+        const usedStarters = readDecisions().usedStarters ?? {}
+        const hasAvatar = facts.mainAgent ? resolveAgentAvatar(facts.mainAgent.id) !== null : false
         // Suggestions are for a home that already works: first things first.
         const suggestions = state.name === 'ready' ? await applicableSuggestions(facts) : []
         const body: HomeStateResponse = {
           ok: true,
           state,
-          starters: availableStarters(HOME_CONTENT.starters, facts.starters).map((starter) => ({
+          // What has already been tried is not offered again.
+          starters: availableStarters(HOME_CONTENT.starters, facts.starters).filter((starter) => !(starter.id in usedStarters) && starterApplies(starter.when, hasAvatar)).map((starter) => ({
             id: starter.id,
             title: starter.title,
             description: starter.description,
@@ -141,7 +162,8 @@ const routes = [
             needsAttachment: starter.needs.attachment === true,
           })),
           personalities: HOME_CONTENT.personalities.map(({ id, label, sample }) => ({ id, label, sample })),
-          hello: offersHello(facts.decisions),
+          ...(operatorName() ? { person: operatorName()! } : {}),
+          firstDay: isFirstDay(facts.decisions),
           introductionSkipped: facts.decisions.introduction?.status === 'skipped',
           ...(state.name === 'needs-login' ? { login: loginFor() } : {}),
           suggestions: suggestions.slice(0, MAX_SHOWN),
@@ -187,13 +209,13 @@ const routes = [
   }),
 
   defineRoute({
-    path: '/hello',
+    path: '/first-request',
     method: 'POST',
-    summary: 'Record that the person said hello',
-    description: 'Called after the first hello was sent, or put away with "Not now", so Home stops offering it. The message itself is an ordinary chat message the person sent.',
+    summary: 'Record the first thing the person asked for',
+    description: 'Called when the person asks for their first thing from Home, typed or picked from a starter. It ends the first day: Home greets a returning person from then on.',
     responses: { 200: okResponse },
     handler: async () => {
-      recordHello()
+      recordFirstRequest()
       return Response.json({ ok: true })
     },
   }),
@@ -204,10 +226,27 @@ const routes = [
     activityClass: 'routine',
     summary: 'The tour of Bakin',
     description: 'The slides of the tour Home offers: one per area, each with what it is for, one thing to do there first, and its page. Curated content; the same for every home.',
-    responses: { 200: z.object({ ok: z.literal(true), slides: z.array(z.object({ id: z.string(), title: z.string(), icon: z.enum(TOUR_ICONS), body: z.string(), first: z.string(), href: z.string() })) }) },
+    responses: { 200: z.object({ ok: z.literal(true), slides: z.array(z.object({ id: z.string(), title: z.string(), icon: z.enum(TOUR_ICONS), body: z.string(), first: z.string(), image: z.string(), href: z.string() })) }) },
     handler: async () => {
       const body: HomeTourResponse = { ok: true, slides: HOME_CONTENT.tour }
       return Response.json(body)
+    },
+  }),
+
+  defineRoute({
+    path: '/starters/:id/used',
+    method: 'POST',
+    summary: 'Record that a starter was picked',
+    description: 'Called when the person picks a starter, so Home stops offering it. 404 for an id that is not a starter.',
+    params: z.object({ id: z.string() }),
+    responses: { 200: okResponse, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      if (!HOME_CONTENT.starters.some((starter) => starter.id === params.id)) {
+        return Response.json({ ok: false, error: `No starter "${params.id}"` }, { status: 404 })
+      }
+      const at = new Date().toISOString()
+      updateDecisions((current) => ({ ...current, usedStarters: { ...current.usedStarters, [params.id]: { at } } }))
+      return Response.json({ ok: true })
     },
   }),
 
@@ -219,7 +258,7 @@ const routes = [
     description:
       'The first-visit introductions not yet closed on this home, by page. Empty on a home where nobody went through Home\'s introduction: ' +
       'its people already know their way around. Read-only.',
-    responses: { 200: z.object({ ok: z.literal(true), introductions: z.array(z.object({ id: z.string(), title: z.string(), body: z.string() })) }) },
+    responses: { 200: z.object({ ok: z.literal(true), introductions: z.array(z.object({ id: z.string(), title: z.string(), body: z.string(), image: z.string() })) }) },
     handler: async () => Response.json({ ok: true, introductions: openPageIntroductions(HOME_CONTENT.pageIntroductions, readDecisions()) }),
   }),
 

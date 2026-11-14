@@ -23,13 +23,38 @@
       },
       {
         "method": "POST",
-        "path": "/hello",
-        "summary": "Record that the person said hello"
+        "path": "/introduction",
+        "summary": "Introduce the main agent"
       },
       {
         "method": "POST",
-        "path": "/introduction",
-        "summary": "Introduce the main agent"
+        "path": "/first-request",
+        "summary": "Record the first thing the person asked for"
+      },
+      {
+        "method": "GET",
+        "path": "/tour",
+        "summary": "The tour of Bakin"
+      },
+      {
+        "method": "POST",
+        "path": "/starters/:id/used",
+        "summary": "Record that a starter was picked"
+      },
+      {
+        "method": "GET",
+        "path": "/page-introductions",
+        "summary": "The pages that still introduce themselves"
+      },
+      {
+        "method": "POST",
+        "path": "/page-introductions/:id/close",
+        "summary": "Close a page's introduction"
+      },
+      {
+        "method": "POST",
+        "path": "/suggestions/:id/dismiss",
+        "summary": "Put a suggestion away"
       },
       {
         "method": "POST",

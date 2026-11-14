@@ -46,7 +46,7 @@ export interface HomeFacts {
   mainAgent: MainAgentFacts | null
   credentials: CredentialFact
   model: ModelFact
-  decisions: Pick<HomeDecisions, 'introduction' | 'saidHello' | 'dismissedSuggestions'>
+  decisions: Pick<HomeDecisions, 'introduction' | 'firstRequest' | 'dismissedSuggestions'>
   starters: StarterReadiness
   /** Every installed capability pack, ready or not; `unknown` when they could not be read. */
   capabilities: readonly InstalledCapability[] | 'unknown'
@@ -109,12 +109,13 @@ export function starterBlockedBy(starter: Starter, readiness: StarterReadiness):
 }
 
 /**
- * Whether to offer "Say hello": the introduction was completed here and the
- * person has not said hello yet. A skipped introduction offers nothing, and
- * neither does a home whose agent was named somewhere else.
+ * The first day: the introduction was completed here and nothing has been
+ * asked for yet. Home greets a new person differently from a returning one.
+ * A skipped introduction has no first day, and neither does a home whose
+ * agent was named somewhere else.
  */
-export function offersHello(decisions: Pick<HomeDecisions, 'introduction' | 'saidHello'>): boolean {
-  return decisions.introduction?.status === 'completed' && decisions.saidHello === undefined
+export function isFirstDay(decisions: Pick<HomeDecisions, 'introduction' | 'firstRequest'>): boolean {
+  return decisions.introduction?.status === 'completed' && decisions.firstRequest === undefined
 }
 
 /** The starters this home can run, in curated order. */

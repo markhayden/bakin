@@ -9,7 +9,7 @@ import { useJsonFetch, usePluginEvent } from '@makinbakin/sdk/hooks'
  * in any browser. Zero until it is known, and zero when it cannot be.
  */
 export function useSuggestionCount(pathname: string): number {
-  const { data, refresh } = useJsonFetch<{ suggestionCount?: unknown }>('/api/plugins/home/state')
+  const { data, refresh } = useJsonFetch<{ suggestions?: unknown }>('/api/plugins/home/state')
   usePluginEvent('home.suggestions_changed', refresh)
   const seen = useRef(pathname)
   useEffect(() => {
@@ -17,6 +17,6 @@ export function useSuggestionCount(pathname: string): number {
     seen.current = pathname
     refresh()
   }, [pathname, refresh])
-  const count = data?.suggestionCount
-  return typeof count === 'number' && count > 0 ? count : 0
+  // What Home lists, not everything that applies: the count is a promise about what is on the other end of the link.
+  return Array.isArray(data?.suggestions) ? data.suggestions.length : 0
 }

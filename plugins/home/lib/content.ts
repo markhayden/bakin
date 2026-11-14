@@ -28,6 +28,11 @@ const starterSchema = z.object({
   /** What is sent to the main agent when the starter is picked. */
   prompt: z.string().min(1),
   needs: starterNeedsSchema,
+  /**
+   * Offered only while this holds. The avatar starter is for an agent with no
+   * face yet; once it has one, the plain image starter takes its place.
+   */
+  when: z.enum(['main-agent-has-avatar', 'main-agent-has-no-avatar']).optional(),
 }).strict()
 
 const personalitySchema = z.object({
@@ -96,6 +101,8 @@ const tourSlideSchema = z.object({
   body: z.string().min(1).max(260),
   /** One thing to do there first. */
   first: z.string().min(1).max(100),
+  /** The slide's illustration, a picture the host serves. */
+  image: z.string().regex(/^\/tour-[a-z-]+\.jpg$/, 'must be a tour illustration the host serves'),
   /** The area's own page. */
   href: z.string().regex(/^\/[a-z][a-z0-9-]*$/, 'must be a top-level page'),
 }).strict()
@@ -106,6 +113,8 @@ const pageIntroductionSchema = z.object({
   title: z.string().min(1).max(60),
   /** Two sentences: what the page is for and what happens on it. */
   body: z.string().min(1).max(200),
+  /** The page's picture, one the host serves. */
+  image: z.string().regex(/^\/tour-[a-z-]+\.jpg$/, 'must be an illustration the host serves'),
 }).strict()
 
 export const homeContentSchema = z.object({

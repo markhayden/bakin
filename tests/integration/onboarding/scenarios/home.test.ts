@@ -52,8 +52,8 @@ describe('Home on a fresh Pi home', () => {
     const body = await stateOf(server)
     // Pi seeds its orchestrator as "Main" with no personality file.
     expect(body.state).toEqual({ name: 'meet-agent', agent: { id: 'main', name: 'Main' } })
-    // Starters that need nothing are offered even on the barest home.
-    expect(body.starters.map((starter) => starter.id)).toContain('brainstorm')
+    // The starters are offered even on the barest home.
+    expect(body.starters.map((starter) => starter.id)).toContain('goal-into-tasks')
   }, TEST_TIMEOUT)
 
   test('the home plugin is listed with its page asset', async () => {

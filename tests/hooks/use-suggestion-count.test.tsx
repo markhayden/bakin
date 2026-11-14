@@ -13,7 +13,7 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 import { emitPluginEvent } from '@makinbakin/sdk/hooks'
 import { useSuggestionCount } from '../../packages/host/src/hooks/use-suggestion-count'
 
-let answer: { status: number; body: unknown } = { status: 200, body: { suggestionCount: 0 } }
+let answer: { status: number; body: unknown } = { status: 200, body: { suggestions: Array.from({ length: 0 }, (_, i) => ({ id: `s${i}` })) } }
 const asked: string[] = []
 const realFetch = globalThis.fetch
 beforeEach(() => {
@@ -31,8 +31,8 @@ afterEach(() => {
 const mount = (pathname: string) => actRender(() => renderHook(({ at }: { at: string }) => useSuggestionCount(at), { initialProps: { at: pathname } }))
 
 describe('useSuggestionCount', () => {
-  it('is what Home\'s state route says', async () => {
-    answer = { status: 200, body: { suggestionCount: 4 } }
+  it('is how many suggestions Home lists', async () => {
+    answer = { status: 200, body: { suggestions: Array.from({ length: 4 }, (_, i) => ({ id: `s${i}` })) } }
     const hook = await mount('/tasks')
     await waitFor(() => expect(hook.result.current).toBe(4))
     expect(asked).toEqual(['/api/plugins/home/state'])
@@ -44,17 +44,17 @@ describe('useSuggestionCount', () => {
     await waitFor(() => expect(asked).toHaveLength(1))
     expect(failed.result.current).toBe(0)
     failed.unmount()
-    answer = { status: 200, body: { suggestionCount: 'several' } }
+    answer = { status: 200, body: { suggestions: 'several' } }
     const odd = await mount('/tasks')
     await waitFor(() => expect(asked).toHaveLength(2))
     expect(odd.result.current).toBe(0)
   })
 
   it('looks again when the page changes, and keeps the last count while it does', async () => {
-    answer = { status: 200, body: { suggestionCount: 3 } }
+    answer = { status: 200, body: { suggestions: Array.from({ length: 3 }, (_, i) => ({ id: `s${i}` })) } }
     const hook = await mount('/explore')
     await waitFor(() => expect(hook.result.current).toBe(3))
-    answer = { status: 200, body: { suggestionCount: 2 } }
+    answer = { status: 200, body: { suggestions: Array.from({ length: 2 }, (_, i) => ({ id: `s${i}` })) } }
     await act(async () => { hook.rerender({ at: '/tasks' }) })
     await waitFor(() => expect(hook.result.current).toBe(2))
     expect(asked).toHaveLength(2)
@@ -64,10 +64,10 @@ describe('useSuggestionCount', () => {
   })
 
   it('looks again when a suggestion is put away in any browser', async () => {
-    answer = { status: 200, body: { suggestionCount: 3 } }
+    answer = { status: 200, body: { suggestions: Array.from({ length: 3 }, (_, i) => ({ id: `s${i}` })) } }
     const hook = await mount('/')
     await waitFor(() => expect(hook.result.current).toBe(3))
-    answer = { status: 200, body: { suggestionCount: 2 } }
+    answer = { status: 200, body: { suggestions: Array.from({ length: 2 }, (_, i) => ({ id: `s${i}` })) } }
     await act(async () => { emitPluginEvent({ event: 'home.suggestions_changed', id: 'web-search' }) })
     await waitFor(() => expect(hook.result.current).toBe(2))
   })

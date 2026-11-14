@@ -115,8 +115,8 @@ export interface GatherDeps {
 
 export async function gatherHomeFacts(deps: GatherDeps): Promise<HomeFacts> {
   const { runtime } = deps
-  const { introduction, saidHello, dismissedSuggestions } = readDecisions()
-  const decisions = { introduction, saidHello, dismissedSuggestions }
+  const { introduction, firstRequest, dismissedSuggestions } = readDecisions()
+  const decisions = { introduction, firstRequest, dismissedSuggestions }
   let agents: RuntimeAgent[]
   try {
     agents = await runtime.agents.list()
