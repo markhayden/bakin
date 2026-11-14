@@ -1,10 +1,22 @@
 # Implementation plan: Home and the first-run experience
 
 Spec: `.claude/specs/home-first-run.md`.
-Status: **revision 2.** Revision 1 was reviewed by Codex (one round,
-2026-11-13: REVISE, 3 must-fix, 9 high). This revision takes every finding
-except the login spike, which the maintainer dropped: login is
-instructions for the MVP.
+Status: **done (2026-11-14).** All seven PRs merged (#1072–#1078), then a
+hands-on design pass with the maintainer (#1079) replaced the first versions
+of the welcome, the ready Home, the tour dialog and the page introductions,
+and three follow-ups landed (#1080 `bakin start` opens the browser, #1081 a
+chosen avatar survives package syncs, #1082 Home follows the board). What is
+built is described in `.claude/knowledge/home.md`; this plan is kept as the
+record of how it was sequenced, and its UI details below are superseded
+where they differ.
+
+Revision history: revision 1 was reviewed by Codex (one round, 2026-11-13:
+REVISE, 3 must-fix, 9 high). Revision 2 took every finding except the login
+spike, which the maintainer dropped: login is instructions for the MVP.
+
+Not verified when the plan closed, left to the maintainer: a real provider
+sign-in through to an agent reply, "Open in Terminal" against the published
+Terminal plugin, Home from a second device, and a release candidate.
 
 ## What changed from revision 1
 

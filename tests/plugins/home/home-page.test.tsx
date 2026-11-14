@@ -100,8 +100,8 @@ import { HomePage } from '../../../plugins/home/components/home-page'
 import type { HomeActivity } from '../../../plugins/home/lib/client/activity'
 
 const PERSONALITIES = [
-  { id: 'warm', label: 'Charming', sample: 'Nice, that is a solid start.' },
-  { id: 'direct', label: 'Brutally efficient', sample: 'Done. Three issues found.' },
+  { id: 'warm', label: 'Charming' },
+  { id: 'direct', label: 'Brutally efficient' },
 ]
 const STARTERS = [
   { id: 'brainstorm', title: 'Brainstorm ideas', description: 'Think out loud', prompt: 'Brainstorm with me.', needsAttachment: false },

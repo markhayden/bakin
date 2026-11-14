@@ -286,10 +286,10 @@ describe('starters', () => {
 })
 
 describe('GET /state — what the introduction needs', () => {
-  it('offers the four personalities, each with a sample line, and never the personality text itself', async () => {
+  it('offers the four personalities by name, and never the personality text itself', async () => {
     const body = await state()
     expect(body.personalities.map((preset) => preset.id)).toEqual(['warm', 'direct', 'witty', 'calm'])
-    expect(Object.keys(body.personalities[0]!).sort()).toEqual(['id', 'label', 'sample'])
+    expect(Object.keys(body.personalities[0]!).sort()).toEqual(['id', 'label'])
   })
 })
 

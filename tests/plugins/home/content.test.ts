@@ -52,12 +52,12 @@ describe('home content', () => {
     expect(() => parseHomeContent(content)).toThrow()
   })
 
-  it('refuses a starter with no prompt, and a personality with no sample line', () => {
+  it('refuses a starter with no prompt, and a personality with no personality text', () => {
     const noPrompt = clone()
     noPrompt.starters[0]!.prompt = ''
     expect(() => parseHomeContent(noPrompt)).toThrow()
     const noSample = clone()
-    delete noSample.personalities[0]!.sample
+    delete noSample.personalities[0]!.soul
     expect(() => parseHomeContent(noSample)).toThrow()
   })
 })

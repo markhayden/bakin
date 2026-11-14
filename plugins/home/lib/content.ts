@@ -38,8 +38,6 @@ const starterSchema = z.object({
 const personalitySchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   label: z.string().min(1).max(40),
-  /** One line in this voice, shown so the choice is audible. */
-  sample: z.string().min(1).max(140),
   /** The short line stored as the agent's vibe. */
   vibe: z.string().min(1).max(60),
   /** The personality text written for the agent. */
