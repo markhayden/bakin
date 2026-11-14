@@ -35118,15 +35118,11 @@
                           },
                           "label": {
                             "type": "string"
-                          },
-                          "sample": {
-                            "type": "string"
                           }
                         },
                         "required": [
                           "id",
-                          "label",
-                          "sample"
+                          "label"
                         ],
                         "additionalProperties": false
                       }

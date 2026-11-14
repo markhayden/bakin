@@ -58,8 +58,6 @@ export interface HomeLogin {
 export interface HomePersonality {
   id: string
   label: string
-  /** One line in this voice. */
-  sample: string
 }
 
 export type { IntroductionAnswers } from './lib/decisions'
