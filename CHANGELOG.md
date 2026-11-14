@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.49] - 2026-11-14
+
 Bakin now opens on Home: a first run that introduces your agent, a tour of the place, and a page that keeps up with your work.
 
 ### Added
@@ -979,5 +981,7 @@ This is primarily an architecture release: ~380 commits, the bulk of them a beha
 
 [0.0.1-rc.47]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.47
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.48...HEAD
 [0.0.1-rc.48]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.48
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.49...HEAD
+[0.0.1-rc.49]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.49
