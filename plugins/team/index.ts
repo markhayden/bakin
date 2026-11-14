@@ -7,7 +7,7 @@
  * Bakin reads and writes through the active runtime adapter.
  */
 import { z } from 'zod'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
@@ -46,6 +46,7 @@ import {
   updateRuntimeAgentIdentity,
   setRuntimeSubagentPermissions,
 } from './lib/runtime-agents'
+import { MAX_AVATAR_BYTES, writeAgentAvatar } from './lib/avatar'
 import { applyAgentIdentity, identityUpdateFrom } from './lib/identity-service'
 import {
   agentLessonFileToId,
@@ -659,8 +660,44 @@ const teamPlugin: BakinPlugin = definePlugin({
 
         ctx.activity.audit('agent.identity_updated', 'system', { agent: agentId, updated })
         resetSettingsCache()
+        ctx.events.emit('team.agent_changed', { agentId })
 
         return { ok: true, id: agentId, updated }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_team_set_avatar',
+      label: 'Set agent avatar',
+      description: "Set an agent's avatar from an image already saved as an asset (PNG, JPEG or WebP). Use it after the person has picked one of the options you made: pass that asset's id. Replaces the avatar the agent had.",
+      parameters: {
+        agentId: z.string().describe('Target agent ID'),
+        assetId: z.string().describe('The asset holding the image to use'),
+        version: z.number().int().positive().optional().describe("Which version of the asset; omit for its current one"),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const agentId = params.agentId as string
+        const assetId = params.assetId as string
+        const roster = await ctx.runtime.agents.list()
+        if (!roster.some((agent) => agent.id === agentId)) return { ok: false, error: `No agent "${agentId}" on the team` }
+        const file = await ctx.assets.resolveVersionFile(assetId, params.version as number | undefined)
+        if (!file) return { ok: false, error: `No asset "${assetId}" (or no such version of it)` }
+        if (!file.mimeType.startsWith('image/')) return { ok: false, error: `Asset "${assetId}" is not an image (${file.mimeType})` }
+        let image: Buffer
+        try {
+          // Size first: a huge file is refused without being read into memory.
+          if (statSync(file.absPath).size > MAX_AVATAR_BYTES) return { ok: false, error: 'Image is too large for an avatar (12 MB at most)' }
+          image = readFileSync(file.absPath)
+        } catch (err) {
+          log.warn('Avatar asset could not be read', { assetId, error: err instanceof Error ? err.message : String(err) })
+          return { ok: false, error: `Asset "${assetId}" could not be read` }
+        }
+        const written = writeAgentAvatar(agentId, image)
+        if (!written.ok) return { ok: false, error: written.error }
+        ctx.activity.audit('agent.avatar.updated', 'system', { agent: agentId, assetId, version: file.version })
+        // Every open browser shows the new face without a refresh.
+        ctx.events.emit('team.agent_changed', { agentId })
+        return { ok: true, id: agentId, assetId, version: file.version }
       },
     })
 

@@ -47,7 +47,9 @@ function metadataStringArray(agent: RuntimeAgent, key: string): string[] | null 
 }
 
 export function agentToMeta(agent: RuntimeAgent): AgentMeta {
-  const headshot = resolveAgentAvatar(agent.id) ? `/api/agents/avatar?id=${encodeURIComponent(agent.id)}` : ''
+  // The file's time rides in the URL: a replaced avatar is a new URL, so no browser shows the cached old face.
+  const avatar = resolveAgentAvatar(agent.id)
+  const headshot = avatar ? `/api/agents/avatar?id=${encodeURIComponent(agent.id)}&v=${Math.round(avatar.mtimeMs)}` : ''
 
   return {
     id: agent.id,

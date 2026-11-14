@@ -5,6 +5,9 @@ import { useAgentStore, hexToMuted, usePluginEvent } from '@makinbakin/sdk/hooks
  * Fetches agent data on mount and injects per-agent CSS custom properties
  * onto :root. Components can reference e.g. var(--agent-main) for the accent color.
  *
+ * It reloads the roster on `team.agent_changed` (a renamed agent, a new
+ * avatar), so no surface waits for a page refresh.
+ *
  * It also owns the roster's `updates.changed` subscription (#1007 B): when
  * the updates engine changes a `package:` record, the agent-package rows are
  * re-read here — once, for every Team surface (grid badge, detail card) —
@@ -19,6 +22,9 @@ export function AgentThemeProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     load()
   }, [load])
+
+  // An agent changed its name or face (often by its own hand, mid-conversation): every surface follows.
+  usePluginEvent('team.agent_changed', () => { void load() })
 
   usePluginEvent('updates.changed', (payload) => {
     const ids = (payload as { ids?: unknown }).ids

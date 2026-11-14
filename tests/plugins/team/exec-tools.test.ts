@@ -341,6 +341,66 @@ describe('bakin_exec_team_update_identity', () => {
 })
 
 // ---------------------------------------------------------------------------
+// bakin_exec_team_set_avatar
+// ---------------------------------------------------------------------------
+
+describe('bakin_exec_team_set_avatar', () => {
+  /** A real 1×1 PNG: the format is detected from the bytes, not the name. */
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
+  const assetFile = join(testDir, 'avatar-source.png')
+  const textFile = join(testDir, 'notes.txt')
+  const asked: Array<[string, number | undefined]> = []
+  const withAssets = (files: Record<string, { absPath: string; mimeType: string; version: number }>) => {
+    asked.length = 0
+    ;(activated.ctx.assets as unknown as Record<string, unknown>).resolveVersionFile = async (assetId: string, version?: number) => {
+      asked.push([assetId, version])
+      return files[assetId] ?? null
+    }
+  }
+  const tool = () => findTool(activated.execTools, 'bakin_exec_team_set_avatar')!
+  const avatarOf = (agentId: string, ext: string) => join(testDir, 'agents', agentId, `avatar.${ext}`)
+
+  beforeEach(() => {
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(assetFile, PNG)
+    writeFileSync(textFile, 'not a picture')
+    rmSync(join(testDir, 'agents', 'chef'), { recursive: true, force: true })
+  })
+
+  it("sets the agent's avatar from a saved image asset, replacing one in another format", async () => {
+    withAssets({ a1: { absPath: assetFile, mimeType: 'image/png', version: 3 } })
+    mkdirSync(join(testDir, 'agents', 'chef'), { recursive: true })
+    writeFileSync(avatarOf('chef', 'jpg'), 'old')
+    // Open browsers are told, so the new face shows without a refresh.
+    const told: unknown[] = []
+    const stop = activated.ctx.events.on('team.agent_changed', (data) => { told.push(data) })
+    const result = await callTool(tool(), { agentId: 'chef', assetId: 'a1' })
+    stop()
+    expect(told).toHaveLength(1)
+    expect(result).toEqual({ ok: true, id: 'chef', assetId: 'a1', version: 3 })
+    expect(readFileSync(avatarOf('chef', 'png')).equals(PNG)).toBe(true)
+    expect(() => readFileSync(avatarOf('chef', 'jpg'))).toThrow()
+    expect(asked).toEqual([['a1', undefined]])
+  })
+
+  it('uses the version asked for', async () => {
+    withAssets({ a1: { absPath: assetFile, mimeType: 'image/png', version: 2 } })
+    await callTool(tool(), { agentId: 'chef', assetId: 'a1', version: 2 })
+    expect(asked).toEqual([['a1', 2]])
+  })
+
+  it('refuses an agent that is not on the team, an asset that does not exist, and one that is not an image; nothing is written', async () => {
+    withAssets({ a1: { absPath: assetFile, mimeType: 'image/png', version: 1 }, doc: { absPath: textFile, mimeType: 'text/plain', version: 1 }, fake: { absPath: textFile, mimeType: 'image/png', version: 1 } })
+    expect(await callTool(tool(), { agentId: 'ghost', assetId: 'a1' })).toMatchObject({ ok: false, error: expect.stringContaining('ghost') })
+    expect(await callTool(tool(), { agentId: 'chef', assetId: 'nope' })).toMatchObject({ ok: false, error: expect.stringContaining('nope') })
+    expect(await callTool(tool(), { agentId: 'chef', assetId: 'doc' })).toMatchObject({ ok: false, error: expect.stringContaining('not an image') })
+    // Says it is a PNG, but the bytes are not an image at all.
+    expect(await callTool(tool(), { agentId: 'chef', assetId: 'fake' })).toMatchObject({ ok: false, error: 'Unsupported image format' })
+    expect(() => readFileSync(avatarOf('chef', 'png'))).toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // bakin_exec_team_delete_agent
 // ---------------------------------------------------------------------------
 

@@ -369,7 +369,8 @@ describe('team plugin — non-search routes', () => {
       const activated = await activatePlugin(teamPlugin, testDir)
       const { body } = await callRoute(findRoute(activated.routes, 'GET', '/')!, activated.ctx)
       const agents = (body as { agents: Array<{ id: string; headshot: string }> }).agents
-      expect(agents.find((agent) => agent.id === 'main')?.headshot).toBe('/api/agents/avatar?id=main')
+      // The file's time rides along, so a replaced avatar is a new URL.
+      expect(agents.find((agent) => agent.id === 'main')?.headshot).toMatch(/^\/api\/agents\/avatar\?id=main&v=\d+$/)
     } finally {
       rmSync(join(testDir, 'agents', 'main', 'avatar.png'), { force: true })
     }
