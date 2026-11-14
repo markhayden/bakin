@@ -97,7 +97,7 @@ Rewrite `skills/google-workspace/SKILL.md` per spec §4.2: fast path, read disci
 Google Cloud one-time setup (Internal consent for Workspace orgs), `GOG_ACCOUNT`, admin caveat; GitHub login note. **Deps:** none. **Size:** S.
 
 ### Checkpoint: Bits
-- [ ] Bits suite green; the manifest fixture test in bakin green; pack installs on a `verify` boot (after PR1) and reads `login: missing` with the setup command.
+- [x] Bits suite green; the manifest fixture test in bakin green; pack installs on a `verify` boot (after PR1) and reads `login: missing` with the setup command.
 
 ---
 
@@ -143,8 +143,8 @@ Installed card states "Installed — needs login" / "Login not verified" with th
 `capability-packs.md` (login leg, receipts, triggers, staleness, bakin-range enforcement), `agent-packages.md`, `docs/…/extending/agents/packages.md`, CLAUDE.md line. **Size:** S.
 
 ### Checkpoint: PR1 (+ Bits on disk)
-- [ ] Gate green (lint, typecheck, cycles, PR tests, full suite, conformance quick + full); ≥2 Codex rounds fixed.
-- [ ] `verify` boot: install google-workspace from the local Bits checkout → `login: missing` + setup command; a receipt made stale by a pin change → `unknown`.
+- [x] Gate green (lint, typecheck, cycles, PR tests, full suite, conformance quick + full); ≥2 Codex rounds fixed — nine rounds (r3 and r9 APPROVE; r4–r8 blockers B1–B7 fixed in-batch, see §4.1 `expect` amendment).
+- [x] `verify` boot: install google-workspace from the local Bits checkout → `login: missing` + setup command; a receipt made stale by a pin change → `unknown`.
 - [ ] Mark on 3737: installs via Explore, creates the OAuth client, runs setup, Check login → ok; **W1 passes** in chat.
 
 ---
@@ -289,7 +289,7 @@ Lift the `not_yet_supported` refusal; job form target switch hides task-only fie
 None blocking. The grants editor composition is confirmed with the conformance skill at 2.7a.
 
 ## Todo
-- [ ] B1 · [ ] B2a · [ ] B2b · [ ] B3 · [ ] B4 · [ ] B5 · [ ] Bits checkpoint
-- [x] 1.1 · [x] 1.2 · [x] 1.3 · [x] 1.4a · [x] 1.4b · [x] 1.4c · [x] 1.5a · [x] 1.5b · [x] 1.5c · [ ] 1.6 · [ ] PR1 gate · [ ] Codex ×2 · [ ] W1 (Mark)
+- [x] B1 · [x] B2a · [x] B2b · [x] B3 · [x] B4 · [x] B5 · [x] B6 (bakin ranges) · [ ] Bits checkpoint
+- [x] 1.1 · [x] 1.2 · [x] 1.3 · [x] 1.4a · [x] 1.4b · [x] 1.4c · [x] 1.5a · [x] 1.5b · [x] 1.5c · [x] 1.6 · [x] PR1 gate · [x] Codex ×2 · [ ] W1 (Mark)
 - [ ] 2.3 · [ ] 2.4a · [ ] 2.1a · [ ] 2.1b · [ ] 2.1c · [ ] 2.2a · [ ] 2.2b · [ ] 2.2c · [ ] 2.4b · [ ] 2.5 · [ ] 2.6a · [ ] 2.6b · [ ] 2.7a · [ ] 2.7b · [ ] 2.8a · [ ] 2.8b · [ ] PR2 gate · [ ] Codex ×2 · [ ] W2+W3 (Mark)
 - [ ] 3.2 · [ ] 3.1a · [ ] 3.1b · [ ] 3.1c · [ ] 3.3a · [ ] 3.3b · [ ] 3.4a · [ ] 3.4b · [ ] 3.4c · [ ] 3.4d · [ ] 3.4e · [ ] 3.5 · [ ] 3.6 · [ ] PR3 gate · [ ] Codex ×2 · [ ] W4 (Mark)
