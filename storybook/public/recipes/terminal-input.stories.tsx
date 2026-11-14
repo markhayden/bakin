@@ -57,11 +57,14 @@ export const BarAndSheet = {
     // The next key typed in the editor takes an armed modifier, a named key too.
     await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
     await userEvent.keyboard('c')
-    await expect(status).toHaveTextContent('Ctrl+c')
-    await expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false')
+    // The key is sent first and the one-shot modifier disarms after it, so the button is named
+    // "Control" again a moment later: wait for that state rather than reading it on the same tick.
+    await waitFor(() => expect(status).toHaveTextContent('Ctrl+c'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false'))
     await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
     await userEvent.keyboard('{ArrowLeft}')
-    await expect(status).toHaveTextContent('Ctrl+Left')
+    await waitFor(() => expect(status).toHaveTextContent('Ctrl+Left'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false'))
     // A key inside a composition is not a key, and its interim input is not committed text:
     // the modifier stays until the composition commits.
     await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
@@ -95,6 +98,8 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Control, on for the next key' }))
     // Left open: an Escape another owner already claimed, one inside a composition, one inside a dialog.
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
+    // The sheet takes focus on its next frame: let that land first, or it pulls focus out of the dialog below.
+    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
     const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     claimed.preventDefault()
     editor.dispatchEvent(claimed)
