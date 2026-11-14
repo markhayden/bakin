@@ -10,7 +10,8 @@
  *
  * Pattern: `storybook/public/overlays/dialog.stories.tsx`
  * (ControlledFocusReturn): a controlled dialog with a title, a
- * description and its actions in the footer. Slides are text and an icon.
+ * description and its actions in the footer, widened to lead each slide
+ * with its illustration (`/tour-<area>.jpg`, served by the host).
  */
 import { useEffect } from 'react'
 import { CalendarClock, CheckSquare, FolderOpen, HeartPulse, MessageSquare, Users, type LucideIcon } from 'lucide-react'
@@ -54,7 +55,16 @@ export function Tour({ slideId, onSlide }: TourProps) {
 
   return (
     <Dialog open onOpenChange={(next) => { if (!next) onSlide('') }}>
-      <DialogContent closeLabel="Close the tour" data-home-tour={slide.id}>
+      {/* Wider than a decision dialog: each slide leads with a picture of its area. */}
+      <DialogContent closeLabel="Close the tour" data-home-tour={slide.id} className="text-balance" style={{ maxInlineSize: '46rem' }}>
+        {/* Edge to edge across the top, in the picture's own shape so the dialog does not jump between slides. */}
+        <img
+          key={slide.image}
+          src={slide.image}
+          alt=""
+          className="-mx-bakin-6 -mt-bakin-6 block max-w-none rounded-t-bakin-overlay object-cover"
+          style={{ inlineSize: 'calc(100% + 2 * var(--bakin-layout-space-6))', aspectRatio: '16 / 9', background: '#111' }}
+        />
         <DialogHeader>
           <p className="text-bakin-text-muted" aria-live="polite">{index + 1} of {slides.length}</p>
           <DialogTitle className="flex items-center gap-bakin-2">

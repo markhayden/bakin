@@ -4,6 +4,7 @@
  * in `contributes.slots` so the host lazy-loads this client on first render.
  */
 import { registerPlugin } from '@makinbakin/sdk'
+import { useAgentStore } from '@makinbakin/sdk/hooks'
 import { TeamGrid } from './components/team-grid'
 import { AgentDetail } from './components/agent-detail'
 import { TeamDetail } from './components/team-detail'
@@ -17,7 +18,8 @@ registerPlugin({
         title: String(hit.fields.name ?? hit.id),
         subtitle: String(hit.fields.role ?? 'agent'),
         href: `/team/${encodeURIComponent(hit.id)}`,
-        thumbnailUrl: `/api/agents/avatar?id=${encodeURIComponent(hit.id)}`,
+        // The roster's own address carries the avatar's version, so a changed face is never a stale thumbnail.
+        thumbnailUrl: useAgentStore.getState().agentMap[hit.id]?.headshot || `/api/agents/avatar?id=${encodeURIComponent(hit.id)}`,
         icon: 'users',
       }),
       'agent-lessons': (hit) => {

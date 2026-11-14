@@ -11,8 +11,8 @@ const loggerMock = () => ({ createLogger: () => ({ info: mock(), warn: mock(), e
 mock.module('../../../src/core/logger', loggerMock)
 mock.module('../../../packages/core/src/logger', loggerMock)
 
-import { HOME_CONTENT } from '../../../plugins/home/lib/content'
-import { availableStarters, homeState, starterBlockedBy, type HomeFacts } from '../../../plugins/home/lib/state'
+import { HOME_CONTENT, type Starter } from '../../../plugins/home/lib/content'
+import { availableStarters, homeState, isFirstDay, starterBlockedBy, type HomeFacts } from '../../../plugins/home/lib/state'
 
 const NOTHING_EXTRA = { readyCapabilities: [], imageProvider: false, agents: ['main'] }
 const facts = (over: Partial<HomeFacts> = {}): HomeFacts => ({
@@ -68,24 +68,48 @@ describe('homeState: which screen', () => {
 })
 
 describe('starters this home can run', () => {
-  const byId = (id: string) => HOME_CONTENT.starters.find((starter) => starter.id === id)!
+  // The shipped starters need nothing; the rule is still what decides, so it is tested on its own.
+  const starter = (id: string, needs: Starter['needs']): Starter => ({ id, title: id, description: id, prompt: id, needs })
+  const NEEDY = [
+    starter('plain', {}),
+    starter('search', { capability: 'web-search' }),
+    starter('picture', { imageProvider: true }),
+    starter('edit', { attachment: true, imageProvider: true }),
+    starter('summarize', { attachment: true }),
+    starter('pixel', { agent: 'pixel' }),
+  ]
 
-  it('a bare home still gets every starter that needs nothing, in curated order', () => {
-    const ids = availableStarters(HOME_CONTENT.starters, NOTHING_EXTRA).map((starter) => starter.id)
-    expect(ids).toEqual(['schedule-recurring', 'summarize-document', 'goal-into-tasks', 'draft-something', 'brainstorm', 'daily-briefing', 'show-me'])
+  it('the shipped starters all run on the barest home, in curated order', () => {
+    expect(availableStarters(HOME_CONTENT.starters, NOTHING_EXTRA).map((entry) => entry.id)).toEqual(HOME_CONTENT.starters.map((entry) => entry.id))
   })
 
-  it('a capability or an image provider unlocks the starters that need them', () => {
-    const ids = availableStarters(HOME_CONTENT.starters, { readyCapabilities: ['web-search'], imageProvider: true, agents: ['main'] }).map((starter) => starter.id)
-    expect(ids).toHaveLength(10)
+  it('a starter with a need is offered only once the home has it', () => {
+    expect(availableStarters(NEEDY, NOTHING_EXTRA).map((entry) => entry.id)).toEqual(['plain', 'summarize'])
+    const equipped = { readyCapabilities: ['web-search'], imageProvider: true, agents: ['main', 'pixel'] }
+    expect(availableStarters(NEEDY, equipped)).toHaveLength(NEEDY.length)
   })
 
   it('says what is missing, and an attachment is never what is missing', () => {
-    expect(starterBlockedBy(byId('research-topic'), NOTHING_EXTRA)).toBe('capability')
-    expect(starterBlockedBy(byId('create-image'), NOTHING_EXTRA)).toBe('image-provider')
-    expect(starterBlockedBy(byId('summarize-document'), NOTHING_EXTRA)).toBeNull()
+    const blockedBy = (id: string, readiness = NOTHING_EXTRA) => starterBlockedBy(NEEDY.find((entry) => entry.id === id)!, readiness)
+    expect(blockedBy('search')).toBe('capability')
+    expect(blockedBy('picture')).toBe('image-provider')
+    expect(blockedBy('pixel')).toBe('agent')
+    expect(blockedBy('summarize')).toBeNull()
     // Needs an attachment AND an image provider: only the provider can block it.
-    expect(starterBlockedBy(byId('edit-image'), NOTHING_EXTRA)).toBe('image-provider')
-    expect(starterBlockedBy(byId('edit-image'), { ...NOTHING_EXTRA, imageProvider: true })).toBeNull()
+    expect(blockedBy('edit')).toBe('image-provider')
+    expect(blockedBy('edit', { ...NOTHING_EXTRA, imageProvider: true })).toBeNull()
+  })
+})
+
+describe('the first day', () => {
+  const AT = '2026-11-13T00:00:00.000Z'
+  it('lasts from finishing the introduction until the first thing is asked for', () => {
+    expect(isFirstDay({ introduction: { status: 'completed', at: AT } })).toBe(true)
+    expect(isFirstDay({ introduction: { status: 'completed', at: AT }, firstRequest: { at: AT } })).toBe(false)
+  })
+
+  it('a skipped introduction, or none at all, has no first day', () => {
+    expect(isFirstDay({ introduction: { status: 'skipped', at: AT } })).toBe(false)
+    expect(isFirstDay({})).toBe(false)
   })
 })

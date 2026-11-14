@@ -259,6 +259,7 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `CopyButton` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `KeyValue` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DangerZone` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
+| `FirstVisitCallout` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `HandoffCard` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `DataTable` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
 | `FacetFilter` | `@makinbakin/sdk/patterns` — reusable application-aware UI patterns. |
@@ -405,6 +406,8 @@ Reusable application-aware presentation patterns. Source: `packages/sdk/src/patt
 | `ConfirmDialogTone` | — |
 | `DangerZoneHeadingLevel` | — |
 | `DangerZoneProps` | — |
+| `FirstVisitCalloutHeadingLevel` | — |
+| `FirstVisitCalloutProps` | — |
 | `HandoffCardHeadingLevel` | — |
 | `HandoffCardProps` | — |
 | `DataTableAlign` | — |

@@ -10,18 +10,15 @@
  * live context state.
  */
 import { z } from 'zod'
-import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs'
-import { join } from 'path'
 
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import { detectImageExtension } from '@bakin/core/agents/avatar'
-import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { getRuntimeMainAgentId, RuntimeError } from '@bakin/core/adapters/runtime'
 
 import { getModelEligibility } from '../../../../src/core/model-eligibility'
 import { adviceFor, clearPendingRestart, notePendingChange, recordRestartFailure } from '../../../../src/core/pending-restart'
 import { createLogger } from '../../../../src/core/logger'
+import { writeAgentAvatar } from '../avatar'
 import { readHeartbeats } from '../../../../src/lib/content-files'
 import { getBakinPaths } from '../../../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../../../src/lib/agents'
@@ -394,32 +391,11 @@ export function populateAgentRoutes(arr: any[], deps: TeamRouteDeps): void {
           imageBuffer = Buffer.from(await req.arrayBuffer())
         }
 
-        if (imageBuffer.length === 0) {
-          return Response.json({ error: 'Empty file' }, { status: 400 })
-        }
-
-        const ext = detectImageExtension(imageBuffer)
-        if (!ext) {
-          return Response.json({ error: 'Unsupported image format' }, { status: 400 })
-        }
-
-        const { agents } = getBakinPaths()
-        const agentDir = join(agents, agentId)
-        if (!existsSync(agentDir)) mkdirSync(agentDir, { recursive: true })
-        writeFileSync(join(agentDir, `avatar.${ext}`), imageBuffer)
-
-        // Keep exactly one canonical avatar: drop any other-format siblings
-        // (and their package `.installedBy` sidecars) so a new upload always wins.
-        for (const other of ['webp', 'png', 'jpg']) {
-          if (other === ext) continue
-          const sibling = join(agentDir, `avatar.${other}`)
-          if (existsSync(sibling)) {
-            unlinkSync(sibling)
-            removeInstalledBy(sibling)
-          }
-        }
+        const written = writeAgentAvatar(agentId, imageBuffer)
+        if (!written.ok) return Response.json({ error: written.error }, { status: 400 })
 
         ctx.activity.audit('agent.avatar.updated', 'system', { agent: agentId })
+        ctx.events.emit('team.agent_changed', { agentId })
         return Response.json({ ok: true })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })

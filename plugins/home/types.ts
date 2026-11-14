@@ -22,8 +22,10 @@ export interface HomeStateResponse {
   starters: HomeStarter[]
   /** The personality presets the introduction offers. */
   personalities: HomePersonality[]
-  /** Offer "Say hello": the introduction was completed and no hello has been sent. */
-  hello: boolean
+  /** What the person asked to be called, when Bakin knows. */
+  person?: string
+  /** The first day: the introduction was completed and nothing has been asked for yet. */
+  firstDay: boolean
   /** The introduction was skipped: Home keeps a quiet way back to it. */
   introductionSkipped: boolean
   /** How to log a provider in on this runtime. Present only when the state is `needs-login`. */

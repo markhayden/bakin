@@ -60,7 +60,7 @@ export async function completeIntroduction(agentId: string, answers: Introductio
   const steps: Array<[IntroductionStep, () => Promise<unknown> | void]> = [
     ['identity', () => deps.updateIdentity({ agentId, name: answers.agentName, ...personality })],
     ['person', () => deps.setOperatorName(answers.userName)],
-    // Last of the writes: the agent must know the person's name before it is asked to say hello.
+    // Last of the writes: the agent must know the person's name before Home greets them with it.
     ['sync', () => deps.syncAgents()],
   ]
   for (const [step, run] of steps) {
@@ -74,9 +74,9 @@ export async function completeIntroduction(agentId: string, answers: Introductio
   return { ok: true }
 }
 
-/** The person said hello: the offer has done its job. */
-export function recordHello(now: () => Date = () => new Date()): void {
-  updateDecisions((current) => ({ ...current, saidHello: { at: now().toISOString() } }))
+/** The person asked for their first thing: the first day is over. */
+export function recordFirstRequest(now: () => Date = () => new Date()): void {
+  updateDecisions((current) => ({ ...current, firstRequest: { at: now().toISOString() } }))
 }
 
 export function skipIntroduction(now: () => Date = () => new Date()): void {

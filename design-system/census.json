@@ -18,13 +18,13 @@
     ]
   },
   "summary": {
-    "total": 104,
+    "total": 105,
     "byKind": {
       "host-route": 28,
       "plugin-route": 11,
       "plugin-slot": 34,
       "plugin-template": 2,
-      "shared-component": 29,
+      "shared-component": 30,
       "sdk-ui-export": 0
     },
     "nonVisualAliases": 2
@@ -2362,6 +2362,31 @@
         {
           "type": "source-export",
           "path": "packages/host/src/components/layout/notification-toggle.tsx",
+          "detail": "exported values discovered from TSX source"
+        }
+      ]
+    },
+    {
+      "id": "shared-component:packages/host/src/components/layout/page-introduction",
+      "kind": "shared-component",
+      "owner": {
+        "repository": "bakin",
+        "area": "host"
+      },
+      "identity": {
+        "component": "packages/host/src/components/layout/page-introduction"
+      },
+      "sourcePath": "packages/host/src/components/layout/page-introduction.tsx",
+      "symbols": [
+        "PageIntroduction",
+        "landingPageOf"
+      ],
+      "exportStatus": "private",
+      "classification": "shared-ui",
+      "evidence": [
+        {
+          "type": "source-export",
+          "path": "packages/host/src/components/layout/page-introduction.tsx",
           "detail": "exported values discovered from TSX source"
         }
       ]

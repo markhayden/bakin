@@ -206,6 +206,7 @@ never sit at rest in a card — surface on hover or behind the detail view.
 - Irreversible entity deletion = `DangerZone`: red-bordered, consequences
   spelled out, type-the-id-to-confirm, at the very BOTTOM of Settings.
 - A step only the operator can run (install a runtime, sign in to a provider, grant a scope) = `HandoffCard`: the exact command in a copyable `CodeBlock`, an optional "Open in Terminal" the host wires to the Terminal plugin (prefilled, never executed), an error line that never hides the copy block. Bakin never runs it for you; Health reruns the check when the tab regains focus.
+- The welcome a place gives the first time someone arrives = `FirstVisitCallout`: an eyebrow chip, a headline, a line or two, an optional picture, and a close button. It is onboarding, not feedback — no status tone, no action beyond closing (use `Alert`/`Banner` when something needs attention). The owner places it (float it at the bottom middle of the content it introduces, never over a dialog) and remembers that it was closed; in the app ONE shell renderer does both for every area (`usePageIntroduction`).
 - Light confirms for high-consequence flips (publish/unpublish) that name
   what changes.
 

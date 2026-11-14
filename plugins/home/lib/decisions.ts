@@ -45,10 +45,12 @@ const decisionsSchema = z.object({
     // renamed agent with no personality and the introduction gone.
     z.object({ status: z.literal('pending'), at: isoInstant, answers: introductionAnswersSchema }),
   ]).optional(),
-  /** The person sent their first hello after the introduction; the offer is not shown again. */
-  saidHello: z.object({ at: isoInstant }).optional(),
+  /** The person asked for their first thing after the introduction: the first day is over. */
+  firstRequest: z.object({ at: isoInstant }).optional(),
   /** Suggestions put away with "Not now", by id, with when. Each one stays hidden for a while, not for good. */
   dismissedSuggestions: z.record(z.string(), z.object({ at: isoInstant })).optional(),
+  /** Starters the person has already picked, by id, with when: Home stops offering what has been tried. */
+  usedStarters: z.record(z.string(), z.object({ at: isoInstant })).optional(),
   /** Page introductions the person closed, by page, with when. Closed is closed for good. */
   closedPageIntroductions: z.record(z.string(), z.object({ at: isoInstant })).optional(),
 }).passthrough()

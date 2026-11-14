@@ -169,6 +169,8 @@ export type {
   DangerZoneProps,
 } from './danger-zone'
 
+export { FirstVisitCallout } from './first-visit-callout'
+export type { FirstVisitCalloutHeadingLevel, FirstVisitCalloutProps } from './first-visit-callout'
 export { HandoffCard } from './handoff-card'
 export type {
   HandoffCardHeadingLevel,

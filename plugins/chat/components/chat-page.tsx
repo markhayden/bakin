@@ -16,7 +16,7 @@
 import { useRef, Suspense, useCallback, useEffect, useMemo } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { writeComposerDraft, type ComposerHandle } from '@makinbakin/sdk/conversation'
-import { toast, usePluginEvent, useKeyedState, usePageIntroduction } from '@makinbakin/sdk/hooks'
+import { toast, usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
 import {
   PageBody,
@@ -26,7 +26,7 @@ import {
   WorkspacePageBody,
   WorkspacePageHeader,
 } from '@makinbakin/sdk/patterns'
-import { Badge, Button, SystemState, Alert, AlertAction, AlertDescription, AlertTitle } from '@makinbakin/sdk/ui'
+import { Badge, Button, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { AgentPicker } from './agent-picker'
@@ -87,20 +87,6 @@ interface ChatPageProps {
 }
 
 function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
-  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
-  const { introduction, close: closeIntroduction } = usePageIntroduction('chat')
-  const pageIntroduction = introduction ? (
-    // This page's body runs edge to edge: the panel takes the same inset as the row above it.
-    <div className="min-w-0 px-bakin-4 @md/page-shell:px-bakin-6">
-      <Alert tone="accent" data-page-introduction="chat">
-        <AlertTitle>{introduction.title}</AlertTitle>
-        <AlertDescription>{introduction.body}</AlertDescription>
-        <AlertAction>
-          <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
-        </AlertAction>
-      </Alert>
-    </div>
-  ) : null
   const [agentParam, setAgentParam] = useQueryState('agent', '')
   // On /chat/new the agent param IS the draft agent (spec D2); on the list
   // and conversation routes it's the rail filter. Never both.
@@ -229,8 +215,6 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
         <PageBody
           gap="content"
           className="bg-bakin-canvas-default"
-          // Only on the list: an open conversation is not the moment to explain the page.
-          feedback={!chatId && !draft && pageIntroduction ? pageIntroduction : undefined}
         >
           <div className="flex min-h-0 flex-1 overflow-hidden" data-chat-workspace>
             <div className="hidden min-h-0 md:flex">

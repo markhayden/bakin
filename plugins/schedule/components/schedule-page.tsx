@@ -38,7 +38,6 @@ import {
   useScheduleJobs,
   useSearch,
   type ScheduleJob,
-  usePageIntroduction,
 } from '@makinbakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
 import { JobList, sortJobs, parseJobSort, JOB_SORT_LABELS, type JobSortField } from './job-list'
@@ -61,20 +60,6 @@ const VIEWS: SegmentedControlOption<ViewMode>[] = [
 ]
 
 export function SchedulePage() {
-  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
-  const { introduction, close: closeIntroduction } = usePageIntroduction('schedule')
-  const pageIntroduction = introduction ? (
-    // This page's body runs edge to edge: the panel takes the same inset as the row above it.
-    <div className="min-w-0 px-bakin-4 @md/page-shell:px-bakin-6">
-      <Alert tone="accent" data-page-introduction="schedule">
-        <AlertTitle>{introduction.title}</AlertTitle>
-        <AlertDescription>{introduction.body}</AlertDescription>
-        <AlertAction>
-          <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
-        </AlertAction>
-      </Alert>
-    </div>
-  ) : null
   const agentIds = useAgentIds()
   const agentMap = useAgentStore((state) => state.agentMap)
   const displaySettings = useAgentStore((state) => state.displaySettings)
@@ -369,9 +354,8 @@ export function SchedulePage() {
     </Inline>
   ) : null
 
-  const pageFeedback = pageIntroduction || jobNotFound || searchFeedback ? (
+  const pageFeedback = jobNotFound || searchFeedback ? (
     <div className="grid min-w-0 gap-bakin-3">
-      {pageIntroduction}
       {jobNotFound ? (
         <Alert tone="danger" data-testid="schedule-job-not-found">
           <AlertTitle>Scheduled job not found</AlertTitle>

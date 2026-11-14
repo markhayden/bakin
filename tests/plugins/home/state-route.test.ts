@@ -3,7 +3,7 @@
  * route through the plugin harness, with the harness's mock runtime.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -12,7 +12,7 @@ import type { ActivatedPlugin } from '../test-helpers'
 const testDir = join(tmpdir(), `bakin-test-home-route-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
-const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db') }) })
+const contentDirMock = () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ home: testDir, root: testDir, db: join(testDir, 'bakin.db'), agents: join(testDir, 'agents') }) })
 mock.module('../../../src/core/content-dir', contentDirMock)
 mock.module('../../../packages/core/src/content-dir', contentDirMock)
 mock.module('@bakin/adapter-openclaw/home', () => ({
@@ -54,7 +54,10 @@ mock.module('../../../src/core/operations', () => ({
 mock.module('../../../src/core/onboarding/index', () => ({ installableComponent: (name: string) => ({ name, resources: [], plan: { stages: [], pointOfNoReturn: null } }) }))
 mock.module('../../../src/core/onboarding/operation', () => ({ componentInstallOperation: (component: { name: string }) => ({ kind: `onboarding:${component.name}` }) }))
 const operatorNames: string[] = []
-mock.module('../../../src/core/team-context', () => ({ setOperatorName: (name: string) => { operatorNames.push(name); return true } }))
+mock.module('../../../src/core/team-context', () => ({
+  setOperatorName: (name: string) => { operatorNames.push(name); return true },
+  getOperatorName: () => operatorNames.at(-1) ?? null,
+}))
 
 import homePlugin from '../../../plugins/home'
 import { decisionsPath, readDecisions } from '../../../plugins/home/lib/decisions'
@@ -98,6 +101,7 @@ beforeEach(() => {
   identityUpdates.length = 0
   identityThrows = false
   rmSync(join(testDir, 'plugin-data'), { recursive: true, force: true })
+  rmSync(join(testDir, 'agents'), { recursive: true, force: true })
   // Team's hook, as the harness's registry would route it; it renames the roster entry.
   const invoke = activated.ctx.hooks.invoke as unknown as { mockImplementation: (fn: (name: string, data: Record<string, unknown>) => Promise<unknown>) => void }
   invoke.mockImplementation(async (name, data) => {
@@ -122,8 +126,10 @@ describe('GET /state', () => {
   it('a fresh home: meet your agent, with the starters that need nothing', async () => {
     const body = await state()
     expect(body.state).toEqual({ name: 'meet-agent', agent: { id: 'main', name: 'Main' } })
-    expect(body.starters.map((starter) => starter.id)).toEqual(['schedule-recurring', 'summarize-document', 'goal-into-tasks', 'draft-something', 'brainstorm', 'daily-briefing', 'show-me'])
-    expect(body.starters.find((starter) => starter.id === 'summarize-document')?.needsAttachment).toBe(true)
+    // An agent with no face yet is offered the avatar starter, not the plain image one.
+    expect(body.starters.map((starter) => starter.id)).toEqual(['agent-avatar', 'schedule-reminder', 'research-topic', 'goal-into-tasks'])
+    expect(body.starters.every((starter) => starter.needsAttachment === false)).toBe(true)
+    expect(body.person).toBeUndefined()
   })
 
   it('a named agent with no provider logged in needs a login, and is told how on the active runtime', async () => {
@@ -225,26 +231,57 @@ describe('what the plugin is allowed to do', () => {
   })
 })
 
-describe('saying hello', () => {
+describe('the first day', () => {
   const ANSWERS = { agentName: 'Nova', personality: { kind: 'preset' as const, id: 'warm' }, userName: 'Mark' }
+  const introduce = (answers = ANSWERS) => callRoute(findRoute(activated.routes, 'POST', '/introduction')!, activated.ctx, { body: answers })
 
-  it('is offered once the introduction is completed, and not after the hello is recorded', async () => {
-    expect((await state()).hello).toBe(false)
-    await callRoute(findRoute(activated.routes, 'POST', '/introduction')!, activated.ctx, { body: ANSWERS })
-    expect((await state()).hello).toBe(true)
-    const res = await callRoute(findRoute(activated.routes, 'POST', '/hello')!, activated.ctx)
+  it('starts when the introduction is completed and ends with the first thing asked for', async () => {
+    expect((await state()).firstDay).toBe(false)
+    await introduce()
+    const first = await state()
+    expect(first.firstDay).toBe(true)
+    // Home can greet the person by the name they just gave.
+    expect(first.person).toBe('Mark')
+    const res = await callRoute(findRoute(activated.routes, 'POST', '/first-request')!, activated.ctx)
     expect(res.status).toBe(200)
-    expect((await state()).hello).toBe(false)
+    expect((await state()).firstDay).toBe(false)
     expect(readDecisions().introduction?.status).toBe('completed')
-    // Doing it again later (reopened) keeps both records.
-    expect((await callRoute(findRoute(activated.routes, 'POST', '/introduction')!, activated.ctx, { body: { ...ANSWERS, agentName: 'Juno' } })).status).toBe(200)
+    // Doing the introduction again later (reopened) does not start a second first day.
+    expect((await introduce({ ...ANSWERS, agentName: 'Juno' })).status).toBe(200)
     const again = await state()
-    expect([again.state, again.hello, again.introductionSkipped]).toEqual([{ name: 'needs-login', agent: { id: 'main', name: 'Juno' } }, false, false])
+    expect([again.state, again.firstDay, again.introductionSkipped]).toEqual([{ name: 'needs-login', agent: { id: 'main', name: 'Juno' } }, false, false])
   })
 
-  it('is not offered after a skip: nobody was introduced', async () => {
+  it('a skipped introduction has no first day', async () => {
     await callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
-    expect((await state()).hello).toBe(false)
+    expect((await state()).firstDay).toBe(false)
+  })
+})
+
+describe('starters', () => {
+  const used = (id: string) => callRoute(findRoute(activated.routes, 'POST', '/starters/:id/used')!, activated.ctx, { path: `/starters/${id}/used` })
+  const offered = async () => (await state()).starters.map((starter) => starter.id)
+
+  it('once the main agent has an avatar, the image starter takes the avatar starter\'s place', async () => {
+    expect(await offered()).toContain('agent-avatar')
+    mkdirSync(join(testDir, 'agents', 'main'), { recursive: true })
+    writeFileSync(join(testDir, 'agents', 'main', 'avatar.png'), 'not really a picture')
+    expect(await offered()).toEqual(['create-image', 'schedule-reminder', 'research-topic', 'goal-into-tasks'])
+  })
+
+  it('a starter that was picked is not offered again, and the others are', async () => {
+    const before = Date.now()
+    expect((await used('research-topic')).status).toBe(200)
+    expect(Date.parse(readDecisions().usedStarters!['research-topic']!.at)).toBeGreaterThanOrEqual(before)
+    expect(await offered()).toEqual(['agent-avatar', 'schedule-reminder', 'goal-into-tasks'])
+    await used('agent-avatar')
+    expect(Object.keys(readDecisions().usedStarters ?? {})).toEqual(['research-topic', 'agent-avatar'])
+    expect(await offered()).toEqual(['schedule-reminder', 'goal-into-tasks'])
+  })
+
+  it('refuses an id that is not a starter, and writes nothing', async () => {
+    expect((await used('mine-bitcoin')).status).toBe(404)
+    expect(existsSync(decisionsPath())).toBe(false)
   })
 })
 
@@ -364,7 +401,7 @@ describe('pages introducing themselves', () => {
   const open = async () => {
     const res = await callRoute(findRoute(activated.routes, 'GET', '/page-introductions')!, activated.ctx)
     expect(res.status).toBe(200)
-    return (res.body as unknown as { introductions: Array<{ id: string; title: string; body: string }> }).introductions
+    return (res.body as unknown as { introductions: Array<{ id: string; title: string; body: string; image: string }> }).introductions
   }
   const close = (id: string) => callRoute(findRoute(activated.routes, 'POST', '/page-introductions/:id/close')!, activated.ctx, { path: `/page-introductions/${id}/close` })
   const skip = () => callRoute(findRoute(activated.routes, 'POST', '/introduction/skip')!, activated.ctx)
@@ -378,7 +415,7 @@ describe('pages introducing themselves', () => {
     await skip()
     const introductions = await open()
     expect(introductions.map((introduction) => introduction.id)).toEqual(['chat', 'tasks', 'team', 'assets', 'schedule', 'health'])
-    expect(introductions[1]).toEqual({ id: 'tasks', title: 'This is the board', body: expect.stringContaining('Review') })
+    expect(introductions[1]).toEqual({ id: 'tasks', title: 'This is where the work lives.', body: expect.stringContaining('board'), image: '/tour-tasks.jpg' })
   })
 
   it('closing one records when, keeps the others, and tells every open browser', async () => {

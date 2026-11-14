@@ -2604,6 +2604,27 @@ bakin_exec_team_read_file {
 }
 ```
 
+### bakin_exec_team_set_avatar
+
+Label: Set agent avatar
+Purpose: Set an agent's avatar from an image already saved as an asset (PNG, JPEG or WebP). Use it after the person has picked one of the options you made: pass that asset's id. Replaces the avatar the agent had.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `agentId` | string | yes | Target agent ID |
+| `assetId` | string | yes | The asset holding the image to use |
+| `version` | number | no | Which version of the asset; omit for its current one |
+
+Example:
+
+```sh
+bakin_exec_team_set_avatar {
+  "agentId": "value",
+  "assetId": "value",
+  "version": 20
+}
+```
+
 ### bakin_exec_team_set_permissions
 
 Label: Updated permissions

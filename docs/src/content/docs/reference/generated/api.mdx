@@ -1409,11 +1409,11 @@ curl -sS \
 
 <OpenApiReference tag="Home" summary />
 
-<OpenApiReference operationId="home.post.hello">
+<OpenApiReference operationId="home.post.first-request">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/home/hello'
+  'http://localhost:3737/api/plugins/home/first-request'
 ```
 </OpenApiReference>
 
@@ -1447,6 +1447,14 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/home/page-introductions/<id>/close'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="home.post.starters-id-used">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/home/starters/<id>/used'
 ```
 </OpenApiReference>
 
