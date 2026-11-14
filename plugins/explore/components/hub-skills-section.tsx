@@ -106,9 +106,32 @@ function rowHighlighted(row: InstalledSkillRow, readiness: CapabilityReadinessWi
  */
 function CapabilityLegs({ readiness, onCheckLogin }: { readiness: CapabilityReadinessWire; onCheckLogin: (packageId: string) => Promise<void> }) {
   const [checking, setChecking] = useState(false)
-  if (readiness.ready) return <StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge>
+  const hasLogin = (readiness.login ?? []).length > 0
+  const checkButton = hasLogin && (
+    <div>
+      <Button
+        size="xs"
+        variant="outline"
+        busy={checking}
+        onClick={() => { setChecking(true); void onCheckLogin(readiness.packageId).finally(() => setChecking(false)) }}
+      >
+        Check login
+      </Button>
+    </div>
+  )
+  if (readiness.ready) {
+    // A provider logout leaves an old green receipt behind: keep the evidence and the re-check.
+    return (
+      <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
+        <div><StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge></div>
+        {(readiness.login ?? []).map((login) => (
+          <Text key={login.name} size="meta" tone="muted" as="p">{login.name}: logged in{login.account ? ` as ${login.account}` : ''}</Text>
+        ))}
+        {checkButton}
+      </div>
+    )
+  }
   const needsKey = readiness.secrets.some((secret) => secret.required && secret.status === 'missing')
-  const needsLogin = (readiness.login ?? []).some((login) => login.status !== 'ok')
   return (
     <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
       <div><StatusBadge size="xs" tone="attention" variant="soft">Not ready</StatusBadge></div>
@@ -120,18 +143,7 @@ function CapabilityLegs({ readiness, onCheckLogin }: { readiness: CapabilityRead
           Add the key in Settings → Integrations & Keys
         </PluginLink>
       )}
-      {needsLogin && (
-        <div>
-          <Button
-            size="xs"
-            variant="outline"
-            busy={checking}
-            onClick={() => { setChecking(true); void onCheckLogin(readiness.packageId).finally(() => setChecking(false)) }}
-          >
-            Check login
-          </Button>
-        </div>
-      )}
+      {checkButton}
     </div>
   )
 }

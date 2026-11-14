@@ -126,7 +126,8 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: bo
     const origin = isBareName(source) ? `"${source}" from the curated catalog (pinned source)` : source
     console.log(`This installs ${origin}: skill content projected to the active runtime,`)
     console.log('plus any pinned binaries into ~/.bakin/bin and declared npm dependencies')
-    console.log('into ~/.bakin/npm. Scripts run as agent shell commands.')
+    console.log('into ~/.bakin/npm. Scripts run as agent shell commands. A pack that declares a')
+    console.log('login check runs that read-only probe after install, on sync and on request.')
     try {
       const preview = await previewInstallRequirements(source)
       for (const line of preview) console.log(line)

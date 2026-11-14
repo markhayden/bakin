@@ -32,8 +32,16 @@ function Leg({ label }: { label: string }) {
   )
 }
 
-/** A login leg that is not verified ok — the operator's to fix, re-checked from here. */
-const loginNeedsAttention = (cap: CapabilityReadiness) => (cap.login ?? []).some((login) => login.status !== 'ok')
+/** A pack with login legs always keeps its Check login control: a provider logout leaves an old green receipt behind. */
+const hasLogin = (cap: CapabilityReadiness) => (cap.login ?? []).length > 0
+
+/** `logged in as mark@… (checked 13 Nov, 10:00)` — the receipt's evidence, kept on ready rows. */
+function loginEvidence(login: NonNullable<CapabilityReadiness['login']>[number]): string {
+  const when = login.checkedAt ? ` (checked ${new Date(login.checkedAt).toLocaleString()})` : ''
+  if (login.status === 'ok') return `${login.name}: logged in${login.account ? ` as ${login.account}` : ''}${when}`
+  if (login.status === 'missing') return `${login.name}: not logged in${when}`
+  return `${login.name}: login not verified${when}`
+}
 
 /**
  * The explicit login trigger (provider-integrations §4.1): runs the pack's
@@ -132,7 +140,10 @@ export function CapabilitiesTab() {
     { key: 'package', header: 'Package', narrow: 'label', sortable: true, sortValue: cap => cap.packageId,
       cellClassName: 'whitespace-normal', cell: cap => <Text size="meta" mono className="break-all">{cap.packageId}@{cap.version}</Text> },
     { key: 'requirements', header: 'Readiness details', narrow: 'label', cellClassName: 'whitespace-normal', cell: cap => cap.ready
-      ? <Text size="meta" tone="muted">All requirements ready</Text>
+      ? <Stack gap="dense">
+          <Text size="meta" tone="muted">All requirements ready</Text>
+          {(cap.login ?? []).map((l) => <Text key={`l-${l.name}`} size="meta" tone="muted" as="p">{loginEvidence(l)}</Text>)}
+        </Stack>
       : <Stack gap="dense">
                     <Inline gap="item" align="center">
                       {!cap.platformSupported && <Leg key="platform" label="not available on this platform" />}
@@ -148,9 +159,9 @@ export function CapabilitiesTab() {
                       {cap.missing.map((line) => <li key={line}>{line}</li>)}
                     </ul>
       </Stack> },
-    { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, cell: cap => cap.ready ? null : (
+    { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, cell: cap => (cap.ready && !hasLogin(cap)) ? null : (
                       <Inline gap="dense" align="center">
-                        {cap.secrets.some(s => s.status === 'missing') && (
+                        {!cap.ready && cap.secrets.some(s => s.status === 'missing') && (
                           <Link
                             to="/settings"
                             search={{ tab: 'integrations' }}
@@ -159,7 +170,7 @@ export function CapabilitiesTab() {
                             Add the key in Settings
                           </Link>
                         )}
-                        {loginNeedsAttention(cap) && <CheckLoginButton packageId={cap.packageId} onChecked={refresh} />}
+                        {hasLogin(cap) && <CheckLoginButton packageId={cap.packageId} onChecked={refresh} />}
                       </Inline>
                     ) },
   ]

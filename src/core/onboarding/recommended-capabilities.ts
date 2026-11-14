@@ -57,6 +57,11 @@ async function candidates(): Promise<RecommendedCapability[]> {
   return normalizeCatalog((await loadUnifiedCatalog()).entries).filter((c) => !installed.has(c.id))
 }
 
+/** Every login receipt's evidence (status, account, age) — the check reports it, it never runs a probe. */
+function loginRows(readiness: Awaited<ReturnType<typeof listCapabilities>>): Array<{ packageId: string; name: string; status: string; account?: string; checkedAt?: string }> {
+  return readiness.flatMap((c) => (c.login ?? []).map((l) => ({ packageId: c.packageId, name: l.name, status: l.status, ...(l.account ? { account: l.account } : {}), ...(l.checkedAt ? { checkedAt: l.checkedAt } : {}) })))
+}
+
 async function check(): Promise<CheckResult> {
   try {
     const readiness = await listCapabilities()
@@ -76,7 +81,7 @@ async function check(): Promise<CheckResult> {
         message: (readiness.length === 0
           ? 'No capability packs installed (browse Explore → Capabilities)'
           : `${readiness.length} capability pack${readiness.length === 1 ? ' is' : 's are'} ready`) + optionalNote,
-        details: { ready: readiness.map((c) => c.capability), recommended: [], optionalAvailable: optional },
+        details: { ready: readiness.map((c) => c.capability), recommended: [], optionalAvailable: optional, logins: loginRows(readiness) },
       }
     }
 
@@ -92,6 +97,7 @@ async function check(): Promise<CheckResult> {
         : 'Install with `bakin packages install <name>` or from Explore → Capabilities.',
       details: {
         notReady: notReady.map((c) => ({ capability: c.capability, packageId: c.packageId, missing: c.missing })),
+        logins: loginRows(readiness),
         recommended: missing.map((c) => ({ id: c.id, name: c.name, capability: c.capability, defaultSelected: c.defaultSelected })),
       },
     }

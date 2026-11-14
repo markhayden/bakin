@@ -452,7 +452,7 @@ describe('CapabilitiesTab', () => {
         capabilities: [{
           capability: 'google-workspace', packageId: 'google-workspace', version: '2.0.0', name: 'Google Workspace', description: 'Gmail, Calendar, Drive.',
           skills: [{ name: 'google-workspace', status: 'ok' }], bins: [{ name: 'gog', status: 'ok' }], npm: [], models: [], prereqs: [],
-          login: [{ name: 'Google account (gog)', setup: 'gog auth setup you@example.com --login', help: 'https://gogcli.sh', status: reads > 1 ? 'ok' : 'missing', reason: reads > 1 ? undefined : 'exit' }],
+          login: [{ name: 'Google account (gog)', setup: 'gog auth setup you@example.com --login', help: 'https://gogcli.sh', status: reads > 1 ? 'ok' : 'missing', reason: reads > 1 ? undefined : 'exit', ...(reads > 1 ? { account: 'mark@org.example', checkedAt: '2026-11-13T10:00:00.000Z' } : {}) }],
           secrets: [], platformSupported: true, ready: reads > 1, missing: reads > 1 ? [] : ['Google account (gog): not logged in — run: gog auth setup you@example.com --login'],
         }],
       }), { status: 200 })
@@ -471,7 +471,9 @@ describe('CapabilitiesTab', () => {
     // The re-read shows the fresh receipt: the row is ready, the action is gone.
     // The table renders a wide and a narrow layout — match all, never one.
     await waitFor(() => expect(screen.getAllByText('All requirements ready').length).toBeGreaterThan(0))
-    expect(screen.queryByRole('button', { name: 'Check login' })).toBeNull()
+    // A ready row keeps its evidence and its re-check (a provider logout leaves an old green receipt behind).
+    expect(screen.getAllByText(/Google account \(gog\): logged in as mark@org\.example/).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Check login' }).length).toBeGreaterThan(0)
   })
 
   it('empty state invites the user to Explore', async () => {
