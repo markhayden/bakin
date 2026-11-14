@@ -149,10 +149,23 @@ const LoginRequirementSchema = z.object({
    * `"valid": true` per account). Exit 0 without a match is `missing`. Its
    * first capturing group, when present, is the account readiness shows.
    */
-  expect: z.string().min(1).refine((pattern) => {
+  expect: z.string().min(1).max(1024).refine((pattern) => {
     try { new RegExp(pattern); return true } catch { return false }
   }, { message: 'login expect must be a valid regular expression' }).optional(),
-}).refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
+})
+  .refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
+  // With both declared, the configured account is compared with what the
+  // pattern CAPTURES — a pattern that captures nothing could only be matched
+  // against the whole output, where a second account's token would vouch for it.
+  .refine((l) => l.accountEnv === undefined || l.expect === undefined || regexCaptureCount(l.expect) > 0, {
+    message: 'login expect must have a capturing group (the account) when accountEnv is declared',
+    path: ['expect'],
+  })
+
+/** How many capturing groups a (compiling) pattern has — the empty alternative matches without running it. */
+function regexCaptureCount(pattern: string): number {
+  return (new RegExp(`${pattern}|`).exec('')?.length ?? 1) - 1
+}
 
 /**
  * A login entry's identity on disk: `Google account (gog)` → `google-account-gog`.

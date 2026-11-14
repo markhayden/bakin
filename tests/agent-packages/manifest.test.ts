@@ -571,6 +571,16 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: '' }] }))).toThrow()
   })
 
+  it('expect beside accountEnv must capture the account; a pattern over 1 KB is refused', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: 'Logged in' }] })))
+      .toThrow(/capturing group .*accountEnv/)
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: 'Logged in to (?:github\\.com) as ([^ ]+)' }] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].accountEnv).toBe('GH_ACCOUNT')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: 'x'.repeat(1025) }] }))).toThrow()
+  })
+
   it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {
     const prereq = { name: 'echo', kind: 'binary', probe: 'echo', help: 'https://x.dev' }
     expect(loginEntryKey('Work account')).toBe('work-account')

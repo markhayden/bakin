@@ -1,0 +1,118 @@
+/**
+ * The killable `expect` matcher (login-verify's one regex seam). A pack's
+ * pattern runs in a child the server SIGKILLs at the deadline — the event
+ * loop must stay free while a catastrophic pattern burns (PR1 Codex r4 B1).
+ */
+import { spawnSync } from 'child_process'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { describe, expect, it, mock } from 'bun:test'
+
+const testDir = join(tmpdir(), `bakin-test-expect-match-${Date.now()}`)
+mock.module('../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ bin: join(testDir, 'bin'), db: join(testDir, 'bakin.db') }) }))
+mock.module('../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({ bin: join(testDir, 'bin'), db: join(testDir, 'bakin.db') }) }))
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts), resetOpenClawHome: () => {} }))
+mock.module('../../src/core/logger', () => ({ createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) }))
+
+import { EXPECT_MATCH_COMMAND, EXPECT_MATCH_DEADLINE_EXIT, dispatchExpectMatch, expectMatchArgv, matchExpect, matchExpectInProcess, runExpectMatchChild } from '../../src/core/agent-packages/expect-match'
+
+const GOG = '"email":\\s*"([^"]+)"[^}]*"valid":\\s*true'
+const CATASTROPHIC = 'a*a*a*a*a*a*a*a*b'
+
+describe('matchExpectInProcess (the child side)', () => {
+  it('returns every match with its captures; an unmatched group is null', () => {
+    expect(matchExpectInProcess('a(b)?', 'a ab')).toEqual([['a', null], ['ab', 'b']])
+    expect(matchExpectInProcess('zzz', 'a ab')).toEqual([])
+  })
+
+  it('a zero-width pattern terminates (matchAll advances past empty matches)', () => {
+    expect(matchExpectInProcess('x*', 'ab')).toHaveLength(3)
+  })
+
+  it('the gog pattern keeps each account in its own object: an invalid first account never lends its email', () => {
+    const out = '{"accounts":[{"email":"old@example.com","auth":"oauth","valid":false,"error":"revoked"},{"email":"new@example.com","auth":"oauth","valid":true}]}'
+    expect(matchExpectInProcess(GOG, out).map((m) => m[1])).toEqual(['new@example.com'])
+  })
+})
+
+describe('runExpectMatchChild (the protocol)', () => {
+  function run(stdin: string): Promise<{ code: number; out: string; err: string }> {
+    let out = ''
+    let err = ''
+    return runExpectMatchChild(stdin, (t) => { out += t }, (t) => { err += t }).then((code) => ({ code, out, err }))
+  }
+
+  it('answers one JSON document for one JSON request', async () => {
+    const { code, out } = await run(JSON.stringify({ pattern: 'a(b)', input: 'ab ab', deadlineMs: 5_000 }))
+    expect(code).toBe(0)
+    expect(JSON.parse(out)).toEqual({ matches: [['ab', 'b'], ['ab', 'b']] })
+  })
+
+  it('a malformed request or a pattern that does not compile is exit 1 on stderr, never a throw', async () => {
+    expect((await run('not json')).code).toBe(1)
+    expect((await run('{"pattern":1,"input":"x","deadlineMs":5000}')).code).toBe(1)
+    expect((await run('{"pattern":"x","input":"x"}')).code).toBe(1)
+    const bad = await run(JSON.stringify({ pattern: '(', input: 'x', deadlineMs: 5_000 }))
+    expect(bad.code).toBe(1)
+    expect(bad.err).toContain('Invalid regular expression')
+  })
+
+  it('dispatch answers only when argv names the hidden command', async () => {
+    expect(await dispatchExpectMatch(['bun', 'server.ts', 'serve'])).toBeNull()
+    expect(expectMatchArgv()[0]).toBe(process.execPath)
+    // On a checkout the child is this module as a script, not the binary's command.
+    expect(expectMatchArgv()[1]).toMatch(/expect-match\.ts$/)
+    expect(EXPECT_MATCH_COMMAND).toBe('__bakin-expect-match')
+  })
+})
+
+describe('matchExpect (the killable child)', () => {
+  it('matches through the real child and returns every match', async () => {
+    const result = await matchExpect(GOG, '{"accounts":[{"email":"a@b","valid":false},{"email":"c@d","valid":true},{"email":"e@f","valid":true}]}', { timeoutMs: 10_000 })
+    expect(result).toEqual({ ok: true, matches: [['"email":"c@d","valid":true', 'c@d'], ['"email":"e@f","valid":true', 'e@f']] })
+  })
+
+  it('a catastrophic pattern is expect-timeout at the deadline, the child is gone, and the event loop never stalled', async () => {
+    const marker = `--bakin-test-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    let ticks = 0
+    const interval = setInterval(() => { ticks += 1 }, 25)
+    try {
+      const started = Date.now()
+      // The child ignores extra argv; the marker makes THIS child findable below.
+      const result = await matchExpect(CATASTROPHIC, 'a'.repeat(10_000), { timeoutMs: 600, argv: [...expectMatchArgv(), marker] })
+      const elapsed = Date.now() - started
+      expect(result).toEqual({ ok: false, reason: 'expect-timeout', detail: 'the pattern did not finish within 600 ms' })
+      expect(elapsed).toBeLessThan(3_000)
+      // An in-process match would have frozen this interval for the whole wait.
+      expect(ticks).toBeGreaterThanOrEqual(10)
+    } finally {
+      clearInterval(interval)
+    }
+    const leftover = spawnSync('pgrep', ['-f', marker])
+    expect(leftover.stdout.toString().trim()).toBe('')
+  })
+
+  it('an ORPHANED child ends itself at its own deadline — a server that died mid-check leaves nothing spinning', async () => {
+    const started = Date.now()
+    const orphan = spawnSync(expectMatchArgv()[0]!, expectMatchArgv().slice(1), {
+      input: JSON.stringify({ pattern: CATASTROPHIC, input: 'a'.repeat(10_000), deadlineMs: 500 }),
+      timeout: 10_000,
+    })
+    expect(orphan.status).toBe(EXPECT_MATCH_DEADLINE_EXIT)
+    expect(orphan.stderr.toString()).toContain('did not finish within 500 ms')
+    expect(Date.now() - started).toBeLessThan(5_000)
+  })
+
+  it('a pattern the child cannot compile, and a matcher that cannot start, are expect-error with the detail', async () => {
+    const bad = await matchExpect('(', 'x', { timeoutMs: 10_000 })
+    expect(bad.ok).toBe(false)
+    if (bad.ok) throw new Error('unreachable')
+    expect(bad.reason).toBe('expect-error')
+    expect(bad.detail).toContain('Invalid regular expression')
+    const gone = await matchExpect('x', 'x', { timeoutMs: 10_000, argv: [join(testDir, 'no-such-matcher')] })
+    expect(gone.ok).toBe(false)
+    if (gone.ok) throw new Error('unreachable')
+    expect(gone.reason).toBe('expect-error')
+    expect(gone.detail).toContain('cannot start the matcher')
+  })
+})

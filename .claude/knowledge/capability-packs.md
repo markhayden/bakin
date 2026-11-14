@@ -118,7 +118,30 @@ A capability pack is `kind: "skill-pack"` plus:
   without a match is `missing` (reason `no-match`, same `setup` remediation),
   and the pattern's first capturing group is the account shown (a JSON
   probe's first line is `{`). The schema refuses a pattern that does not
-  compile. Verification is EXPLICIT (`login-verify.ts`): it runs
+  compile or runs past 1 KB, and — beside `accountEnv` — one without a
+  capturing group: with both declared, the configured account must BE one of
+  the captures of SOME match (every match is read, so the configured
+  account valid in second place is a login; a valid second account never
+  vouches for a revoked first one — whole-output substring matching would,
+  PR1 Codex r4 B2). The pattern never runs on the server's event loop:
+  `expect-match.ts` runs it in a child the server SIGKILLs at the login
+  deadline (a JS RegExp backtracks — `a*a*a*a*a*a*a*a*b` over 10 KB of `a`
+  stalls a thread for longer than the machine lives, and
+  `worker.terminate()` does not stop a regex thread; probed on bun 1.4.3,
+  PR1 Codex r4 B1). On a checkout the child is `bun expect-match.ts`; inside
+  the compiled binary it is the binary itself on the hidden
+  `__bakin-expect-match` command (`dispatchExpectMatch` runs first in
+  `dispatchCli`, stdin → stdout, one JSON document each way; the compiled
+  teeth test `tests/integration/agent-packages/compiled-expect-match.test.ts`
+  pins the re-entry, the kill and the self-exit). The child also ends
+  ITSELF: it runs the regex on a worker thread and exits the whole process
+  at the `deadlineMs` the request carries (one second past the server's
+  kill), so a server that dies mid-check never leaves a child spinning for
+  good. A pattern that cannot finish is
+  `unknown` with reason `expect-timeout`; a matcher that cannot run or a
+  pattern the child cannot compile is `unknown`/`expect-error` — both keep
+  the pack not ready and name the pack in the server log, never a stall.
+  Verification is EXPLICIT (`login-verify.ts`): it runs
   at install/sync completion (last leg, after the binary is in place), on
   `POST /api/packages/login-check { packageId }` (the Check login button in
   Explore, the runtime hub and the Health card; `bakin packages login-check

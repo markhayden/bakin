@@ -213,6 +213,49 @@ describe('verifyLogin — expected output (tools whose auth listing exits 0 when
     }
   })
 
+  it('with accountEnv, the configured account must BE a valid capture — a valid second account never vouches for a revoked first (Codex r4 B2)', async () => {
+    process.env.MY_ACCOUNT = 'old@example.com'
+    try {
+      const mixed = 'echo \'{"accounts":[{"email":"old@example.com","auth":"oauth","valid":false,"error":"revoked"},{"email":"new@example.com","auth":"oauth","valid":true}]}\'; exit 0'
+      const sha = script(binDir, 'mixedprobe', mixed)
+      const receipt = await verifyLogin({ manifest: binManifest('mixedprobe', sha, {}, { expect: EXPECT, accountEnv: 'MY_ACCOUNT' }) })
+      expect(receipt.status).toBe('missing')
+      expect(receipt.reason).toBe('account-mismatch')
+      expect(receipt.account).toBeUndefined()
+
+      // The configured account valid in SECOND place is a login — every match counts, not only the first.
+      const second = 'echo \'{"accounts":[{"email":"new@example.com","valid":true},{"email":"old@example.com","valid":true}]}\'; exit 0'
+      const sha2 = script(binDir, 'secondprobe', second)
+      const ok = await verifyLogin({ manifest: binManifest('secondprobe', sha2, {}, { expect: EXPECT, accountEnv: 'MY_ACCOUNT' }) })
+      expect(ok.status).toBe('ok')
+      expect(ok.account).toBe('old@example.com')
+    } finally {
+      delete process.env.MY_ACCOUNT
+    }
+  })
+
+  it('without accountEnv the account shown is the first valid capture', async () => {
+    const sha = script(binDir, 'firstvalidprobe', 'echo \'{"accounts":[{"email":"old@example.com","valid":false},{"email":"new@example.com","valid":true}]}\'; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('firstvalidprobe', sha, {}, { expect: EXPECT }) })
+    expect(receipt.status).toBe('ok')
+    expect(receipt.account).toBe('new@example.com')
+  })
+
+  it('a catastrophic pattern is unknown/expect-timeout at the deadline and never stalls the server loop (Codex r4 B1)', async () => {
+    const sha = script(binDir, 'redosprobe', `printf '%s' "$(printf 'a%.0s' $(seq 1 10000))"; exit 0`)
+    let ticks = 0
+    const interval = setInterval(() => { ticks += 1 }, 25)
+    try {
+      const receipt = await verifyLogin({ manifest: binManifest('redosprobe', sha, {}, { expect: 'a*a*a*a*a*a*a*a*b' }), timeoutMs: 800 })
+      expect(receipt.status).toBe('unknown')
+      expect(receipt.reason).toBe('expect-timeout')
+      expect(receipt.exitCode).toBe(0)
+      expect(ticks).toBeGreaterThanOrEqual(10)
+    } finally {
+      clearInterval(interval)
+    }
+  })
+
   it('a changed expect pattern makes the receipt stale', async () => {
     const sha = script(binDir, 'staleprobe', 'echo \'{"accounts":[{"email":"x@y","valid":true}]}\'; exit 0')
     const manifest = binManifest('staleprobe', sha, {}, { expect: EXPECT })

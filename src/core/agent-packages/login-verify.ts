@@ -32,6 +32,7 @@ import { getBakinPaths, getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
+import { matchExpect } from './expect-match'
 import { getReceiptsDir } from './receipts'
 
 export { loginEntryKey }
@@ -39,7 +40,7 @@ export { loginEntryKey }
 const log = createLogger('login-verify')
 
 export type LoginStatus = 'ok' | 'missing' | 'unknown'
-export type LoginReason = 'exit' | 'timeout' | 'killed' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'no-match' | 'account-mismatch'
+export type LoginReason = 'exit' | 'timeout' | 'killed' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'no-match' | 'account-mismatch' | 'expect-timeout' | 'expect-error'
 
 export const LOGIN_PROBE_TIMEOUT_MS = 5_000
 export const LOGIN_OUTPUT_CAP_BYTES = 16 * 1024
@@ -317,13 +318,6 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
   } else {
     const run = await runProbe(resolved.path, entry.probe.slice(1), timeoutMs)
     const output = capUtf8((run.stdout + (run.stderr ? `\n${run.stderr}` : '')).trimEnd(), LOGIN_OUTPUT_CAP_BYTES)
-    // The account is read from STDOUT only: a diagnostic on stderr that
-    // happens to name the wanted account is not a login. With `expect`, the
-    // account is its first capturing group (or nothing) — never a JSON brace.
-    const expected = entry.expect !== undefined ? new RegExp(entry.expect).exec(run.stdout) : null
-    const firstLine = run.stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
-    const shown = entry.expect !== undefined ? expected?.[1] : firstLine
-    const wanted = accountValue(entry)
     if (run.spawnError !== undefined) {
       receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, output: capUtf8(run.spawnError, LOGIN_OUTPUT_CAP_BYTES) }
     } else if (run.timedOut) {
@@ -333,13 +327,14 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
       receipt = { ...base, status: 'unknown', reason: 'killed', exitCode: null, output }
     } else if (run.exitCode !== 0) {
       receipt = { ...base, status: 'missing', reason: 'exit', exitCode: run.exitCode, output }
-    } else if (entry.expect !== undefined && expected === null) {
-      // Exit 0 says nothing for this tool; the declared output contract does.
-      receipt = { ...base, status: 'missing', reason: 'no-match', exitCode: 0, output }
-    } else if (wanted && !run.stdout.includes(wanted)) {
-      receipt = { ...base, status: 'missing', reason: 'account-mismatch', exitCode: 0, output }
     } else {
-      receipt = { ...base, status: 'ok', exitCode: 0, output, ...((wanted ?? shown) ? { account: wanted ?? shown } : {}) }
+      const verdict = await judgeStdout(entry, run.stdout, timeoutMs)
+      if (verdict.status === 'ok') {
+        receipt = { ...base, status: 'ok', exitCode: 0, output, ...(verdict.account ? { account: verdict.account } : {}) }
+      } else {
+        if (verdict.detail) log.warn('login expect pattern could not be evaluated', { packId, reason: verdict.reason, detail: verdict.detail })
+        receipt = { ...base, status: verdict.status, reason: verdict.reason, exitCode: 0, output }
+      }
     }
   }
   try {
@@ -349,6 +344,41 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
   }
   log.info('login probe checked', { packId, status: receipt.status, reason: receipt.reason ?? null })
   return receipt
+}
+
+type StdoutVerdict =
+  | { status: 'ok'; account?: string }
+  | { status: 'missing'; reason: 'no-match' | 'account-mismatch'; detail?: undefined }
+  | { status: 'unknown'; reason: 'expect-timeout' | 'expect-error'; detail: string }
+
+/**
+ * Exit 0 happened; what the probe PRINTED decides. The account is read from
+ * STDOUT only — a diagnostic on stderr that happens to name the wanted
+ * account is not a login.
+ *
+ * Without `expect`: ok when the configured account (if any) appears
+ * anywhere; the account shown is that, else the first line.
+ *
+ * With `expect`: the pattern runs in a killable child (a pack-authored
+ * regex must never stall the server). No match is `no-match`. The
+ * accounts are the first capturing group of EVERY match, and a configured
+ * account must BE one of them exactly — a valid second account never
+ * vouches for a revoked first one, and the configured one succeeds wherever
+ * it sits in the list (PR1 Codex r4 B2).
+ */
+async function judgeStdout(entry: LoginRequirement, stdout: string, timeoutMs: number): Promise<StdoutVerdict> {
+  const wanted = accountValue(entry)
+  if (entry.expect === undefined) {
+    if (wanted && !stdout.includes(wanted)) return { status: 'missing', reason: 'account-mismatch' }
+    const firstLine = stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
+    return { status: 'ok', ...((wanted ?? firstLine) ? { account: wanted ?? firstLine } : {}) }
+  }
+  const matched = await matchExpect(entry.expect, stdout, { timeoutMs })
+  if (!matched.ok) return { status: 'unknown', reason: matched.reason, detail: matched.detail }
+  if (matched.matches.length === 0) return { status: 'missing', reason: 'no-match' }
+  const accounts = matched.matches.map((match) => match[1]).filter((account): account is string => typeof account === 'string' && account.length > 0)
+  if (wanted) return accounts.includes(wanted) ? { status: 'ok', account: wanted } : { status: 'missing', reason: 'account-mismatch' }
+  return { status: 'ok', ...(accounts[0] ? { account: accounts[0] } : {}) }
 }
 
 export interface InstalledLoginPack {

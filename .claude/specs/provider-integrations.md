@@ -104,9 +104,23 @@ expression the probe's STDOUT must match for `ok`; exit 0 without a match is
 `missing` with reason `no-match` (the remediation is the same `setup`
 command). Its first capturing group, when present, is the account readiness
 shows (a JSON probe's first stdout line is `{`, never an account); without a
-group, no account is shown unless `accountEnv` matched. `expect` is a receipt
-input (a manifest edit that changes it makes the receipt stale and re-keys the
-in-flight dedupe). The Google pack's probe is `gog auth list --check --json
+group, no account is shown. With `accountEnv` beside it the pattern MUST
+capture (schema-refused otherwise, as is a pattern over 1 KB) and the
+configured account must equal a capture of some match — every match is read,
+so the configured account valid in second place is `ok` and a valid second
+account never vouches for a revoked first one (Codex r4 B2; the earlier
+whole-stdout substring check let it). The pattern runs in a killable child,
+never on the server's event loop (Codex r4 B1: a backtracking pattern such as
+`a*a*a*a*a*a*a*a*b` over 10 KB stalls a thread indefinitely and a Worker's
+`terminate()` does not stop it): `src/core/agent-packages/expect-match.ts`
+spawns the checkout's script or, in the compiled binary, the binary itself on
+the hidden `__bakin-expect-match` command (stdin JSON in, stdout JSON out),
+SIGKILLs it at the login deadline (the child, which runs the regex on a worker
+thread, also exits itself a second later — an orphan never spins for good),
+and reports `unknown`/`expect-timeout`
+(or `expect-error` when the matcher cannot run or compile the pattern).
+`expect` is a receipt input (a manifest edit that changes it makes the receipt
+stale and re-keys the in-flight dedupe). The Google pack's probe is `gog auth list --check --json
 --no-input` with `expect: "email":\s*"([^"]+)"[^}]*"valid":\s*true`
 (`[^}]*` stays inside one account object — an invalid first account never
 lends its email to a valid second one). `gh auth status` exits 1 when logged
@@ -127,8 +141,9 @@ shell, stdin closed, stdout/stderr captured and bounded at 16 KB, server env),
 5 s timeout that KILLS the child, in-flight dedupe per `(bakinHome, packKey,
 installedVersion, resolvedBinaryPath, probe)`. Outcome → `ok` (exit 0, and the
 stdout matches `expect` when declared), `missing` (non-zero; or exit 0 without
-an `expect` match, reason `no-match`), `unknown` (timeout, spawn error,
-killed, unverifiable binary). The receipt (`~/.bakin/packages/receipts/login/<packKey>.json`)
+an `expect` match, reason `no-match`; or a configured account that is not a
+capture of any `expect` match, reason `account-mismatch`), `unknown` (timeout,
+spawn error, killed, unverifiable binary, `expect-timeout`, `expect-error`). The receipt (`~/.bakin/packages/receipts/login/<packKey>.json`)
 stores `checkedAt`, exit code, the resolved binary path + its sha256, the
 pack version, and the probe's stdout (bounded; the probe commands print account
 names — never secrets — and are read-only by contract). **Account
