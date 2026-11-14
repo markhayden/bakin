@@ -153,7 +153,8 @@ const LoginRequirementSchema = z.object({
     try { new RegExp(pattern); return true } catch { return false }
   }, { message: 'login expect must be a valid regular expression' }).optional(),
 })
-  .refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
+  // Every refinement runs even after `.min(1)` failed: an empty probe must be an issue, never a throw (Codex r7 B6).
+  .refine((l) => l.probe.length === 0 || !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
   // With both declared, the configured account is compared with what the
   // pattern CAPTURES — a pattern that captures nothing could only be matched
   // against the whole output, where a second account's token would vouch for it.
@@ -206,8 +207,8 @@ const RequiresSchema = z
     ])
     const seenKeys = new Map<string, string>()
     requires.login?.forEach((entry, index) => {
-      const bin = entry.probe[0]!
-      if (!bound.has(bin)) {
+      const bin = entry.probe[0]
+      if (bin !== undefined && !bound.has(bin)) {
         ctx.addIssue({
           code: 'custom',
           path: ['login', index, 'probe'],

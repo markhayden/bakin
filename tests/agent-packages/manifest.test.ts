@@ -606,7 +606,11 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
   it('rejects a path as probe[0], an empty probe, an empty setup, a non-https help and a lowercase accountEnv', () => {
     const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: ['/usr/bin/gh', 'auth'] }] }))).toThrow()
-    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: [] }] }))).toThrow()
+    // An empty probe is an error RESULT (the schema's other refinements run after `.min(1)` fails), never a TypeError
+    // out of safeParse that would 500 the capabilities endpoint over one installed manifest (Codex r7 B6).
+    const empty = safeParseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: [] }] }))
+    expect(empty.success).toBe(false)
+    if (!empty.success) expect(empty.error.issues.some((i) => i.path.join('.') === 'requires.login.0.probe')).toBe(true)
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, setup: '' }] }))).toThrow()
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, help: 'not a url' }] }))).toThrow()
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'gog_account' }] }))).toThrow()
