@@ -113,6 +113,9 @@ async function previewInstallRequirements(source: string): Promise<string[]> {
   for (const prereq of parsed.data.requires?.prereqs ?? []) {
     lines.push(`Needs ${prereq.name} installed${prereq.optional ? ' (optional)' : ''} — checked, never auto-installed.`)
   }
+  for (const login of parsed.data.requires?.login ?? []) {
+    lines.push(`Checks ${login.name} by running \`${login.probe.join(' ')}\` after install, on sync and on request; log in with: ${login.setup}`)
+  }
   return lines
 }
 

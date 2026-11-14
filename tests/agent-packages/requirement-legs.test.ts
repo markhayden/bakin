@@ -71,6 +71,8 @@ import { removePackageById as removePackageByIdUnowned } from '../../src/core/ag
 import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { parseManifest } from '../../packages/core/src/agent-packages/manifest'
 import { installManifestRequirements as installManifestRequirementsUnowned } from '../../src/core/agent-packages/requirements-installer'
+import { readLoginReceipt } from '../../src/core/agent-packages/login-verify'
+import { chmodSync } from 'fs'
 import { settleOperation } from '../helpers/operation-harness'
 import { holdNow } from '../../packages/core/src/operations'
 import { owned } from '../helpers/owning'
@@ -521,5 +523,64 @@ describe('operation reporting (#895)', () => {
     expect(item?.status).toBe('failed')
     expect(item?.message).toMatch(/404/)
     expect(view.status).toBe('failed')
+  })
+})
+
+describe('login leg (provider-integrations §4.1 — explicit triggers)', () => {
+  const probeDir = () => join(testDir, 'probe-path')
+  const counter = () => join(testDir, 'login-probe-runs.txt')
+  const originalPath = process.env.PATH
+
+  function seedLoginPack(exitCode: number): string {
+    mkdirSync(probeDir(), { recursive: true })
+    writeFileSync(join(probeDir(), 'ghprobe'), `#!/bin/sh\necho run >> "${counter()}"\necho "Logged in as markhayden"\nexit ${exitCode}\n`)
+    chmodSync(join(probeDir(), 'ghprobe'), 0o755)
+    process.env.PATH = `${probeDir()}:${originalPath}`
+    const dir = join(testDir, 'ghpack-src')
+    rmSync(dir, { recursive: true, force: true })
+    mkdirSync(join(dir, 'skills', 'use-gh'), { recursive: true })
+    writeFileSync(join(dir, 'skills', 'use-gh', 'SKILL.md'), '# gh')
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+      id: 'ghpack', kind: 'skill-pack', name: 'GitHub', version: '1.1.0', capability: 'github',
+      contributions: { skills: ['skills/use-gh'] },
+      requires: {
+        prereqs: [{ name: 'GitHub CLI (gh)', kind: 'binary', probe: 'ghprobe', help: 'https://cli.github.com/' }],
+        login: [{ name: 'GitHub account (gh)', probe: ['ghprobe', 'auth', 'status'], setup: 'gh auth login', help: 'https://cli.github.com/manual/gh_auth_login' }],
+      },
+    }))
+    return dir
+  }
+  const runs = () => (existsSync(counter()) ? readFileSync(counter(), 'utf-8').trim().split('\n').length : 0)
+
+  afterAll(() => { process.env.PATH = originalPath })
+
+  it('install runs the probe exactly once and writes the receipt; a logged-out account never fails the install', async () => {
+    await installPackage({ source: seedLoginPack(1) })
+    expect(runs()).toBe(1)
+    expect(readLockfile().packages['ghpack@1.1.0']).toBeDefined()
+    expect(readLoginReceipt('ghpack')).toMatchObject({ status: 'missing', reason: 'exit', exitCode: 1 })
+  })
+
+  it('a local repair (sync) re-checks login; a logged-in probe reads ok with the account line', async () => {
+    await installPackage({ source: seedLoginPack(0) })
+    expect(runs()).toBe(1)
+    expect(readLoginReceipt('ghpack')).toMatchObject({ status: 'ok', account: 'Logged in as markhayden' })
+    await repairPackLocally('ghpack@1.1.0')
+    expect(runs()).toBe(2)
+  })
+
+  it('reports the check as an operation item with the outcome as its message', async () => {
+    const dir = seedLoginPack(1)
+    const plan = { stages: [{ id: 'requirements', kind: 'installing' as const, label: 'Install requirements' }], pointOfNoReturn: 'requirements' }
+    const { view } = await settleOperation({ plan, resources: ['install-state'] }, async (op) => {
+      op.stage('requirements')
+      await installManifestRequirements({
+        manifest: parseManifest(JSON.parse(readFileSync(join(dir, 'bakin-package.json'), 'utf-8'))), packId: 'ghpack', sourceDir: dir,
+        installedBy: { package: 'ghpack', version: '1.1.0', ref: '', commitSha: '', installedAt: new Date().toISOString() }, result: { projections: [] },
+        op: { op, stageId: 'requirements' },
+      })
+    })
+    const items = view.stages[0]!.items ?? []
+    expect(items).toEqual([expect.objectContaining({ id: 'login:GitHub account (gh)', status: 'done', message: 'needs login — run: gh auth login' })])
   })
 })
