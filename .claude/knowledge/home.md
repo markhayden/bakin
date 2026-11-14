@@ -297,7 +297,7 @@ validated id, sniffed format, 12 MB cap checked before reading, atomic
 write). Every avatar or identity change emits `team.agent_changed`; the
 host's `AgentThemeProvider` reloads the roster on it, and the roster's
 avatar address carries the file's time (`&v=<mtime>`), so every open
-browser shows the new face without a refresh.
+browser shows the new face without a refresh. A chosen avatar is marked user-edited in every format, so an agent package's sync or uninstall never replaces it (`bakin agents sync <agent> --reclaim avatar.png` gives the package's back).
 
 ## UI
 

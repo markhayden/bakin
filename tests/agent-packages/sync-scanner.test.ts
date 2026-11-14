@@ -65,6 +65,7 @@ import {
   type Lockfile,
   type PackageEntry,
   type ProjectionEntry,
+  readLockfile,
   writeLockfile,
 } from '../../packages/core/src/agent-packages/lockfile'
 import {
@@ -616,6 +617,37 @@ describe('scanAgentSync — skills', () => {
     expect(finding?.autoFixable).toBe(false)
     expect(finding?.hint).toContain('--reclaim')
     expect(report.findings.some((f) => f.type === 'skill-drifted')).toBe(false)
+  })
+})
+
+describe('scanAgentSync — an avatar someone chose', () => {
+  /** The package's avatar projection, recorded in the lockfile beside the rest. */
+  function recordPackageAvatar(): string {
+    const target = join(testDir, 'agents', 'pixel', 'avatar.png')
+    const lock = readLockfile()
+    lock.packages.pixel!.projections = [...(lock.packages.pixel!.projections ?? []), { kind: 'asset', target, sha256: 'package-sha' }]
+    writeLockfile(lock)
+    return target
+  }
+
+  it('in another format, the package\'s missing file is a choice, not something to repair', async () => {
+    await seedSyncedState()
+    const target = recordPackageAvatar()
+    // Team's writer removed the package's png for the person's webp, and marked every format.
+    mkdirSync(join(testDir, 'agents', 'pixel'), { recursive: true })
+    writeFileSync(join(testDir, 'agents', 'pixel', 'avatar.webp'), 'my face')
+    writeFileSync(`${target}.userEdited`, '')
+    const report = await scanAgentSync()
+    const avatar = report.findings.filter((f) => f.target === target)
+    expect(avatar.map((f) => f.type)).toEqual(['user-edited'])
+    expect(avatar[0]!.autoFixable).toBe(false)
+  })
+
+  it('a missing avatar nobody chose is still missing, and still repairable', async () => {
+    await seedSyncedState()
+    const target = recordPackageAvatar()
+    const report = await scanAgentSync()
+    expect(report.findings.find((f) => f.target === target)).toMatchObject({ type: 'asset-missing', autoFixable: true })
   })
 })
 

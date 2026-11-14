@@ -93,6 +93,7 @@ Every projected file gets two sidecars (`packages/core/src/agent-packages/marker
 
 - `<target>.installedBy` — JSON: `{package, version, ref, commitSha, sha256, installedAt}`. zod-validated on read; malformed sidecars return `null` so the doctor flags them as drift instead of throwing.
 - `<target>.userEdited` — empty sentinel for SKILLS + ASSETS only (workspace files retired the concept under the block model). When present, sync skips the target loudly and the receipt carries a reclaim hint; the confirmed `--reclaim` path is the only way past it.
+- **A chosen avatar is user-edited.** Team's avatar writer (`plugins/team/lib/avatar.ts`, behind the Team page upload and `bakin_exec_team_set_avatar`) marks `avatar.{webp,png,jpg}` all three, so a package's sync or uninstall never puts its own face back, even in another format. The scanner checks the mark before existence, so a package avatar replaced by one in another format is `user-edited`, never `asset-missing` (which the doctor would repair). `--reclaim avatar.<ext>` lifts every format's mark and removes the person's own avatar files (those with no `.installedBy`), so the package's face actually returns.
 
 For directory targets (skills): sidecars land **inside** the directory (`<target>/.installedBy`), matching the existing `plugin-assets.ts` convention.
 
