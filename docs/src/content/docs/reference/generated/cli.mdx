@@ -369,10 +369,16 @@ bakin onboard [--runtime <openclaw|pi>] [--no-recommended] [--check] [--yes] [--
 <p class="cli-section-description">Use these commands to run the local server, check whether it is healthy, restart it after configuration changes, and keep the installed CLI current.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="start" name="start" summary="Start the Bakin server." description="Starts the Bakin HTTP server and dashboard. This is the default command when the compiled binary is launched without arguments.">
+<CliCommandCard id="start" name="start" summary="Start the Bakin server." description="Starts the Bakin HTTP server and dashboard. Once it is listening, a box shows the local and network addresses, and the dashboard opens in your browser when you are at a terminal on a machine with a screen: never over SSH, in CI, in a pipe, or as a service (`bakin serve`). `--no-open` (or BAKIN_NO_OPEN=1) keeps the browser closed.">
 ```sh frame="terminal"
-bakin start
+bakin start [--no-open]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--no-open]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="stop" name="stop" summary="Stop this home's Bakin server." description="Stops ONLY this home's server (BAKIN_HOME), proved by its own answer: the server must answer with the pid and boot id its lock records. It is stopped by an authenticated request (or by its own service manager, which is then stopped so it does not respawn) — never by signalling a process. A server that holds the lock but does not answer, or another Bakin on the port, is reported and left alone; other Bakin processes on the machine are listed, never touched.">
 ```sh frame="terminal"
@@ -1202,5 +1208,5 @@ bakin brands remove <id> [--yes]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 12, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
 </aside>
