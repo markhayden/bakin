@@ -174,6 +174,59 @@ describe('verifyLogin — bin route', () => {
   })
 })
 
+describe('verifyLogin — expected output (tools whose auth listing exits 0 when logged out)', () => {
+  const EXPECT = '"email":\\s*"([^"]+)"[^}]*"valid":\\s*true'
+
+  it('exit 0 without a match is missing/no-match; the setup command is the fix', async () => {
+    const sha = script(binDir, 'emptyprobe', 'echo \'{"accounts": []}\'; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('emptyprobe', sha, {}, { expect: EXPECT }) })
+    expect(receipt.status).toBe('missing')
+    expect(receipt.reason).toBe('no-match')
+    expect(receipt.exitCode).toBe(0)
+    expect(receipt.account).toBeUndefined()
+    expect(receipt.expect).toBe(EXPECT)
+  })
+
+  it('a match is ok and the first capturing group is the account — never the first stdout line', async () => {
+    const sha = script(binDir, 'validprobe', 'printf \'{\\n  "accounts": [\\n    {\\n      "email": "mark@example.com",\\n      "valid": true\\n    }\\n  ]\\n}\\n\'; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('validprobe', sha, {}, { expect: EXPECT }) })
+    expect(receipt.status).toBe('ok')
+    expect(receipt.account).toBe('mark@example.com')
+  })
+
+  it('a pattern without a capturing group yields ok with no account (not a brace)', async () => {
+    const sha = script(binDir, 'nogroupprobe', 'echo \'{"accounts":[{"email":"x@y","valid":true}]}\'; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('nogroupprobe', sha, {}, { expect: '"valid":\\s*true' }) })
+    expect(receipt.status).toBe('ok')
+    expect(receipt.account).toBeUndefined()
+  })
+
+  it('expect and accountEnv compose: a valid token for another account is account-mismatch', async () => {
+    process.env.MY_ACCOUNT = 'mark@example.com'
+    try {
+      const sha = script(binDir, 'otherprobe', 'echo \'{"accounts":[{"email":"else@example.com","valid":true}]}\'; exit 0')
+      const receipt = await verifyLogin({ manifest: binManifest('otherprobe', sha, {}, { expect: EXPECT, accountEnv: 'MY_ACCOUNT' }) })
+      expect(receipt.status).toBe('missing')
+      expect(receipt.reason).toBe('account-mismatch')
+    } finally {
+      delete process.env.MY_ACCOUNT
+    }
+  })
+
+  it('a changed expect pattern makes the receipt stale', async () => {
+    const sha = script(binDir, 'staleprobe', 'echo \'{"accounts":[{"email":"x@y","valid":true}]}\'; exit 0')
+    const manifest = binManifest('staleprobe', sha, {}, { expect: EXPECT })
+    const receipt = await verifyLogin({ manifest })
+    expect(isReceiptStale(receipt, currentLoginInputs(manifest), receipt.probe)).toBe(false)
+    const edited = binManifest('staleprobe', sha, {}, { expect: '"valid":\\s*true' })
+    expect(isReceiptStale(receipt, currentLoginInputs(edited), receipt.probe)).toBe(true)
+    // An undeclared expect reads null on both sides (older receipts carry none).
+    const plain = binManifest('staleprobe', sha)
+    const { expect: _dropped, ...legacy } = await verifyLogin({ manifest: plain })
+    expect(isReceiptStale(legacy as typeof receipt, currentLoginInputs(plain), receipt.probe)).toBe(false)
+  })
+})
+
 describe('verifyLogin — account verification', () => {
   it('ok only when the configured account appears in the output; otherwise missing with account-mismatch', async () => {
     process.env.MY_ACCOUNT = 'mark@org.example'

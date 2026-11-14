@@ -142,6 +142,16 @@ const LoginRequirementSchema = z.object({
   help: z.string().url(),
   /** Env var naming the intended account; when set, the probe output must mention it. */
   accountEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/, { message: 'accountEnv must be an environment variable name' }).optional(),
+  /**
+   * A regular expression the probe's STDOUT must match for `ok` — for tools
+   * whose auth listing exits 0 even with no accounts (gog: every `auth`
+   * subcommand exits 0 when logged out; `auth list --check --json` reports
+   * `"valid": true` per account). Exit 0 without a match is `missing`. Its
+   * first capturing group, when present, is the account readiness shows.
+   */
+  expect: z.string().min(1).refine((pattern) => {
+    try { new RegExp(pattern); return true } catch { return false }
+  }, { message: 'login expect must be a valid regular expression' }).optional(),
 }).refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
 
 /**

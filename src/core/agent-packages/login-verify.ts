@@ -39,7 +39,7 @@ export { loginEntryKey }
 const log = createLogger('login-verify')
 
 export type LoginStatus = 'ok' | 'missing' | 'unknown'
-export type LoginReason = 'exit' | 'timeout' | 'killed' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'account-mismatch'
+export type LoginReason = 'exit' | 'timeout' | 'killed' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'no-match' | 'account-mismatch'
 
 export const LOGIN_PROBE_TIMEOUT_MS = 5_000
 export const LOGIN_OUTPUT_CAP_BYTES = 16 * 1024
@@ -58,6 +58,8 @@ export interface LoginInputs {
   binaryIdentity: string | null
   /** sha256 of the accountEnv value ('' when unset or undeclared). */
   accountInputHash: string
+  /** The entry's `expect` pattern (null when undeclared) — a manifest edit that changes it invalidates the receipt. */
+  expect: string | null
   /** sha256 over the pack's declared secrets — env AND store evidence for each. */
   secretSlotsHash: string
 }
@@ -168,6 +170,7 @@ export function currentLoginInputs(manifest: SkillPackManifest, entry: LoginRequ
     binaryIdentity: resolved.ok ? resolved.identity : null,
     accountInputHash: account ? sha256(account) : '',
     secretSlotsHash: secretSlotsHash(manifest),
+    expect: entry.expect ?? null,
   }
 }
 
@@ -183,6 +186,7 @@ export function isReceiptStale(receipt: LoginInputs & { probe?: string[] }, curr
     || receipt.binaryIdentity !== current.binaryIdentity
     || receipt.accountInputHash !== current.accountInputHash
     || receipt.secretSlotsHash !== current.secretSlotsHash
+    || (receipt.expect ?? null) !== (current.expect ?? null)
 }
 
 /**
@@ -314,8 +318,11 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
     const run = await runProbe(resolved.path, entry.probe.slice(1), timeoutMs)
     const output = capUtf8((run.stdout + (run.stderr ? `\n${run.stderr}` : '')).trimEnd(), LOGIN_OUTPUT_CAP_BYTES)
     // The account is read from STDOUT only: a diagnostic on stderr that
-    // happens to name the wanted account is not a login.
+    // happens to name the wanted account is not a login. With `expect`, the
+    // account is its first capturing group (or nothing) — never a JSON brace.
+    const expected = entry.expect !== undefined ? new RegExp(entry.expect).exec(run.stdout) : null
     const firstLine = run.stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
+    const shown = entry.expect !== undefined ? expected?.[1] : firstLine
     const wanted = accountValue(entry)
     if (run.spawnError !== undefined) {
       receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, output: capUtf8(run.spawnError, LOGIN_OUTPUT_CAP_BYTES) }
@@ -326,10 +333,13 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
       receipt = { ...base, status: 'unknown', reason: 'killed', exitCode: null, output }
     } else if (run.exitCode !== 0) {
       receipt = { ...base, status: 'missing', reason: 'exit', exitCode: run.exitCode, output }
+    } else if (entry.expect !== undefined && expected === null) {
+      // Exit 0 says nothing for this tool; the declared output contract does.
+      receipt = { ...base, status: 'missing', reason: 'no-match', exitCode: 0, output }
     } else if (wanted && !run.stdout.includes(wanted)) {
       receipt = { ...base, status: 'missing', reason: 'account-mismatch', exitCode: 0, output }
     } else {
-      receipt = { ...base, status: 'ok', exitCode: 0, output, ...((wanted ?? firstLine) ? { account: wanted ?? firstLine } : {}) }
+      receipt = { ...base, status: 'ok', exitCode: 0, output, ...((wanted ?? shown) ? { account: wanted ?? shown } : {}) }
     }
   }
   try {

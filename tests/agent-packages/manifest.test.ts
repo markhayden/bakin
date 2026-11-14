@@ -526,7 +526,16 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
     const m = parseManifest(loadFixture('google-workspace-2.0.0'))
     if (m.kind !== 'skill-pack') throw new Error('kind')
     expect(m.requires?.login).toHaveLength(1)
-    expect(m.requires?.login?.[0]).toMatchObject({ probe: ['gog', 'auth', 'list', '--check'], accountEnv: 'GOG_ACCOUNT' })
+    expect(m.requires?.login?.[0]).toMatchObject({ probe: ['gog', 'auth', 'list', '--check', '--json', '--no-input'], accountEnv: 'GOG_ACCOUNT' })
+    // Every `gog auth` command exits 0 when logged out — the pack's output contract decides.
+    const pattern = new RegExp(m.requires!.login![0]!.expect!)
+    expect(pattern.exec('{\n  "accounts": []\n}')).toBeNull()
+    const valid = pattern.exec('{\n  "accounts": [\n    {\n      "email": "mark@example.com",\n      "client": "default",\n      "services": ["gmail"],\n      "valid": true\n    }\n  ]\n}')
+    expect(valid?.[1]).toBe('mark@example.com')
+    // An invalid first account never lends its email to a valid second one.
+    const mixed = pattern.exec('{"accounts":[{"email":"old@example.com","valid":false,"error":"revoked"},{"email":"new@example.com","valid":true}]}')
+    expect(mixed?.[1]).toBe('new@example.com')
+    expect(pattern.exec('{"accounts":[{"email":"old@example.com","valid":false}]}')).toBeNull()
     expect(m.bakin).toBe('>=0.1.0-rc.9')
   })
 
@@ -551,6 +560,15 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
       prereqs: [{ name: 'gh', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }],
       login: [ghLogin],
     }))).toThrow(/login probe .*gh.* is not a declared bin/)
+  })
+
+  it('expect is an optional regular expression the probe output must match — an invalid pattern is refused', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: 'Logged in to ([^ ]+)' }] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].expect).toBe('Logged in to ([^ ]+)')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: '(' }] }))).toThrow(/valid regular expression/)
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: '' }] }))).toThrow()
   })
 
   it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {

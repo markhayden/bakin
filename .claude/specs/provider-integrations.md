@@ -85,8 +85,32 @@ const LoginRequirementSchema = z.object({
   setup: z.string().min(1),                      // exact operator command(s), shown verbatim
   help: z.string().url(),
   accountEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),  // env var naming the intended account
+  expect: z.string().min(1).optional(),          // regex the probe's STDOUT must match for `ok` (must compile)
 }).refine(p => !p.probe[0].includes('/'), { message: 'probe[0] must be a bare binary name' })
 ```
+
+Two login entries of one pack may not share a receipt key (`loginEntryKey`,
+the name slugged — owned by the manifest module); the schema refuses the
+collision (build-time amendment, Codex PR1 round 2).
+
+**`expect` (build-time amendment 2026-11-14, found by the PR1 verify boot):**
+exit status alone cannot express "logged in" for gog — on v0.48.0 `gog auth
+list`, `gog auth list --check`, `gog auth doctor --check` and `gog auth status`
+ALL exit 0 with no account stored ("No tokens stored" on stderr, `{"accounts":
+[]}` with `--json`). `gog auth list --check --json` does report `"valid":
+true|false` per account (`internal/cmd/auth_list_helpers.go`
+`annotateAuthListCheck`), so a login entry may declare `expect`: a regular
+expression the probe's STDOUT must match for `ok`; exit 0 without a match is
+`missing` with reason `no-match` (the remediation is the same `setup`
+command). Its first capturing group, when present, is the account readiness
+shows (a JSON probe's first stdout line is `{`, never an account); without a
+group, no account is shown unless `accountEnv` matched. `expect` is a receipt
+input (a manifest edit that changes it makes the receipt stale and re-keys the
+in-flight dedupe). The Google pack's probe is `gog auth list --check --json
+--no-input` with `expect: "email":\s*"([^"]+)"[^}]*"valid":\s*true`
+(`[^}]*` stays inside one account object — an invalid first account never
+lends its email to a valid second one). `gh auth status` exits 1 when logged
+out, so the GitHub pack declares no `expect`.
 
 Host-side admission (not only the Bits contract test): the binding predicate
 is `bins.some(b => b.name === probe[0])` OR `prereqs.some(p => p.kind ===
@@ -101,9 +125,10 @@ resolves on the server PATH.
 `verifyLogin(packKey, req)` spawns the resolved argv with `Bun.spawn` (no
 shell, stdin closed, stdout/stderr captured and bounded at 16 KB, server env),
 5 s timeout that KILLS the child, in-flight dedupe per `(bakinHome, packKey,
-installedVersion, resolvedBinaryPath, probe)`. Outcome → `ok` (exit 0),
-`missing` (non-zero), `unknown` (timeout, spawn error, killed, unverifiable
-binary). The receipt (`~/.bakin/packages/receipts/login/<packKey>.json`)
+installedVersion, resolvedBinaryPath, probe)`. Outcome → `ok` (exit 0, and the
+stdout matches `expect` when declared), `missing` (non-zero; or exit 0 without
+an `expect` match, reason `no-match`), `unknown` (timeout, spawn error,
+killed, unverifiable binary). The receipt (`~/.bakin/packages/receipts/login/<packKey>.json`)
 stores `checkedAt`, exit code, the resolved binary path + its sha256, the
 pack version, and the probe's stdout (bounded; the probe commands print account
 names — never secrets — and are read-only by contract). **Account
@@ -160,7 +185,7 @@ prerelease-aware via `Bun.semver`.
   | linux-x64 | `8809d2f4fe95a0299b1a2a5c6bc912c4aba4b90a7b5e2c1f5cf11b9945a50004` | `7d86d981714c624d5b0719040fa632b245aeb61ae53c379646524a67cf037c15` |
   | linux-arm64 | `fc40524368d2cb6213bdfe0b736b5884e1b55c6368706d7a285542cb7e559b68` | `1137f6e970ea95ca225054ef646510d666a968e6e3a261901e0e0bc5f0f0620c` |
 
-- `requires.login[]`: `{ name: 'Google account (gog)', probe: ['gog','auth','list','--check'], setup: 'gog auth setup you@example.com --credentials ~/Downloads/client_secret_*.json --login', help: 'https://gogcli.sh/quickstart', accountEnv: 'GOG_ACCOUNT' }`. README: the one-time Google Cloud steps (project, APIs, **Internal** consent screen for Workspace orgs, Desktop client), `GOG_ACCOUNT` export, admin "unconfigured apps" caveat.
+- `requires.login[]`: `{ name: 'Google account (gog)', probe: ['gog','auth','list','--check','--json','--no-input'], setup: 'gog auth setup you@example.com --credentials ~/Downloads/client_secret_*.json --login', help: 'https://gogcli.sh/quickstart', accountEnv: 'GOG_ACCOUNT', expect: '"email":\\s*"([^"]+)"[^}]*"valid":\\s*true' }` (see §4.1 `expect`: every `gog auth` command exits 0 when logged out). README: the one-time Google Cloud steps (project, APIs, **Internal** consent screen for Workspace orgs, Desktop client), `GOG_ACCOUNT` export, admin "unconfigured apps" caveat.
 - `contributions.skills`: ONE skill `google-workspace`: `SKILL.md` (when to use gog; the fast path `gog auth list --check`; read discipline `--readonly --no-input --wrap-untrusted --json`, explicit `--account`; the gate rule and classes; chat vs task confirmation; assets discipline; honest failure; the handoff cautions that matter — opaque IDs, lost send response → never resend, all-day vs timed events, `sheets update` overwrites, Docs edits need batchUpdate semantics) + `references/gog.md`, `references/gog-gmail.md`, `-calendar`, `-drive`, `-docs`, `-sheets`, `-inbox-triage.md`, `-weekly-digest.md` vendored verbatim from the v0.48.0 tag (LICENSE kept; `agents/openai.yaml` dropped). SKILL.md names each reference and when to open it. A `scripts/vendor-gog-skills.ts` in Bits re-vendors from a tag; the pack contract test asserts the vendored tag equals the bin version.
 - Drops the stale `prereqs.gog` and the wrong `gog auth credentials` example.
 - Context cost is measured: `bakin agents context` before/after on the live box, recorded in the PR.

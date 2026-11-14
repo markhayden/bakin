@@ -111,7 +111,14 @@ A capability pack is `kind: "skill-pack"` plus:
   that entry `unknown` forever. `setup` is the exact command the operator runs, shown verbatim as
   remediation. `accountEnv` names an env var (`GOG_ACCOUNT`); when set, the
   probe output must contain its value or the login is `missing`
-  (account-mismatch). Verification is EXPLICIT (`login-verify.ts`): it runs
+  (account-mismatch). `expect?` is a regular expression the probe's STDOUT
+  must match for `ok` — for tools whose auth listing exits 0 even when
+  logged out (gog: EVERY `gog auth` subcommand does, verified on v0.48.0;
+  `auth list --check --json` reports `"valid": true` per account): exit 0
+  without a match is `missing` (reason `no-match`, same `setup` remediation),
+  and the pattern's first capturing group is the account shown (a JSON
+  probe's first line is `{`). The schema refuses a pattern that does not
+  compile. Verification is EXPLICIT (`login-verify.ts`): it runs
   at install/sync completion (last leg, after the binary is in place), on
   `POST /api/packages/login-check { packageId }` (the Check login button in
   Explore, the runtime hub and the Health card; `bakin packages login-check
@@ -127,7 +134,7 @@ A capability pack is `kind: "skill-pack"` plus:
   aliased install reads its own) records status `ok|missing|unknown` +
   reason (`killed` = a signal we did not send), `checkedAt`, the matched
   account (STDOUT only), and the inputs that make it STALE — the probe argv,
-  pack version, resolved binary path + identity (verified sha for a managed
+  the `expect` pattern, pack version, resolved binary path + identity (verified sha for a managed
   bin, `stat:<size>:<mtime>` for a PATH prereq), the accountEnv value hash,
   the declared secrets' digest (env AND store evidence); a stale receipt
   reads `unknown` until re-checked. Concurrent callers share a run only for
