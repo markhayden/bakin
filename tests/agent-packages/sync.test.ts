@@ -360,6 +360,48 @@ describe('syncAgent — .userEdited skills + reclaim', () => {
   })
 })
 
+describe('syncAgent — an avatar someone chose', () => {
+  /** A package that ships its own avatar, synced into its baseline. */
+  async function seedWithAvatar(): Promise<string> {
+    await seedSyncedBaseline()
+    mkdirSync(join(PKG_DIR, 'assets'), { recursive: true })
+    writeFileSync(join(PKG_DIR, 'assets', 'avatar.png'), 'package face')
+    const manifest = JSON.parse(readFileSync(join(PKG_DIR, 'bakin-package.json'), 'utf-8'))
+    manifest.contributions.assets = ['assets/avatar.png']
+    writeFileSync(join(PKG_DIR, 'bakin-package.json'), JSON.stringify(manifest))
+    await syncAgent('pixel', { fetch: false })
+    const agentDir = join(testDir, 'agents', 'pixel')
+    expect(readFileSync(join(agentDir, 'avatar.png'), 'utf-8')).toBe('package face')
+    return agentDir
+  }
+
+  /** What Team's avatar writer leaves behind when a person picks a webp: theirs, every format marked. */
+  function chooseAvatar(agentDir: string): void {
+    rmSync(join(agentDir, 'avatar.png'))
+    rmSync(join(agentDir, 'avatar.png.installedBy'), { force: true })
+    writeFileSync(join(agentDir, 'avatar.webp'), 'my face')
+    for (const format of ['webp', 'png', 'jpg']) writeFileSync(join(agentDir, `avatar.${format}.userEdited`), '')
+  }
+
+  it('survives a sync: the package does not put its own back beside it', async () => {
+    const agentDir = await seedWithAvatar()
+    chooseAvatar(agentDir)
+    const receipt = await syncAgent('pixel', { fetch: false })
+    expect(existsSync(join(agentDir, 'avatar.png'))).toBe(false)
+    expect(readFileSync(join(agentDir, 'avatar.webp'), 'utf-8')).toBe('my face')
+    expect(receipt.skipped.some((skip) => skip.reason === 'userEdited')).toBe(true)
+  })
+
+  it('--reclaim gives the package its avatar back, and takes the chosen one away', async () => {
+    const agentDir = await seedWithAvatar()
+    chooseAvatar(agentDir)
+    await syncAgent('pixel', { fetch: false, reclaim: ['avatar.png'] })
+    expect(readFileSync(join(agentDir, 'avatar.png'), 'utf-8')).toBe('package face')
+    expect(existsSync(join(agentDir, 'avatar.webp'))).toBe(false)
+    for (const format of ['webp', 'png', 'jpg']) expect(existsSync(join(agentDir, `avatar.${format}.userEdited`))).toBe(false)
+  })
+})
+
 describe('syncAgent — unmanaged agents', () => {
   it('maintains the context AGENTS.md block for agents with no package', async () => {
     await seedSyncedBaseline()

@@ -24,8 +24,8 @@
  * composing blocks into un-migrated files would duplicate template content.
  * The migration module (C6) is the one-time path out.
  */
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, rmSync } from 'fs'
+import { basename, dirname, join } from 'path'
 import type { OperationContext } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -51,7 +51,7 @@ import {
   composeFileContent,
 } from '../../../packages/core/src/agent-packages/composer'
 import { extractBlock, removeBlock } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
+import { isUserEdited, readInstalledBy, unmarkUserEdited } from '../../../packages/core/src/agent-packages/markers'
 import { PackageNotInstalledError } from './errors'
 import { projectPackage, type ProjectorResult } from './projector'
 import { installManifestRequirements } from './requirements-installer'
@@ -167,6 +167,24 @@ function targetMatchesReclaim(target: string, reclaim: string[] | 'all'): boolea
  * the sentinel with it (the projector writes it back fresh). Disk assets:
  * remove the sidecar.
  */
+const AVATAR_FILE = /^avatar\.(webp|png|jpg)$/
+
+/**
+ * Reclaiming a package's avatar must actually bring it back. A person's
+ * avatar may sit beside it in another format (the resolver prefers webp, then
+ * png, then jpg), so the person's files go, and the marks on the other
+ * formats are lifted. A sibling the package itself owns is left alone.
+ */
+function releaseAvatarSiblings(target: string): void {
+  if (!AVATAR_FILE.test(basename(target))) return
+  for (const format of ['webp', 'png', 'jpg']) {
+    const sibling = join(dirname(target), `avatar.${format}`)
+    if (sibling === target) continue
+    unmarkUserEdited(sibling)
+    if (existsSync(sibling) && readInstalledBy(sibling) === null) rmSync(sibling, { force: true })
+  }
+}
+
 async function reclaimTargets(
   entry: PackageEntry,
   reclaim: string[] | 'all',
@@ -190,8 +208,11 @@ async function reclaimTargets(
       continue
     }
 
-    if (existsSync(p.target)) {
+    // A target can be marked without existing: a person's avatar in another format replaced the
+    // package's file, and reclaiming must still lift the mark so the package's file comes back.
+    if (existsSync(p.target) || isUserEdited(p.target)) {
       unmarkUserEdited(p.target)
+      releaseAvatarSiblings(p.target)
       reclaimed.push(p.target)
     }
   }

@@ -5,7 +5,7 @@
  * All runtime-facing modules are stubbed.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -380,6 +380,8 @@ describe('bakin_exec_team_set_avatar', () => {
     expect(result).toEqual({ ok: true, id: 'chef', assetId: 'a1', version: 3 })
     expect(readFileSync(avatarOf('chef', 'png')).equals(PNG)).toBe(true)
     expect(() => readFileSync(avatarOf('chef', 'jpg'))).toThrow()
+    // Theirs now: every format is marked, so no package sync or uninstall puts another face back.
+    for (const format of ['webp', 'png', 'jpg']) expect(existsSync(`${avatarOf('chef', format)}.userEdited`)).toBe(true)
     expect(asked).toEqual([['a1', undefined]])
   })
 

@@ -5,9 +5,12 @@
 import { existsSync, mkdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { detectImageExtension, isValidAgentId } from '@bakin/core/agents/avatar'
-import { removeInstalledBy } from '@bakin/core/agent-packages/markers'
+import { markUserEdited, removeInstalledBy } from '@bakin/core/agent-packages/markers'
 import { atomicWriteBytes } from '@bakin/core/storage/atomic-write'
 import { getBakinPaths } from '../../../packages/core/src/content-dir'
+
+/** The formats an avatar is stored in; the resolver prefers them in this order. */
+const AVATAR_FORMATS = ['webp', 'png', 'jpg'] as const
 
 /** An avatar larger than this is refused: it is a face, not a poster. */
 export const MAX_AVATAR_BYTES = 12 * 1024 * 1024
@@ -32,7 +35,7 @@ export function writeAgentAvatar(agentId: string, image: Uint8Array): WriteAvata
 
   // Keep exactly one canonical avatar: drop any other-format siblings
   // (and their package `.installedBy` sidecars) so the new one always wins.
-  for (const other of ['webp', 'png', 'jpg']) {
+  for (const other of AVATAR_FORMATS) {
     if (other === ext) continue
     const sibling = join(agentDir, `avatar.${other}`)
     if (existsSync(sibling)) {
@@ -40,5 +43,9 @@ export function writeAgentAvatar(agentId: string, image: Uint8Array): WriteAvata
       removeInstalledBy(sibling)
     }
   }
+  // A face someone chose is theirs: an agent package's sync or uninstall leaves it alone (the
+  // projector skips user-edited targets). Every format is marked, so a package shipping its avatar
+  // in another format cannot put one back beside it. `bakin agents sync --reclaim` gives it back.
+  for (const format of AVATAR_FORMATS) markUserEdited(join(agentDir, `avatar.${format}`))
   return { ok: true, ext }
 }

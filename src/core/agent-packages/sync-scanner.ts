@@ -657,19 +657,8 @@ export async function scanAgentSync(
         continue
       }
 
-      // Disk assets (and any legacy disk-path projections).
-      if (!existsSync(p.target)) {
-        report.findings.push({
-          type: 'asset-missing',
-          severity: 'error',
-          autoFixable: true,
-          packageId,
-          agentId: entry.agentId,
-          target: p.target,
-          message: `Projected file missing: ${p.target}`,
-        })
-        continue
-      }
+      // Disk assets (and any legacy disk-path projections). A user-edited mark comes first: a person's
+      // avatar in another format replaces the package's file, and that is a choice, not a missing file.
       if (isUserEdited(p.target)) {
         report.findings.push({
           type: 'user-edited',
@@ -680,6 +669,18 @@ export async function scanAgentSync(
           target: p.target,
           message: `${p.target} is user-edited — sync will skip it`,
           hint: `Reclaim with \`bakin agents sync ${entry.agentId ?? packageId} --reclaim ${p.target}\` to discard local edits.`,
+        })
+        continue
+      }
+      if (!existsSync(p.target)) {
+        report.findings.push({
+          type: 'asset-missing',
+          severity: 'error',
+          autoFixable: true,
+          packageId,
+          agentId: entry.agentId,
+          target: p.target,
+          message: `Projected file missing: ${p.target}`,
         })
         continue
       }
