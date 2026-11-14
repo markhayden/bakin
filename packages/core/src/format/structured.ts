@@ -142,6 +142,8 @@ export function unwrapToolResult(value: unknown, depth = 6): unknown {
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
 
+  if (isReceiptEnvelope(value)) return unwrapToolResult(value.result, depth - 1)
+
   const content = (value as { content?: unknown }).content
   if (Array.isArray(content)) {
     const text = content
@@ -153,6 +155,18 @@ export function unwrapToolResult(value: unknown, depth = 6): unknown {
     if (text) return unwrapToolResult(text, depth - 1)
   }
   return value
+}
+
+/**
+ * The host's receipt envelope (`@bakin/core/conversation/receipts`):
+ * exactly `{ receipt: 'bakin-receipt:<id>', result }`. Matched strictly so a
+ * tool result that happens to have those two fields is left alone.
+ */
+function isReceiptEnvelope(value: object): value is { receipt: string; result: unknown } {
+  const keys = Object.keys(value)
+  const receipt = (value as { receipt?: unknown }).receipt
+  return keys.length === 2 && keys.includes('result')
+    && typeof receipt === 'string' && /^bakin-receipt:r_[a-z0-9]{16}$/.test(receipt)
 }
 
 function maybeParseJson(text: string): unknown {
