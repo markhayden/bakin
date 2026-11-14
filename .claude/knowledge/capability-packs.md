@@ -116,11 +116,18 @@ A capability pack is `kind: "skill-pack"` plus:
   runs as argv (no shell), stdin closed, output capped at 16 KB, a 5 s
   timeout that kills the child, concurrent callers share one run; a managed
   bin executes only at its verified path (missing/drifted ⇒ `unknown`).
-  The receipt (`~/.bakin/packages/receipts/login/<packId>.json`) records
-  status `ok|missing|unknown` + reason, `checkedAt`, the matched account,
-  and the inputs that make it STALE — pack version, binary sha, the
-  accountEnv value hash, the declared secrets' digest; a stale receipt reads
-  `unknown` until re-checked. `missing` and `unknown` both block ready.
+  The receipt (`~/.bakin/packages/receipts/login/<installed pack id>/<entry
+  slug>.json` — one per login entry, filed under the INSTALLED id so an
+  aliased install reads its own) records status `ok|missing|unknown` +
+  reason (`killed` = a signal we did not send), `checkedAt`, the matched
+  account (STDOUT only), and the inputs that make it STALE — the probe argv,
+  pack version, resolved binary path + identity (verified sha for a managed
+  bin, `stat:<size>:<mtime>` for a PATH prereq), the accountEnv value hash,
+  the declared secrets' digest (env AND store evidence); a stale receipt
+  reads `unknown` until re-checked. Concurrent callers share a run only for
+  identical inputs. `missing` and `unknown` both block ready; a ready row
+  KEEPS its login evidence and its Check login control (a provider logout
+  leaves an old green receipt behind).
 - `bakin` (base field) — a semver range of hosts the pack runs on, ENFORCED at
   install and upgrade since provider-integrations PR1 (`bakin-range-gate.ts`,
   reusing the plugins' checker: well-formedness always, satisfaction skipped

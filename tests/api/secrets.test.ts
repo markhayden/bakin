@@ -4,7 +4,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { resetContentDir } from '../../src/core/content-dir'
 import { del, get, post } from '../../packages/host/src/api/secrets'
-import { waitUntil } from '../helpers/wait'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 const url = (q = '') => new URL(`http://localhost/api/secrets${q}`)
 
@@ -32,6 +32,7 @@ describe('/api/secrets', () => {
     writeFileSync(join(probeDir, 'slotprobe'), `#!/bin/sh\necho ran >> "${marker}"\nexit 0\n`)
     chmodSync(join(probeDir, 'slotprobe'), 0o755)
     const originalPath = process.env.PATH
+    const originalBrave = process.env.BRAVE_SEARCH_API_KEY
     process.env.PATH = `${probeDir}:${originalPath}`
     try {
       const dir = join(testDir, 'packages', 'skill-packs', 'slotpack@1.0.0')
@@ -53,10 +54,13 @@ describe('/api/secrets', () => {
       // An unrelated slot re-runs nothing.
       rmSync(marker, { force: true })
       await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'brave', name: 'apiKey', value: 'v' }) }), url())
-      await new Promise((resolve) => setTimeout(resolve, 150))
+      await settleFor(150, 'an unrelated slot must not re-run the probe — absence cannot be polled for')
       expect(existsSync(marker)).toBe(false)
     } finally {
       process.env.PATH = originalPath
+      // The brave save live-injects BRAVE_SEARCH_API_KEY (D18); never leak it into the next test.
+      if (originalBrave === undefined) delete process.env.BRAVE_SEARCH_API_KEY
+      else process.env.BRAVE_SEARCH_API_KEY = originalBrave
     }
   })
 
