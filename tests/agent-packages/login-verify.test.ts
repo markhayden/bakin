@@ -352,7 +352,17 @@ describe('verifyLogin — review hardening (Codex PR1 r1)', () => {
     const sha = script(binDir, 'utfprobe', 'yes "€" | head -c 24000 | tr -d "\\n"; yes "€" | head -c 24000 | tr -d "\\n" >&2; exit 0')
     const receipt = await verifyLogin({ manifest: binManifest('utfprobe', sha) })
     expect(receipt.status).toBe('ok')
-    expect(Buffer.byteLength(receipt.output, 'utf-8')).toBeLessThanOrEqual(16 * 1024 + 8) // + separator and replacement chars at the cut
+    expect(Buffer.byteLength(receipt.output, 'utf-8')).toBeLessThanOrEqual(16 * 1024)
+  })
+
+  it('the persisted output never exceeds the cap by a torn multibyte character', async () => {
+    // 6,000 × '€' = 18,000 bytes; the budget cuts mid-character at 16,384.
+    const sha = script(binDir, 'tornprobe', 'yes "€" | head -c 18000 | tr -d "\\n"; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('tornprobe', sha) })
+    expect(receipt.status).toBe('ok')
+    expect(Buffer.byteLength(receipt.output, 'utf-8')).toBeLessThanOrEqual(16 * 1024)
+    expect(receipt.output.endsWith('€')).toBe(true)
+    expect(receipt.output.includes('\uFFFD')).toBe(false)
   })
 
   it('dedupe shares a run only for identical inputs — a new pack version gets its own check', async () => {

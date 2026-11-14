@@ -104,7 +104,11 @@ A capability pack is `kind: "skill-pack"` plus:
   (`gog auth list --check`, `gh auth status`). `probe[0]` MUST be a bare
   binary this pack declares — `bins[].name` or a binary `prereqs[].probe`
   (a prereq's display `name` never binds); the manifest refuses anything
-  else. `setup` is the exact command the operator runs, shown verbatim as
+  else. Each entry's `name` slugs to its receipt key (`loginEntryKey`, owned
+  by the manifest module: `Google account (gog)` → `google-account-gog`) and
+  two entries of one pack may not share a key — the schema refuses the
+  collision, since the second receipt would overwrite the first and leave
+  that entry `unknown` forever. `setup` is the exact command the operator runs, shown verbatim as
   remediation. `accountEnv` names an env var (`GOG_ACCOUNT`); when set, the
   probe output must contain its value or the login is `missing`
   (account-mismatch). Verification is EXPLICIT (`login-verify.ts`): it runs
@@ -113,7 +117,9 @@ A capability pack is `kind: "skill-pack"` plus:
   Explore, the runtime hub and the Health card; `bakin packages login-check
   <id>`), and when a secret for a slot the pack declares is saved. Never on a
   readiness read, never on `bakin check` (checks change nothing). The probe
-  runs as argv (no shell), stdin closed, output capped at 16 KB, a 5 s
+  runs as argv (no shell), stdin closed, output capped at 16 KB (one byte
+  budget across stdout+stderr; the PERSISTED string is re-cut so a torn
+  multibyte character or the separator never pushes it over), a 5 s
   timeout that kills the child, concurrent callers share one run; a managed
   bin executes only at its verified path (missing/drifted ⇒ `unknown`).
   The receipt (`~/.bakin/packages/receipts/login/<installed pack id>/<entry
@@ -125,9 +131,12 @@ A capability pack is `kind: "skill-pack"` plus:
   bin, `stat:<size>:<mtime>` for a PATH prereq), the accountEnv value hash,
   the declared secrets' digest (env AND store evidence); a stale receipt
   reads `unknown` until re-checked. Concurrent callers share a run only for
-  identical inputs. `missing` and `unknown` both block ready; a ready row
-  KEEPS its login evidence and its Check login control (a provider logout
-  leaves an old green receipt behind).
+  identical inputs in the same Bakin home. `missing` and `unknown` both block ready; a ready row
+  KEEPS its login evidence (account + receipt age) and its Check login
+  control (a provider logout leaves an old green receipt behind). The
+  onboarding `capabilities` check carries the logged-in evidence in its
+  human message as well as `details.logins`, so the plain CLI and the TUI
+  show it, not only `--json`.
 - `bakin` (base field) — a semver range of hosts the pack runs on, ENFORCED at
   install and upgrade since provider-integrations PR1 (`bakin-range-gate.ts`,
   reusing the plugins' checker: well-formedness always, satisfaction skipped

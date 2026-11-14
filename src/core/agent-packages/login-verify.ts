@@ -26,13 +26,15 @@ import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { getStoredSecret, parseSecretSlot } from '@bakin/core/media/secret-store'
 import type { LoginRequirement, SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
-import { safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
+import { loginEntryKey, safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { getBakinPaths, getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
 import { getReceiptsDir } from './receipts'
+
+export { loginEntryKey }
 
 const log = createLogger('login-verify')
 
@@ -70,11 +72,6 @@ export interface LoginReceipt extends LoginInputs {
   account?: string
   /** Bounded stdout+stderr head (one shared 16 KB budget) — never secrets by the probe's own contract. */
   output: string
-}
-
-/** `Google account (gog)` → `google-account-gog`: one receipt file per login entry. */
-export function loginEntryKey(entryName: string): string {
-  return entryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'login'
 }
 
 /** One receipt per (installed pack id, login entry) — two probes never share a verdict. */
@@ -225,6 +222,18 @@ async function drainCapped(
   return new TextDecoder('utf-8', { fatal: false }).decode(Buffer.concat(chunks))
 }
 
+/**
+ * Cut `text` to at most `bytes` of UTF-8 and never end on a torn character:
+ * the stream budget is exact in bytes, but decoding a sequence cut mid-character
+ * yields U+FFFD (three bytes for one or two), and the stdout/stderr separator
+ * adds one more — so the PERSISTED string is bounded here, once.
+ */
+function capUtf8(text: string, bytes: number): string {
+  if (Buffer.byteLength(text, 'utf-8') <= bytes) return text
+  const cut = new TextDecoder('utf-8', { fatal: false }).decode(Buffer.from(text, 'utf-8').subarray(0, bytes))
+  return cut.endsWith('\uFFFD') ? cut.slice(0, -1) : cut
+}
+
 interface ProbeRun {
   exitCode: number | null
   /** The signal that ended the child, when one did (our timeout kill, or someone else's). */
@@ -285,7 +294,8 @@ export function verifyLogin(input: VerifyLoginInput): Promise<LoginReceipt> {
   if (!entry) throw new Error(`Pack "${input.manifest.id}" declares no login requirement`)
   const packId = input.packId ?? input.manifest.id
   const inputs = currentLoginInputs(input.manifest, entry)
-  const key = JSON.stringify([packId, loginEntryKey(entry.name), entry.probe, inputs])
+  // The home is part of the identity: two homes in one process never share a run.
+  const key = JSON.stringify([getContentDir(), packId, loginEntryKey(entry.name), entry.probe, inputs])
   const running = inFlight.get(key)
   if (running) return running
   const run = verifyLoginUncached(packId, input.manifest, entry, inputs, input.timeoutMs ?? LOGIN_PROBE_TIMEOUT_MS).finally(() => inFlight.delete(key))
@@ -302,13 +312,13 @@ async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, 
     receipt = { ...base, status: 'unknown', reason: resolved.reason, exitCode: null, output: '' }
   } else {
     const run = await runProbe(resolved.path, entry.probe.slice(1), timeoutMs)
-    const output = (run.stdout + (run.stderr ? `\n${run.stderr}` : '')).trimEnd()
+    const output = capUtf8((run.stdout + (run.stderr ? `\n${run.stderr}` : '')).trimEnd(), LOGIN_OUTPUT_CAP_BYTES)
     // The account is read from STDOUT only: a diagnostic on stderr that
     // happens to name the wanted account is not a login.
     const firstLine = run.stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
     const wanted = accountValue(entry)
     if (run.spawnError !== undefined) {
-      receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, output: run.spawnError.slice(0, LOGIN_OUTPUT_CAP_BYTES) }
+      receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, output: capUtf8(run.spawnError, LOGIN_OUTPUT_CAP_BYTES) }
     } else if (run.timedOut) {
       receipt = { ...base, status: 'unknown', reason: 'timeout', exitCode: null, output }
     } else if (run.signal) {

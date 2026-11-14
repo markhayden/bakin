@@ -82,7 +82,7 @@ interface CapabilityReadinessWire {
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>
   prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
   /** Explicit login receipts (provider-integrations §4.1); absent on hosts before the leg existed. */
-  login?: Array<{ name: string; setup: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; account?: string }>
+  login?: Array<{ name: string; setup: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; account?: string; checkedAt?: string }>
 }
 
 /** The readiness row for an installed skill: same pack id (bare or `id@version`) or the same capability slug. */
@@ -125,7 +125,9 @@ function CapabilityLegs({ readiness, onCheckLogin }: { readiness: CapabilityRead
       <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
         <div><StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge></div>
         {(readiness.login ?? []).map((login) => (
-          <Text key={login.name} size="meta" tone="muted" as="p">{login.name}: logged in{login.account ? ` as ${login.account}` : ''}</Text>
+          <Text key={login.name} size="meta" tone="muted" as="p">
+            {login.name}: logged in{login.account ? ` as ${login.account}` : ''}{login.checkedAt ? ` (checked ${new Date(login.checkedAt).toLocaleString()})` : ''}
+          </Text>
         ))}
         {checkButton}
       </div>

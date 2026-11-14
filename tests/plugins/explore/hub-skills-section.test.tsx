@@ -222,6 +222,21 @@ describe('ecosystem lane — Installed grouping', () => {
     expect(refreshCalls).toContain('/api/packages/capabilities')
   })
 
+  it('a ready pack shows its login evidence with the receipt age and keeps Check login (a logout leaves an old green receipt)', async () => {
+    listData = { managed: [{ skillName: 'google-workspace', packageId: 'google-workspace@2.0.0', version: '2.0.0', source: 'github:x/y#packs/google-workspace', hub: false, capability: 'google-workspace' }], unmanaged: [] }
+    const checkedAt = '2026-11-14T10:03:00.000Z'
+    capabilitiesData = { capabilities: [{
+      capability: 'google-workspace', packageId: 'google-workspace', version: '2.0.0', name: 'Google Workspace', ready: true,
+      missing: [], secrets: [], prereqs: [],
+      login: [{ name: 'Google account (gog)', setup: 'gog auth setup', status: 'ok', account: 'mark@example.com', checkedAt }],
+    }] }
+    await act(async () => { render(<HubSkillsSection />) })
+    const legs = await screen.findByTestId('capability-legs-google-workspace')
+    expect(legs.textContent).toContain('Google account (gog): logged in as mark@example.com')
+    expect(legs.textContent).toContain(`(checked ${new Date(checkedAt).toLocaleString()})`)
+    expect(within(legs).getByRole('button', { name: 'Check login' })).toBeTruthy()
+  })
+
   it('readiness legs ride each installed row; ?capability= highlights, focuses and offers the key link (1.4c-2)', async () => {
     listData = {
       managed: [

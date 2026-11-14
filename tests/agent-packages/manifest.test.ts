@@ -41,6 +41,7 @@ import {
   parseManifest,
   safeParseManifest,
   formatManifestError,
+  loginEntryKey,
   type Manifest,
 } from '../../packages/core/src/agent-packages/manifest'
 
@@ -550,6 +551,23 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
       prereqs: [{ name: 'gh', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }],
       login: [ghLogin],
     }))).toThrow(/login probe .*gh.* is not a declared bin/)
+  })
+
+  it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {
+    const prereq = { name: 'echo', kind: 'binary', probe: 'echo', help: 'https://x.dev' }
+    expect(loginEntryKey('Work account')).toBe('work-account')
+    expect(loginEntryKey('Work-account')).toBe('work-account')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [
+      { name: 'Work account', probe: ['echo', 'first@example.com'], setup: 'x', help: 'https://x.dev' },
+      { name: 'Work-account', probe: ['echo', 'second@example.com'], setup: 'y', help: 'https://x.dev' },
+    ] }))).toThrow(/share the receipt key .*work-account/)
+    // Distinct keys are two receipts.
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [
+      { name: 'Work account', probe: ['echo', 'first@example.com'], setup: 'x', help: 'https://x.dev' },
+      { name: 'Personal account', probe: ['echo', 'second@example.com'], setup: 'y', help: 'https://x.dev' },
+    ] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login).toHaveLength(2)
   })
 
   it('rejects a path as probe[0], an empty probe, an empty setup, a non-https help and a lowercase accountEnv', () => {

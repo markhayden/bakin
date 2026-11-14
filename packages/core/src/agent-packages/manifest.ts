@@ -144,6 +144,16 @@ const LoginRequirementSchema = z.object({
   accountEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/, { message: 'accountEnv must be an environment variable name' }).optional(),
 }).refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
 
+/**
+ * A login entry's identity on disk: `Google account (gog)` → `google-account-gog`.
+ * Receipts are filed under it, so two entries of one pack must never share it
+ * (the schema below refuses the collision — a second receipt would otherwise
+ * overwrite the first and leave that entry permanently "unknown").
+ */
+export function loginEntryKey(entryName: string): string {
+  return entryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'login'
+}
+
 const RequiresSchema = z
   .object({
     bins: z.array(BinRequirementSchema).optional(),
@@ -162,6 +172,7 @@ const RequiresSchema = z
       ...(requires.bins ?? []).map((b) => b.name),
       ...(requires.prereqs ?? []).filter((p) => p.kind === 'binary').map((p) => p.probe),
     ])
+    const seenKeys = new Map<string, string>()
     requires.login?.forEach((entry, index) => {
       const bin = entry.probe[0]!
       if (!bound.has(bin)) {
@@ -170,6 +181,17 @@ const RequiresSchema = z
           path: ['login', index, 'probe'],
           message: `login probe "${bin}" is not a declared bin or binary prereq of this pack`,
         })
+      }
+      const key = loginEntryKey(entry.name)
+      const earlier = seenKeys.get(key)
+      if (earlier !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['login', index, 'name'],
+          message: `login entries "${earlier}" and "${entry.name}" share the receipt key "${key}" — give each a distinct name`,
+        })
+      } else {
+        seenKeys.set(key, entry.name)
       }
     })
   })
