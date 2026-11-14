@@ -1,5 +1,13 @@
+import { createContext, use } from 'react'
+
 /** The face every new agent starts with, served by the host. */
 export const AGENT_FACE = '/bakin-agent.png'
+
+/**
+ * Where Bakin's pig is loaded from. The host serves it; a UI fixture, which
+ * runs without the host's files, points it at a picture of its own.
+ */
+export const AgentFaceSourceContext = createContext(AGENT_FACE)
 
 /**
  * A face, front and center, over a soft glow in the accent color. `size` is
@@ -8,6 +16,7 @@ export const AGENT_FACE = '/bakin-agent.png'
  * framed and cropped to fill.
  */
 export function AgentFace({ size = 10, src }: { size?: number; src?: string }) {
+  const pig = use(AgentFaceSourceContext)
   return (
     <div
       aria-hidden="true"
@@ -20,7 +29,7 @@ export function AgentFace({ size = 10, src }: { size?: number; src?: string }) {
     >
       {src
         ? <img src={src} alt="" className="rounded-bakin-overlay border border-bakin-border-subtle object-cover" style={{ inlineSize: '72%', blockSize: '72%' }} />
-        : <img src={AGENT_FACE} alt="" className="size-full object-contain" />}
+        : <img src={pig} alt="" className="size-full object-contain" />}
     </div>
   )
 }
