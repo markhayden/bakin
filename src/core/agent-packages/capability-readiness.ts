@@ -28,6 +28,7 @@ import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
 import { currentLoginInputs, isReceiptStale, readLoginReceipt, type LoginReason, type LoginStatus } from './login-verify'
 import { modelDest, npmPayloadDir } from './requirements-installer'
+import { runnableLoginSetup } from './login-setup'
 import { verifyNpmPayload } from './npm-verify'
 
 const log = createLogger('capability-readiness')
@@ -262,7 +263,8 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     const login: CapabilityLoginStatus[] = []
     for (const req of manifest.requires?.login ?? []) {
       const receipt = readLoginReceipt(id, req.name)
-      const row: CapabilityLoginStatus = { name: req.name, setup: req.setup, help: req.help, status: 'unknown', reason: 'never-checked' }
+      const setup = runnableLoginSetup(manifest, req)
+      const row: CapabilityLoginStatus = { name: req.name, setup, help: req.help, status: 'unknown', reason: 'never-checked' }
       if (receipt) {
         row.checkedAt = receipt.checkedAt
         if (isReceiptStale(receipt, currentLoginInputs(manifest, req), req.probe)) {
@@ -275,7 +277,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
         }
       }
       login.push(row)
-      if (row.status === 'missing') missing.push(`${req.name}: not logged in — run: ${req.setup}`)
+      if (row.status === 'missing') missing.push(`${req.name}: not logged in — run: ${setup}`)
       if (row.status === 'unknown') missing.push(`${req.name}: login not verified — click Check login or run: bakin packages login-check ${id}`)
     }
 

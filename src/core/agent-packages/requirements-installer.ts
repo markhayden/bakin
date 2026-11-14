@@ -18,7 +18,7 @@
 import { createHash } from 'crypto'
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import type { LoginRequirement, Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
+import type { Manifest, NpmRequirement, ModelRequirement } from '../../../packages/core/src/agent-packages/manifest'
 import { readInstalledBy, writeInstalledBy, type InstalledByMarker } from '../../../packages/core/src/agent-packages/markers'
 import { commitFileAtomic, downloadToFile, opTransfer, type DownloadEvent } from '../../../packages/core/src/net/download'
 import { verifyFileSha256 } from '../../../packages/core/src/integrity/files'
@@ -31,6 +31,7 @@ import { verifyLogin, type LoginReceipt } from './login-verify'
 import { generatedNpmManifest, verifyNpmPayload } from './npm-verify'
 import type { ProjectorResult } from './projector'
 import type { RequirementOp } from './requirement-op'
+import { runnableLoginSetup } from './login-setup'
 
 const log = createLogger('pack-requirements')
 
@@ -319,16 +320,16 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
     const item = { id: loginItemId(req.name), label: `${req.name} (login check)` }
     target?.op.item(target.stageId, { ...item, status: 'active' })
     const receipt = await verifyLogin({ manifest, entry: req, packId })
-    target?.op.item(target.stageId, { ...item, status: 'done', message: describeLoginReceipt(receipt, req) })
+    target?.op.item(target.stageId, { ...item, status: 'done', message: describeLoginReceipt(receipt, runnableLoginSetup(manifest, req)) })
   }
 }
 
 export const loginItemId = (name: string): string => `login:${name}`
 
 /** One line for an operation item / CLI: what the login check found. */
-export function describeLoginReceipt(receipt: LoginReceipt, req: LoginRequirement): string {
+export function describeLoginReceipt(receipt: LoginReceipt, setup: string): string {
   if (receipt.status === 'ok') return receipt.account ? `logged in as ${receipt.account}` : 'logged in'
-  if (receipt.status === 'missing') return `needs login — run: ${req.setup}`
+  if (receipt.status === 'missing') return `needs login — run: ${setup}`
   return `login not verified (${receipt.reason ?? 'unknown'})`
 }
 

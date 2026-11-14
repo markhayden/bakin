@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { PackageNotInstalledError } from '@/core/agent-packages/errors'
 import { listInstalledLoginPacks, verifyInstalledPackLogins } from '@/core/agent-packages/login-verify'
+import { runnableLoginSetup } from '@/core/agent-packages/login-setup'
 import { parseJsonBodyWeb } from '@/core/middleware'
 
 const BodySchema = z.object({
@@ -29,5 +30,5 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   const pack = listInstalledLoginPacks().find((candidate) => candidate.id === bare || candidate.key === packageId)
   if (!pack) return Response.json({ ok: false, error: `Package "${packageId}" declares no login requirement.`, code: 'no_login_requirement' }, { status: 400 })
   const results = await verifyInstalledPackLogins({ packId: pack.id })
-  return Response.json({ ok: true, packId: pack.id, key: pack.key, receipts: results.map((r) => ({ name: r.entry.name, setup: r.entry.setup, ...r.receipt })) })
+  return Response.json({ ok: true, packId: pack.id, key: pack.key, receipts: results.map((r) => ({ name: r.entry.name, setup: runnableLoginSetup(pack.manifest, r.entry), ...r.receipt })) })
 }

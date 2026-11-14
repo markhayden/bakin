@@ -17,7 +17,7 @@ import { TEST_BOOT_ID, finishedOperation } from '../helpers/operation-fetch'
 const testDir = join(tmpdir(), `bakin-test-pkg-consent-${Date.now()}`)
 const contentDirMock = () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db') }),
+  getBakinPaths: () => ({ home: testDir, db: join(testDir, 'bakin.db'), bin: join(testDir, 'bin') }),
 })
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
@@ -97,7 +97,8 @@ describe('bakin packages install consent', () => {
     expect(screen).toContain('tool 3.1.0')
     expect(screen).toContain('downloads.example.com')
     expect(screen).toContain('tool auth status')
-    expect(screen).toContain('Log in with: tool auth login')
+    // The pack's own binary lives in Bakin's bin dir, not on the operator's PATH.
+    expect(screen).toContain(`Log in with: ${join(testDir, 'bin', 'tool')} auth login`)
     expect(questions).toHaveLength(1)
     expect(questions[0]!.match(/\[y\/N\]/g)).toHaveLength(1)
     expect(screen).toContain('Aborted — nothing installed.')

@@ -313,6 +313,17 @@ describe('listCapabilities — login leg (provider-integrations §4.1)', () => {
     expect(existsSync(join(testDir, 'probe-ran.txt'))).toBe(false)
   })
 
+  it('a setup command that runs the pack\'s own binary shows that binary\'s path — the operator\'s shell has no ~/.bakin/bin on PATH', async () => {
+    const manifest = seedLoginPack()
+    manifest.requires!.login![0]!.setup = 'gogprobe auth setup you@example.com --login'
+    writeFileSync(join(testDir, 'packages', 'skill-packs', 'gw@2.0.0', 'bakin-package.json'), JSON.stringify(manifest))
+    writeReceipt(manifest, { status: 'missing', reason: 'no-match', exitCode: 0, account: undefined })
+    const [cap] = await listCapabilities()
+    const runnable = `${join(testDir, 'bin', 'gogprobe')} auth setup you@example.com --login`
+    expect(cap!.login[0]!.setup).toBe(runnable)
+    expect(cap!.missing).toContain(`Google account (gog): not logged in — run: ${runnable}`)
+  })
+
   it('a missing receipt blocks ready with the setup command as remediation', async () => {
     const manifest = seedLoginPack()
     writeReceipt(manifest, { status: 'missing', reason: 'exit', exitCode: 1, account: undefined })

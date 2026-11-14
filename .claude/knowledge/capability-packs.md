@@ -305,8 +305,13 @@ never block), login leg (READS the receipt `login-verify.ts` wrote — never
 spawns; `ok|missing|unknown` + `checkedAt`/`account`; never checked, stale
 or could-not-run ⇒ `unknown`; both non-ok states block ready), platform
 gate (`platformSupported`), secrets leg (env → store per `secretSlot`).
-Non-ready legs carry remediation strings (a login: the exact `setup`
-command, or "click Check login or run: bakin packages login-check <id>").
+Non-ready legs carry remediation strings (a login: the `setup` command as
+`runnableLoginSetup` shows it — `src/core/agent-packages/login-setup.ts`, the
+ONE rewrite every setup surface uses (readiness rows + remediation, the
+install's login item, `POST /api/packages/login-check`, the CLI consent):
+each command word naming one of the pack's `bins` becomes its path in the
+Bakin bin dir (`~/…` under HOME), since only the SERVER's PATH carries that
+dir; the manifest keeps the bare name — or "click Check login or run: bakin packages login-check <id>").
 Health maps a login gap to the `not-ready-login` incident (human,
 credential, `handoff.command = setup`, a `Check login` request choice on
 the shared control `/api/packages/login-check`). Surfaces (all thin clients): `GET

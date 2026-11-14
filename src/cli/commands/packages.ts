@@ -102,6 +102,7 @@ export async function previewInstallRequirements(source: string, origin: string)
   const base = { ...empty, manifest: 'read' as const, name: manifest.name, version: manifest.version, description: manifest.description }
   if (manifest.kind !== 'skill-pack') return base
   const { binPlatformKey } = await import('../../core/agent-packages/bin-platform')
+  const { runnableLoginSetup } = await import('../../core/agent-packages/login-setup')
   const platform = binPlatformKey()
   return {
     ...base,
@@ -113,7 +114,7 @@ export async function previewInstallRequirements(source: string, origin: string)
     npm: (manifest.requires?.npm ?? []).map((npm) => ({ name: npm.name, dependencies: Object.keys(npm.dependencies).length })),
     models: (manifest.requires?.models ?? []).map((model) => ({ name: model.name, bytes: model.bytes })),
     prereqs: (manifest.requires?.prereqs ?? []).map((prereq) => ({ name: prereq.name, optional: prereq.optional })),
-    logins: (manifest.requires?.login ?? []).map((login) => ({ name: login.name, probe: login.probe.join(' '), setup: login.setup })),
+    logins: (manifest.requires?.login ?? []).map((login) => ({ name: login.name, probe: login.probe.join(' '), setup: runnableLoginSetup(manifest, login) })),
   }
 }
 
