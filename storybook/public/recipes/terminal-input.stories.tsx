@@ -98,6 +98,8 @@ export const BarAndSheet = {
     await userEvent.click(canvas.getByRole('button', { name: 'Control, on for the next key' }))
     // Left open: an Escape another owner already claimed, one inside a composition, one inside a dialog.
     await userEvent.click(canvas.getByRole('button', { name: 'More keys' }))
+    // The sheet takes focus on its next frame: let that land first, or it pulls focus out of the dialog below.
+    await waitFor(() => expect(canvas.getByRole('region', { name: 'More keys' })).toHaveFocus())
     const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     claimed.preventDefault()
     editor.dispatchEvent(claimed)
