@@ -10,7 +10,6 @@ import {
   useJsonFetch,
   usePluginEvent,
   type SearchResult,
-  usePageIntroduction,
 } from '@makinbakin/sdk/hooks'
 import {
   usePathname,
@@ -171,20 +170,6 @@ function applyFilteredMove(
 }
 
 export function KanbanBoard() {
-  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
-  const { introduction, close: closeIntroduction } = usePageIntroduction('tasks')
-  const pageIntroduction = introduction ? (
-    // This page's body runs edge to edge: the panel takes the same inset as the row above it.
-    <div className="min-w-0 px-bakin-4 @md/page-shell:px-bakin-6">
-      <Alert tone="accent" data-page-introduction="tasks">
-        <AlertTitle>{introduction.title}</AlertTitle>
-        <AlertDescription>{introduction.body}</AlertDescription>
-        <AlertAction>
-          <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
-        </AlertAction>
-      </Alert>
-    </div>
-  ) : null
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -567,9 +552,8 @@ export function KanbanBoard() {
     </Inline>
   ) : undefined
 
-  const pageFeedback = pageIntroduction || taskNotFound || searchFeedback ? (
+  const pageFeedback = taskNotFound || searchFeedback ? (
     <div className="grid min-w-0 gap-bakin-3">
-      {pageIntroduction}
       {taskNotFound ? (
         <Alert tone="danger" data-testid="tasks-task-not-found">
           <AlertTitle>Task not found</AlertTitle>

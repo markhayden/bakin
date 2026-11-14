@@ -7,6 +7,8 @@ import { usePluginEvent } from './use-plugin-event'
 export interface PageIntroduction {
   title: string
   body: string
+  /** A picture for the page, when it has one. */
+  image?: string
 }
 
 export interface UsePageIntroductionResult {
@@ -39,7 +41,7 @@ function ask(): void {
     .then(async (res) => {
       if (!res.ok) throw new Error(`page introductions answered ${res.status}`)
       const body = await res.json() as { introductions?: Listed[] }
-      publish(new Map((body.introductions ?? []).map(({ id, title, body: text }) => [id, { title, body: text }])))
+      publish(new Map((body.introductions ?? []).map(({ id, title, body: text, image }) => [id, { title, body: text, ...(image ? { image } : {}) }])))
     })
     // No answer means no introduction on this visit; the next page asks again.
     .catch(() => undefined)
@@ -60,8 +62,8 @@ function subscribe(listener: () => void): () => void {
 
 /**
  * A page's first-visit introduction, remembered per home. Pass the page's
- * plugin id; render `introduction` when it is not null and call `close`
- * from its dismiss control. Which pages have one, and what each says, is
+ * plugin id; render `introduction` when it is not null (the kit's
+ * `FirstVisitCallout`) and call `close` from its dismiss control. Which pages have one, and what each says, is
  * curated by the Home plugin; a page without one always gets null.
  */
 export function usePageIntroduction(pageId: string): UsePageIntroductionResult {

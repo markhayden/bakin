@@ -5,6 +5,7 @@ import { Button } from '@makinbakin/sdk/ui'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { useActivityContext } from '@/context/activity-context'
 import { ActivityFeed } from '@/components/tasks/activity-feed'
+import { PageIntroduction } from './page-introduction'
 import { cn } from '@makinbakin/sdk/utils'
 
 const SHELL_TOP_CLASS = 'top-(--bakin-shell-top)'
@@ -66,8 +67,10 @@ export function LayoutShell({
         {/* Main content — fills remaining space. The inner div is the app's
             real scroll container; the id attribute opts it into TanStack's
             element-level scroll restoration (router scrollRestoration: true). */}
-        <main className="flex-1 min-w-0 overflow-hidden">
+        <main className="relative flex-1 min-w-0 overflow-hidden">
           <div data-scroll-restoration-id="bakin-main" className="h-full overflow-y-auto flex flex-col">{children}</div>
+          {/* A page's first-visit welcome floats over the content; while a page holds full screen there is none. */}
+          {fullscreen ? null : <PageIntroduction pathname={pathname} />}
         </main>
 
         {/* Not a Sheet: the aside below is ONE persistent node that is a

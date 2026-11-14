@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import { useSearch, useDebug, usePluginEvent, useKeyedState, usePageIntroduction } from '@makinbakin/sdk/hooks'
+import { useSearch, useDebug, usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import {
   usePathname,
   useQueryArrayState,
@@ -44,8 +44,6 @@ import {
   SystemState,
   Text,
   type FileInputHandle,
-  AlertAction,
-  AlertTitle,
 } from '@makinbakin/sdk/ui'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { Upload, LayoutGrid, List, Trash, RotateCcw, X, FolderOpen, Pencil, Tags, ArrowLeft, Inbox, Sparkles } from 'lucide-react'
@@ -173,17 +171,6 @@ async function loadAssetListing(): Promise<VersionedAssetSummary[] | null> {
 }
 
 export function VersionedAssetGrid() {
-  // First visit: the page says what it is for, until the person closes it (home-first-run 7.1).
-  const { introduction, close: closeIntroduction } = usePageIntroduction('assets')
-  const pageIntroduction = introduction ? (
-    <Alert tone="accent" data-page-introduction="assets">
-      <AlertTitle>{introduction.title}</AlertTitle>
-      <AlertDescription>{introduction.body}</AlertDescription>
-      <AlertAction>
-        <Button type="button" variant="outline" size="xs" onClick={closeIntroduction}>Got it</Button>
-      </AlertAction>
-    </Alert>
-  ) : null
   const [debug] = useDebug()
   const [linkTo] = useQueryState('linkTo', '')
   const [q, setQ] = useQueryState('q', '')
@@ -564,9 +551,8 @@ export function VersionedAssetGrid() {
         label="Asset results"
         busy={!loading && pending}
         state={collectionState}
-        feedback={pageIntroduction || uploadError || (linkTo && view !== 'trash') ? (
+        feedback={uploadError || (linkTo && view !== 'trash') ? (
           <div className="grid min-w-0 gap-bakin-2">
-            {pageIntroduction}
             {uploadError ? <Alert tone="danger"><AlertDescription>{uploadError}</AlertDescription></Alert> : null}
             {linkTo && view !== 'trash' ? <Text size="meta" tone="muted" as="p">New uploads will be linked to this task.</Text> : null}
           </div>
