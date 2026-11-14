@@ -126,6 +126,7 @@ Agents introspect and operate on the team through MCP exec tools.
 - `bakin_exec_team_org`: Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.
 - `bakin_exec_team_profile`: Get the full profile for an agent including soul, rules, and tools.
 - `bakin_exec_team_read_file`: Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md).
+- `bakin_exec_team_set_avatar`: Set an agent's avatar from an image already saved as an asset (PNG, JPEG or WebP). Use it after the person has picked one of the options you made: pass that asset's id. Replaces the avatar the agent had.
 - `bakin_exec_team_set_permissions`: Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents).
 - `bakin_exec_team_status`: Get the heartbeat and health status for an agent.
 - `bakin_exec_team_update_identity`: Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md).

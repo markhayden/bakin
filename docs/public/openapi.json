@@ -35131,7 +35131,10 @@
                         "additionalProperties": false
                       }
                     },
-                    "hello": {
+                    "person": {
+                      "type": "string"
+                    },
+                    "firstDay": {
                       "type": "boolean"
                     },
                     "introductionSkipped": {
@@ -35212,7 +35215,7 @@
                     "state",
                     "starters",
                     "personalities",
-                    "hello",
+                    "firstDay",
                     "introductionSkipped",
                     "suggestions",
                     "suggestionCount"
@@ -35412,10 +35415,10 @@
         "x-bakin-full-path": "/api/plugins/home/introduction"
       }
     },
-    "/api/plugins/home/hello": {
+    "/api/plugins/home/first-request": {
       "post": {
-        "operationId": "home.post.hello",
-        "summary": "Record that the person said hello",
+        "operationId": "home.post.first-request",
+        "summary": "Record the first thing the person asked for",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -35441,8 +35444,8 @@
         "tags": [
           "Home"
         ],
-        "description": "Called after the first hello was sent, or put away with \"Not now\", so Home stops offering it. The message itself is an ordinary chat message the person sent.",
-        "x-bakin-full-path": "/api/plugins/home/hello"
+        "description": "Called when the person asks for their first thing from Home, typed or picked from a starter. It ends the first day: Home greets a returning person from then on.",
+        "x-bakin-full-path": "/api/plugins/home/first-request"
       }
     },
     "/api/plugins/home/tour": {
@@ -35489,6 +35492,9 @@
                           "first": {
                             "type": "string"
                           },
+                          "image": {
+                            "type": "string"
+                          },
                           "href": {
                             "type": "string"
                           }
@@ -35499,6 +35505,7 @@
                           "icon",
                           "body",
                           "first",
+                          "image",
                           "href"
                         ],
                         "additionalProperties": false
@@ -35520,6 +35527,96 @@
         ],
         "description": "The slides of the tour Home offers: one per area, each with what it is for, one thing to do there first, and its page. Curated content; the same for every home.",
         "x-bakin-full-path": "/api/plugins/home/tour"
+      }
+    },
+    "/api/plugins/home/starters/{id}/used": {
+      "post": {
+        "operationId": "home.post.starters-id-used",
+        "summary": "Record that a starter was picked",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Home"
+        ],
+        "description": "Called when the person picks a starter, so Home stops offering it. 404 for an id that is not a starter.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/home/starters/:id/used"
       }
     },
     "/api/plugins/home/page-introductions": {
@@ -35551,12 +35648,16 @@
                           },
                           "body": {
                             "type": "string"
+                          },
+                          "image": {
+                            "type": "string"
                           }
                         },
                         "required": [
                           "id",
                           "title",
-                          "body"
+                          "body",
+                          "image"
                         ],
                         "additionalProperties": false
                       }
