@@ -290,6 +290,6 @@ None blocking. The grants editor composition is confirmed with the conformance s
 
 ## Todo
 - [ ] B1 · [ ] B2a · [ ] B2b · [ ] B3 · [ ] B4 · [ ] B5 · [ ] Bits checkpoint
-- [ ] 1.1 · [ ] 1.2 · [ ] 1.3 · [ ] 1.4a · [ ] 1.4b · [ ] 1.4c · [ ] 1.5a · [ ] 1.5b · [ ] 1.5c · [ ] 1.6 · [ ] PR1 gate · [ ] Codex ×2 · [ ] W1 (Mark)
+- [x] 1.1 · [x] 1.2 · [x] 1.3 · [x] 1.4a · [x] 1.4b · [x] 1.4c · [x] 1.5a · [x] 1.5b · [x] 1.5c · [ ] 1.6 · [ ] PR1 gate · [ ] Codex ×2 · [ ] W1 (Mark)
 - [ ] 2.3 · [ ] 2.4a · [ ] 2.1a · [ ] 2.1b · [ ] 2.1c · [ ] 2.2a · [ ] 2.2b · [ ] 2.2c · [ ] 2.4b · [ ] 2.5 · [ ] 2.6a · [ ] 2.6b · [ ] 2.7a · [ ] 2.7b · [ ] 2.8a · [ ] 2.8b · [ ] PR2 gate · [ ] Codex ×2 · [ ] W2+W3 (Mark)
 - [ ] 3.2 · [ ] 3.1a · [ ] 3.1b · [ ] 3.1c · [ ] 3.3a · [ ] 3.3b · [ ] 3.4a · [ ] 3.4b · [ ] 3.4c · [ ] 3.4d · [ ] 3.4e · [ ] 3.5 · [ ] 3.6 · [ ] PR3 gate · [ ] Codex ×2 · [ ] W4 (Mark)

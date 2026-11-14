@@ -219,7 +219,8 @@ A skill-pack becomes a **capability pack** by naming a `capability` slug and dec
     "bins":    [{ "name": "tool", "version": "1.0.0", "install": { "darwin-arm64": { "url": "https://…/tool.tar.gz", "sha256": "…", "archive": { "format": "tar.gz", "member": "tool", "extractedSha256": "…" } } }, "verifyArgs": ["--help"] }],
     "npm":     [{ "name": "scripts", "source": "payload/scripts", "dependencies": { "some-lib": "1.2.3" } }],
     "models":  [{ "name": "model", "url": "https://…/model.gguf", "sha256": "…", "bytes": 940663680, "dest": "vendor/model.gguf", "env": { "TOOL_MODEL_PATH": "{dest}" } }],
-    "prereqs": [{ "name": "ffmpeg", "kind": "binary", "probe": "ffmpeg", "help": "https://ffmpeg.org/download.html", "optional": true }]
+    "prereqs": [{ "name": "ffmpeg", "kind": "binary", "probe": "ffmpeg", "help": "https://ffmpeg.org/download.html", "optional": true }],
+    "login":   [{ "name": "Tool account", "probe": ["tool", "auth", "status"], "setup": "tool auth login", "help": "https://…", "accountEnv": "TOOL_ACCOUNT" }]
   },
   "secrets": [{ "name": "SOME_API_KEY", "description": "…", "secretSlot": "provider.apiKey", "help": "https://…" }]
 }
@@ -229,6 +230,7 @@ A skill-pack becomes a **capability pack** by naming a `capability` slug and dec
 - **npm** payloads install scripts + exact-pinned dependencies into `~/.bakin/npm/<packId>/<name>/` — reference that path in your SKILL.md. Dependencies must be exact versions, never ranges. Scripts are ESM. Bakin checks that each direct dependency resolves inside the payload at its declared version (with its entry file) before reusing a payload and after every install, and readiness reports a payload that no longer does as unresolved.
 - **models** are sha256-pinned downloads into `~/.bakin/models/`; declare honest `bytes` (shown at install consent). `env` vars are injected at server boot with `{dest}` expanded to the installed path.
 - **prereqs** are checked, never installed — missing required ones block readiness with your `help` link; `optional: true` ones never block.
+- **login** declares how Bakin verifies the operator has signed the tool in: a read-only `probe` (argv, no shell — its first word must be one of your `bins` or a binary prereq's `probe`), the exact `setup` command shown as the fix, and an optional `accountEnv` whose value must appear in the probe's output. Bakin runs the probe after install and sync, when the user clicks **Check login** (Explore, the runtime hub, a Health card) or runs `bakin packages login-check <id>`, and when a key for one of your declared secrets is saved — never on a plain readiness read. A pack that declares `login` needs `"bakin": ">=0.1.0-rc.9"` so older hosts refuse it instead of ignoring the leg.
 - **platforms** gates the whole pack per OS/arch; elsewhere it reports "not available on this platform" honestly.
 
-Readiness for every leg surfaces on the runtime hub's Capabilities tab, `bakin check capabilities`, and the doctor. Repair (`bakin packages sync <id>`) re-projects skills and restores missing bins/payloads/models.
+Readiness for every leg surfaces on the runtime hub's Capabilities tab, `bakin check capabilities`, and the doctor. Repair (`bakin packages sync <id>`) re-projects skills and restores missing bins/payloads/models. The `bakin` range in a pack manifest is enforced at install and upgrade: a host outside it refuses the pack with both versions named.

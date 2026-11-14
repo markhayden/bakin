@@ -122,10 +122,14 @@ one, via the secret-save trigger or `bakin check capabilities`). Install consent
 "Bakin runs `<probe>` to check login after install, on sync and on request".
 
 **Triggers:** pack install and `bakin packages sync` completion (through the
-requirements installer so every projection pass checks), `bakin check
-capabilities`, `POST /api/packages/:key/login-check` (the "Check login" button
-in Explore's installed card, the runtime hub's Capabilities tab and the Health
-incident), and a secret save for a slot the pack declares. Never on a GET.
+requirements installer so every projection pass checks), `POST
+/api/packages/:id/login-check` (the "Check login" button in Explore's
+installed card, the runtime hub's Capabilities tab and the Health incident;
+the CLI verb `bakin packages login-check <id>`), and a secret save for a slot
+the pack declares. Never on a GET — and **not** on `bakin check capabilities`:
+the onboarding rule "checks change nothing" (read-only services, no log line)
+outranks rev 2's wording, so the check REPORTS receipts and names the
+explicit verb as remediation (build-time amendment, plan 1.4c).
 
 **Readiness** (`capability-readiness.ts`) gains a `login` leg that READS the
 receipt: `CapabilityLoginStatus { name, setup, help, status: 'ok' | 'missing'

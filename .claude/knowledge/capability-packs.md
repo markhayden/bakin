@@ -98,6 +98,37 @@ A capability pack is `kind: "skill-pack"` plus:
   absolute path existsSync). Missing required prereqs block readiness with
   the help link as remediation; `optional: true` surfaces without blocking
   (transcribe's ffmpeg).
+- `requires.login[]` (provider-integrations §4.1) — `{ name, probe: argv,
+  setup, help, accountEnv? }`: a read-only command whose exit status says
+  whether the operator has logged the pack's tool into its provider
+  (`gog auth list --check`, `gh auth status`). `probe[0]` MUST be a bare
+  binary this pack declares — `bins[].name` or a binary `prereqs[].probe`
+  (a prereq's display `name` never binds); the manifest refuses anything
+  else. `setup` is the exact command the operator runs, shown verbatim as
+  remediation. `accountEnv` names an env var (`GOG_ACCOUNT`); when set, the
+  probe output must contain its value or the login is `missing`
+  (account-mismatch). Verification is EXPLICIT (`login-verify.ts`): it runs
+  at install/sync completion (last leg, after the binary is in place), on
+  `POST /api/packages/login-check { packageId }` (the Check login button in
+  Explore, the runtime hub and the Health card; `bakin packages login-check
+  <id>`), and when a secret for a slot the pack declares is saved. Never on a
+  readiness read, never on `bakin check` (checks change nothing). The probe
+  runs as argv (no shell), stdin closed, output capped at 16 KB, a 5 s
+  timeout that kills the child, concurrent callers share one run; a managed
+  bin executes only at its verified path (missing/drifted ⇒ `unknown`).
+  The receipt (`~/.bakin/packages/receipts/login/<packId>.json`) records
+  status `ok|missing|unknown` + reason, `checkedAt`, the matched account,
+  and the inputs that make it STALE — pack version, binary sha, the
+  accountEnv value hash, the declared secrets' digest; a stale receipt reads
+  `unknown` until re-checked. `missing` and `unknown` both block ready.
+- `bakin` (base field) — a semver range of hosts the pack runs on, ENFORCED at
+  install and upgrade since provider-integrations PR1 (`bakin-range-gate.ts`,
+  reusing the plugins' checker: well-formedness always, satisfaction skipped
+  on the unstamped `0.0.0-dev` host, an rc floor of the host's own base
+  compares the full prerelease). An installed pack is never re-judged by
+  sync. Set it to the rc that first understands a leg the pack needs
+  (`>=0.1.0-rc.9` for `requires.login`), or an older host would drop the
+  unknown leg and report ready.
 - `platforms?` (pack level) — OS/arch gate; a gated pack on the wrong
   platform reports "not available on this platform", never per-leg noise
   (transcribe is darwin-arm64 only).
@@ -196,8 +227,15 @@ content leg (lockfile skill projections resolved against live
 `runtime.skills`), bins leg (Bakin bin dir; honest `unsupported-platform`),
 npm leg (`verifyNpmPayload` — `ok`/`missing`/`unresolved`), models leg (dest
 present at declared size), prereqs leg (PATH/app probes; optional ones
-never block), platform gate (`platformSupported`), secrets leg (env →
-store per `secretSlot`). Non-ready legs carry remediation strings. Surfaces (all thin clients): `GET
+never block), login leg (READS the receipt `login-verify.ts` wrote — never
+spawns; `ok|missing|unknown` + `checkedAt`/`account`; never checked, stale
+or could-not-run ⇒ `unknown`; both non-ok states block ready), platform
+gate (`platformSupported`), secrets leg (env → store per `secretSlot`).
+Non-ready legs carry remediation strings (a login: the exact `setup`
+command, or "click Check login or run: bakin packages login-check <id>").
+Health maps a login gap to the `not-ready-login` incident (human,
+credential, `handoff.command = setup`, a `Check login` request choice on
+the shared control `/api/packages/login-check`). Surfaces (all thin clients): `GET
 /api/packages/capabilities`, the health plugin's `capability.<slug>` doctor
 findings, `bakin check capabilities` (the `capabilities` onboarding
 component — check = readiness + missing recommendations; install =
