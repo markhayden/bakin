@@ -175,3 +175,43 @@ label flow). Unverified claim to check: a README says Google locks an
 - **C. Google for other users.** Bakin-owned client now, unverified (warning +
   100-user cap) until verification; and whether Gmail *reading* (restricted,
   annual assessment) ships at launch or after.
+
+## Mark's answers (2026-11-14)
+
+- **A → cooperative.** Agents ask first; runtime hooks catch forgotten asks.
+  Bypass by a determined agent stays possible and is accepted (D1–D3 hold).
+- **B → "test and decide".** Result below: **local MCP is the agent surface.**
+- **C → Bakin-owned Google OAuth client, taken through Google verification.**
+  Gmail-read scope (restricted, annual security assessment) is planned as part
+  of that verification rather than dropped.
+
+## Fixture evaluation (Recommendation 2)
+
+Method: a fake stdio MCP server (one read tool, one write tool, every call
+logged) driven by a real Pi 1.0.2 `createAgentSession` with the `faux` model
+provider and a `tool_call` hook that blocks the write — no real account, no
+gateway. Tool inventories read via `tools/list` with no credentials.
+
+| Question | Result |
+| --- | --- |
+| Pi: does the hook see MCP calls, typed? | **Yes, proven.** `mcp__fake__send_message {"to":…,"body":…}`; blocked call never reached the server, the read did. |
+| Pi: codemode scripts (Pi's default MCP exposure)? | **Yes, proven.** Nested calls fire `tool_call` with `parentToolCallId`; the block rejects inside the script; server untouched. |
+| Pi: what Bakin must add | `createMcpExtension` + `createCodemodeExtension` as Bakin-owned inline factories, and **`session.bindExtensions()`** — Bakin never calls it today, so `session_start` never fires and MCP never connects (tools "not found"). |
+| OpenClaw | **Docs only, not run** (only the production gateway is local): `mcp.servers` tools pass the same tool policy; Code Mode nested calls re-enter `before_tool_call`. Verify on the dockerized rig during the build. |
+| `gog mcp` v0.48.0 coverage | 11 read tools by default; `--allow-write` → 25 (Gmail drafts/labels/modify/trash/send, `docs_write`, `sheets_update_range`). **Missing vs the CLI:** calendar writes (create/update/respond), Drive upload, Docs create. Server-side gates: `--allow-tool`, `--allow-write`, `--allow-gmail-send`, `--readonly`. |
+| `github-mcp-server` v2.1.0 coverage | Default toolsets: 46 tools, every one annotated (27 read / 19 write). Server-side gates: `--read-only`, `--toolsets`, `--tools`, `--exclude-tools`, `--lockdown-mode`. A few writes multiplex by argument (`issue_write`, `pull_request_review_write`), so classification reads the method arg. |
+
+**Decision: MCP surface for both providers.**
+
+- The hook sees the exact action and arguments, so the cooperative guard is a
+  table lookup (tool annotation + method arg), never a shell-command parser.
+- One server config works for Pi, OpenClaw and (later) Hermes natively — this
+  *is* the per-runtime adapter: Bakin writes the runtime's MCP config, the
+  runtime's own client does the rest.
+- The servers carry their own allowlists, so scope profiles (read-only,
+  no-send) are enforced in the server process as well as by the hook.
+- The CLI stays installed for login and the operator; agent skills point at
+  the MCP tools, not the CLI.
+- Gap: Google Calendar writes, Drive upload and Docs create are absent from
+  `gog mcp`. Launch without them, and contribute the tools upstream (gog is
+  MIT, released weekly) rather than mixing a shell path back in.
