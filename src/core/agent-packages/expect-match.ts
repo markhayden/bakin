@@ -40,6 +40,8 @@ export interface ExpectMatchRequest {
   input: string
   /** The child exits on its own at this age — cover for a server that died mid-check. */
   deadlineMs: number
+  /** The configured account, when there is one: membership is decided over EVERY match, never the capped list. */
+  wanted?: string
 }
 
 /**
@@ -50,8 +52,10 @@ export interface ExpectMatchRequest {
 export interface ExpectSummary {
   /** How many times the pattern matched. */
   matched: number
-  /** Distinct, non-empty first-group captures in match order — the accounts — capped at `EXPECT_MATCH_CAPTURE_LIMIT`. */
+  /** Distinct, non-empty first-group captures in match order — the accounts shown — capped at `EXPECT_MATCH_CAPTURE_LIMIT`. */
   captures: string[]
+  /** Whether some match captured exactly the requested `wanted` account — across all matches, past the cap (Codex r6 B5). */
+  wantedFound: boolean
 }
 
 export type ExpectMatchResult =
@@ -59,15 +63,18 @@ export type ExpectMatchResult =
   | { ok: false; reason: 'expect-timeout' | 'expect-error'; detail: string }
 
 /** The matcher proper — only ever run on the child's worker thread (and serialized into it below). */
-export function summarizeExpect(pattern: string, input: string, captureLimit: number): ExpectSummary {
+export function summarizeExpect(pattern: string, input: string, captureLimit: number, wanted?: string): ExpectSummary {
   let matched = 0
+  let wantedFound = false
   const captures: string[] = []
   for (const match of input.matchAll(new RegExp(pattern, 'g'))) {
     matched += 1
     const account = match[1]
-    if (typeof account === 'string' && account.length > 0 && !captures.includes(account) && captures.length < captureLimit) captures.push(account)
+    if (typeof account !== 'string' || account.length === 0) continue
+    if (account === wanted) wantedFound = true
+    if (!captures.includes(account) && captures.length < captureLimit) captures.push(account)
   }
-  return { matched, captures }
+  return { matched, captures, wantedFound }
 }
 
 /**
@@ -78,7 +85,7 @@ export function summarizeExpect(pattern: string, input: string, captureLimit: nu
 function matcherWorkerUrl(): string {
   const source = `const summarizeExpect = ${summarizeExpect.toString()};
 self.onmessage = (event) => {
-  try { postMessage({ summary: summarizeExpect(event.data.pattern, event.data.input, ${EXPECT_MATCH_CAPTURE_LIMIT}) }) }
+  try { postMessage({ summary: summarizeExpect(event.data.pattern, event.data.input, ${EXPECT_MATCH_CAPTURE_LIMIT}, event.data.wanted) }) }
   catch (err) { postMessage({ error: err instanceof Error ? err.message : String(err) }) }
 }`
   return `data:application/javascript;base64,${Buffer.from(source).toString('base64')}`
@@ -105,10 +112,11 @@ export async function runExpectMatchChild(stdin: string, stdout: ChildWriter, st
   try {
     const parsed: unknown = JSON.parse(stdin)
     if (typeof parsed !== 'object' || parsed === null) throw new Error('request is not an object')
-    const { pattern, input, deadlineMs } = parsed as Record<string, unknown>
+    const { pattern, input, deadlineMs, wanted } = parsed as Record<string, unknown>
     if (typeof pattern !== 'string' || typeof input !== 'string') throw new Error('request needs string pattern and input')
     if (typeof deadlineMs !== 'number' || !(deadlineMs > 0)) throw new Error('request needs a positive deadlineMs')
-    request = { pattern, input, deadlineMs }
+    if (wanted !== undefined && typeof wanted !== 'string') throw new Error('wanted must be a string when present')
+    request = { pattern, input, deadlineMs, ...(wanted !== undefined ? { wanted } : {}) }
   } catch (err) {
     await stderr(`expect-match: bad request: ${err instanceof Error ? err.message : String(err)}\n`)
     return 1
@@ -118,7 +126,7 @@ export async function runExpectMatchChild(stdin: string, stdout: ChildWriter, st
     const timer = setTimeout(() => resolve('deadline'), request.deadlineMs)
     worker.onmessage = (event: MessageEvent<{ summary?: ExpectSummary; error?: string }>) => { clearTimeout(timer); resolve(event.data) }
     worker.onerror = (event: ErrorEvent) => { clearTimeout(timer); resolve({ error: event.message }) }
-    worker.postMessage({ pattern: request.pattern, input: request.input })
+    worker.postMessage({ pattern: request.pattern, input: request.input, wanted: request.wanted })
   })
   void worker.terminate()
   if (answer === 'deadline') {
@@ -159,6 +167,8 @@ export function expectMatchArgv(): string[] {
 export interface MatchExpectOptions {
   /** The child is SIGKILLed at the deadline; the result is `expect-timeout`. */
   timeoutMs: number
+  /** The configured account; the answer says whether some match captured exactly it. */
+  wanted?: string
   /** Test seam — the real default re-enters this process's binary or script. */
   argv?: string[]
 }
@@ -166,9 +176,10 @@ export interface MatchExpectOptions {
 function summaryOf(text: string): ExpectSummary | null {
   const parsed: unknown = JSON.parse(text)
   if (typeof parsed !== 'object' || parsed === null) return null
-  const { matched, captures } = parsed as Record<string, unknown>
-  if (typeof matched !== 'number' || !Array.isArray(captures) || !captures.every((c) => typeof c === 'string')) return null
-  return { matched, captures: captures as string[] }
+  const { matched, captures, wantedFound } = parsed as Record<string, unknown>
+  if (typeof matched !== 'number' || typeof wantedFound !== 'boolean') return null
+  if (!Array.isArray(captures) || !captures.every((c) => typeof c === 'string')) return null
+  return { matched, captures: captures as string[], wantedFound }
 }
 
 /** Run one match in a killable child. Never throws: every failure is a reason. */
@@ -232,7 +243,7 @@ export function matchExpect(pattern: string, input: string, opts: MatchExpectOpt
     // A request the child never reads (it died first) surfaces as EPIPE here, not as a crash.
     child.stdin!.once('error', () => {})
     // The child's own deadline sits past ours: while the server lives, the kill above decides.
-    child.stdin!.end(JSON.stringify({ pattern, input, deadlineMs: opts.timeoutMs + 1_000 } satisfies ExpectMatchRequest))
+    child.stdin!.end(JSON.stringify({ pattern, input, deadlineMs: opts.timeoutMs + 1_000, ...(opts.wanted !== undefined ? { wanted: opts.wanted } : {}) } satisfies ExpectMatchRequest))
   })
 }
 

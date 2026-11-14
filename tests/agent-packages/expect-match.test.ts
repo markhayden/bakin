@@ -21,10 +21,19 @@ const CATASTROPHIC = 'a*a*a*a*a*a*a*a*b'
 
 describe('summarizeExpect (the child side)', () => {
   it('counts every match and keeps the distinct non-empty first captures in order; an unmatched or absent group captures nothing', () => {
-    expect(summarizeExpect('a(b)?', 'a ab ab', 256)).toEqual({ matched: 3, captures: ['b'] })
-    expect(summarizeExpect('zzz', 'a ab', 256)).toEqual({ matched: 0, captures: [] })
-    expect(summarizeExpect('ab', 'ab ab', 256)).toEqual({ matched: 2, captures: [] })
-    expect(summarizeExpect('(?:a)(b)|(?:c)', 'cab', 256)).toEqual({ matched: 2, captures: ['b'] })
+    expect(summarizeExpect('a(b)?', 'a ab ab', 256)).toEqual({ matched: 3, captures: ['b'], wantedFound: false })
+    expect(summarizeExpect('zzz', 'a ab', 256)).toEqual({ matched: 0, captures: [], wantedFound: false })
+    expect(summarizeExpect('ab', 'ab ab', 256)).toEqual({ matched: 2, captures: [], wantedFound: false })
+    expect(summarizeExpect('(?:a)(b)|(?:c)', 'cab', 256)).toEqual({ matched: 2, captures: ['b'], wantedFound: false })
+  })
+
+  it('the wanted account is decided over every match, exactly, past the display cap (Codex r6 B5)', () => {
+    const listing = Array.from({ length: 300 }, (_, i) => `u${i}@x`).join(' ')
+    expect(summarizeExpect('(u\\d+@x)', listing, 256, 'u299@x')).toMatchObject({ matched: 300, wantedFound: true })
+    expect(summarizeExpect('(u\\d+@x)', listing, 256, 'u299@x').captures).toHaveLength(256)
+    expect(summarizeExpect('(u\\d+@x)', listing, 256, 'u29@').wantedFound).toBe(false)
+    expect(summarizeExpect('(u\\d+@x)', listing, 256, '299@x').wantedFound).toBe(false)
+    expect(summarizeExpect('(u\\d+@x)', listing, 256).wantedFound).toBe(false)
   })
 
   it('a zero-width pattern terminates (matchAll advances past empty matches)', () => {
@@ -39,7 +48,9 @@ describe('summarizeExpect (the child side)', () => {
 
   it('the gog pattern keeps each account in its own object: an invalid first account never lends its email', () => {
     const out = '{"accounts":[{"email":"old@example.com","auth":"oauth","valid":false,"error":"revoked"},{"email":"new@example.com","auth":"oauth","valid":true}]}'
-    expect(summarizeExpect(GOG, out, 256)).toEqual({ matched: 1, captures: ['new@example.com'] })
+    expect(summarizeExpect(GOG, out, 256)).toEqual({ matched: 1, captures: ['new@example.com'], wantedFound: false })
+    expect(summarizeExpect(GOG, out, 256, 'old@example.com').wantedFound).toBe(false)
+    expect(summarizeExpect(GOG, out, 256, 'new@example.com').wantedFound).toBe(true)
   })
 })
 
@@ -53,7 +64,10 @@ describe('runExpectMatchChild (the protocol)', () => {
   it('answers one JSON document for one JSON request', async () => {
     const { code, out } = await run(JSON.stringify({ pattern: 'a(b)', input: 'ab ab', deadlineMs: 5_000 }))
     expect(code).toBe(0)
-    expect(JSON.parse(out)).toEqual({ matched: 2, captures: ['b'] })
+    expect(JSON.parse(out)).toEqual({ matched: 2, captures: ['b'], wantedFound: false })
+    const wanted = await run(JSON.stringify({ pattern: 'a(b)', input: 'ab ab', deadlineMs: 5_000, wanted: 'b' }))
+    expect(JSON.parse(wanted.out)).toEqual({ matched: 2, captures: ['b'], wantedFound: true })
+    expect((await run(JSON.stringify({ pattern: 'a', input: 'a', deadlineMs: 5_000, wanted: 7 }))).code).toBe(1)
   })
 
   it('a malformed request or a pattern that does not compile is exit 1 on stderr, never a throw', async () => {
@@ -77,13 +91,15 @@ describe('runExpectMatchChild (the protocol)', () => {
 describe('matchExpect (the killable child)', () => {
   it('matches through the real child and returns every match', async () => {
     const result = await matchExpect(GOG, '{"accounts":[{"email":"a@b","valid":false},{"email":"c@d","valid":true},{"email":"e@f","valid":true}]}', { timeoutMs: 10_000 })
-    expect(result).toEqual({ ok: true, summary: { matched: 2, captures: ['c@d', 'e@f'] } })
+    expect(result).toEqual({ ok: true, summary: { matched: 2, captures: ['c@d', 'e@f'], wantedFound: false } })
+    const found = await matchExpect(GOG, '{"accounts":[{"email":"c@d","valid":true}]}', { timeoutMs: 10_000, wanted: 'c@d' })
+    expect(found).toMatchObject({ ok: true, summary: { wantedFound: true } })
   })
 
   it('a large answer arrives whole — the child flushes stdout before it exits (Codex r5 B3)', async () => {
     // 2,049 matches with captures up to 2 KB: an unflushed child used to exit 0 mid-write.
     const result = await matchExpect('(?=(a*))', 'a'.repeat(2048), { timeoutMs: 10_000 })
-    expect(result).toEqual({ ok: true, summary: { matched: 2049, captures: Array.from({ length: EXPECT_MATCH_CAPTURE_LIMIT }, (_, i) => 'a'.repeat(2048 - i)) } })
+    expect(result).toEqual({ ok: true, summary: { matched: 2049, captures: Array.from({ length: EXPECT_MATCH_CAPTURE_LIMIT }, (_, i) => 'a'.repeat(2048 - i)), wantedFound: false } })
     expect(EXPECT_MATCH_ANSWER_CAP_BYTES).toBeGreaterThan(JSON.stringify(result).length)
   })
 

@@ -135,8 +135,11 @@ A capability pack is `kind: "skill-pack"` plus:
   the compiled binary it is the binary itself on the hidden
   `__bakin-expect-match` command (`dispatchExpectMatch` runs first in
   `dispatchCli`, stdin → stdout, one JSON document each way — the answer is
-  the bounded `{ matched, captures }` summary (match count + at most 256
-  distinct first captures), never the matches themselves, since a lookahead
+  the bounded `{ matched, captures, wantedFound }` summary (match count, at
+  most 256 distinct first captures for DISPLAY, and whether some match
+  captured exactly the configured account — decided by the child over every
+  match, so the 257th account is still a login), never the matches
+  themselves, since a lookahead
   pattern expands 16 KB of input into ~128 MB of whole matches; the child
   awaits the flush before it exits; the server reads at most 8 MB; the compiled
   teeth test `tests/integration/agent-packages/compiled-expect-match.test.ts`

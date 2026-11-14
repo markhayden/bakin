@@ -373,11 +373,12 @@ async function judgeStdout(entry: LoginRequirement, stdout: string, timeoutMs: n
     const firstLine = stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
     return { status: 'ok', ...((wanted ?? firstLine) ? { account: wanted ?? firstLine } : {}) }
   }
-  const matched = await matchExpect(entry.expect, stdout, { timeoutMs })
+  const matched = await matchExpect(entry.expect, stdout, { timeoutMs, ...(wanted ? { wanted } : {}) })
   if (!matched.ok) return { status: 'unknown', reason: matched.reason, detail: matched.detail }
-  const { matched: count, captures: accounts } = matched.summary
+  const { matched: count, captures: accounts, wantedFound } = matched.summary
   if (count === 0) return { status: 'missing', reason: 'no-match' }
-  if (wanted) return accounts.includes(wanted) ? { status: 'ok', account: wanted } : { status: 'missing', reason: 'account-mismatch' }
+  // Membership is the child's verdict over EVERY match — the capped list is for display.
+  if (wanted) return wantedFound ? { status: 'ok', account: wanted } : { status: 'missing', reason: 'account-mismatch' }
   return { status: 'ok', ...(accounts[0] ? { account: accounts[0] } : {}) }
 }
 

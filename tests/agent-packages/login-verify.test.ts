@@ -234,6 +234,19 @@ describe('verifyLogin — expected output (tools whose auth listing exits 0 when
     }
   })
 
+  it('the configured account past the 256th distinct capture is still a login (Codex r6 B5: membership is not the display list)', async () => {
+    process.env.MY_ACCOUNT = 'u256@example.com'
+    try {
+      const listing = JSON.stringify({ accounts: Array.from({ length: 257 }, (_, i) => ({ email: `u${i}@example.com`, valid: true })) })
+      const sha = script(binDir, 'manyprobe', `cat <<'JSON'\n${listing}\nJSON\nexit 0`)
+      const receipt = await verifyLogin({ manifest: binManifest('manyprobe', sha, {}, { expect: EXPECT, accountEnv: 'MY_ACCOUNT' }) })
+      expect(receipt.status).toBe('ok')
+      expect(receipt.account).toBe('u256@example.com')
+    } finally {
+      delete process.env.MY_ACCOUNT
+    }
+  })
+
   it('without accountEnv the account shown is the first valid capture', async () => {
     const sha = script(binDir, 'firstvalidprobe', 'echo \'{"accounts":[{"email":"old@example.com","valid":false},{"email":"new@example.com","valid":true}]}\'; exit 0')
     const receipt = await verifyLogin({ manifest: binManifest('firstvalidprobe', sha, {}, { expect: EXPECT }) })
