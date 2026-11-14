@@ -1,6 +1,10 @@
 # Spec: Home and the first-run experience
 
-Status: **approved for planning (2026-11-13).** Supersedes the seed
+Status: **built (2026-11-14)**; see the plan's status and
+`.claude/knowledge/home.md` for what shipped, which departs from this spec
+where the design pass changed it (for example: no skip on a first run, the
+tour is illustrated, page introductions are floating callouts). Approved for
+planning 2026-11-13. Supersedes the seed
 `onboarding-ui-wizard.md` (deleted): the interview moved away from a second
 setup wizard. Mockup of the direction (not the design):
 https://claude.ai/artifact/TjNWn1kMdySSHaFdMPZGqt
