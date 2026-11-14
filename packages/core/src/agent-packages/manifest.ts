@@ -114,11 +114,17 @@ const PrereqRequirementSchema = z
     name: z.string().min(1),
     kind: z.enum(['binary', 'app']),
     /** binary: a PATH lookup name. app: an absolute path that must exist. */
-    probe: z.string().min(1),
+    probe: z.string().min(1).max(4096),
     /** Where the user gets it — readiness remediation links here. */
     help: z.string().url(),
     /** Optional prereqs surface as a leg but never block readiness (default false). */
     optional: z.boolean().default(false),
+  })
+  // A PATH lookup name is one path component: NAME_MAX is 255 everywhere Bakin
+  // runs, and `Bun.which` throws past ~1 KB instead of answering null (Codex r8 B7).
+  .refine((p) => p.kind !== 'binary' || (p.probe.length <= 255 && !p.probe.includes('/')), {
+    message: 'a binary prereq probe is a bare PATH lookup name of at most 255 characters',
+    path: ['probe'],
   })
   .refine((p) => (p.kind === 'app' ? p.probe.startsWith('/') : !p.probe.includes('/')), {
     message: 'app probes must be absolute paths; binary probes must be bare PATH names',

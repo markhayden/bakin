@@ -361,6 +361,15 @@ describe('receipt staleness', () => {
   })
 })
 
+describe('verifyLogin — a binary the lookup cannot even try (Codex r8 B7)', () => {
+  it('a 1 KB probe name is unknown/binary-missing, never a throw out of the verifier', async () => {
+    const receipt = await verifyLogin({ manifest: prereqManifest('x'.repeat(1024)) })
+    expect(receipt.status).toBe('unknown')
+    expect(receipt.reason).toBe('binary-missing')
+    expect(receipt.binaryPath).toBeNull()
+  })
+})
+
 describe('installed packs — list and filtered re-check', () => {
   function seedInstalled(id: string, version: string, manifest: Record<string, unknown>, lock: Record<string, unknown>): void {
     const dir = join(testDir, 'packages', 'skill-packs', `${id}@${version}`)
@@ -407,6 +416,15 @@ describe('installed packs — list and filtered re-check', () => {
     const bySlot = await verifyInstalledPackLogins({ secretSlot: 'skills.alpha.ALPHA_TOKEN' })
     expect(bySlot.map((r) => r.packId)).toEqual(['alpha'])
     expect(await verifyInstalledPackLogins({ secretSlot: 'skills.nobody.X' })).toEqual([])
+
+    // A pack whose binary cannot even be looked up, seeded FIRST, never costs the healthy pack its check (Codex r8 B7).
+    const poisoned: Record<string, unknown> = {}
+    seedInstalled('aaa-broken', '1.0.0', loginPack('aaa-broken', 'x'.repeat(1024)), poisoned)
+    seedInstalled('alpha', '1.0.0', loginPack('alpha', 'alphaprobe'), poisoned)
+    writeLock(poisoned)
+    const contained = await verifyInstalledPackLogins()
+    expect(contained.map((r) => [r.packId, r.receipt.status])).toContainEqual(['alpha', 'ok'])
+    writeLock(lock)
 
     // Fresh receipts exist for both now: onlyIfStale re-checks neither.
     expect(await verifyInstalledPackLogins({ onlyIfStale: true })).toEqual([])

@@ -103,8 +103,12 @@ A capability pack is `kind: "skill-pack"` plus:
   whether the operator has logged the pack's tool into its provider
   (`gog auth list --check`, `gh auth status`). `probe[0]` MUST be a bare
   binary this pack declares — `bins[].name` or a binary `prereqs[].probe`
-  (a prereq's display `name` never binds); the manifest refuses anything
-  else. Each entry's `name` slugs to its receipt key (`loginEntryKey`, owned
+  (a prereq's display `name` never binds; a binary probe is a bare PATH
+  name of at most 255 characters — `Bun.which` THROWS past ~1 KB rather
+  than answering null, so the verifier, the readiness prereq scan and the
+  installed-pack batch each contain a lookup failure as "not found" for
+  that pack alone, never a crash that costs every other pack its answer;
+  Codex r8 B7); the manifest refuses anything else. Each entry's `name` slugs to its receipt key (`loginEntryKey`, owned
   by the manifest module: `Google account (gog)` → `google-account-gog`) and
   two entries of one pack may not share a key — the schema refuses the
   collision, since the second receipt would overwrite the first and leave

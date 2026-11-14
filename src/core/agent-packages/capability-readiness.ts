@@ -246,9 +246,13 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     for (const req of manifest.requires?.prereqs ?? []) {
       // The repo's hand-rolled Bun namespace omits `which` — cast (findSystemBun precedent).
       const bunWhich = (Bun as unknown as { which: (bin: string) => string | null }).which
-      const present = req.kind === 'binary'
-        ? Boolean(bunWhich(req.probe))
-        : existsSync(req.probe)
+      let present = false
+      try {
+        present = req.kind === 'binary' ? Boolean(bunWhich(req.probe)) : existsSync(req.probe)
+      } catch (err) {
+        // A name the lookup cannot even try (`Bun.which` throws past ~1 KB) is absent, never a 500 for every pack.
+        log.warn('prereq lookup failed', { packId: id, prereq: req.name, error: err instanceof Error ? err.message : String(err) })
+      }
       prereqs.push({ name: req.name, kind: req.kind, help: req.help, optional: req.optional, status: present ? 'ok' : 'missing' })
       // Prereqs are user-installed, never Bakin-installed — remediation is the
       // help link. Optional prereqs surface as a leg but never block ready.

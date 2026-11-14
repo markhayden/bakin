@@ -155,7 +155,14 @@ function resolveProbe(manifest: SkillPackManifest, entry: LoginRequirement): Res
   }
   // The repo's hand-rolled Bun namespace omits `which` — cast (readiness precedent).
   // PATH is passed explicitly so a server-boot change (~/.bakin/bin prepended) is honoured.
-  const found = (Bun as unknown as { which: (bin: string, opts?: { PATH?: string }) => string | null }).which(name, { PATH: process.env.PATH ?? '' })
+  let found: string | null
+  try {
+    found = (Bun as unknown as { which: (bin: string, opts?: { PATH?: string }) => string | null }).which(name, { PATH: process.env.PATH ?? '' })
+  } catch (err) {
+    // `Bun.which` throws on a name it cannot even look up (past ~1 KB): not located, never a crash (Codex r8 B7).
+    log.warn('login probe binary lookup failed', { packId: manifest.id, name: name.slice(0, 80), error: err instanceof Error ? err.message : String(err) })
+    found = null
+  }
   if (!found) return { ok: false, reason: 'binary-missing', path: null }
   const identity = statIdentity(found)
   return identity ? { ok: true, path: found, identity } : { ok: false, reason: 'binary-missing', path: found }
@@ -444,11 +451,16 @@ export async function verifyInstalledPackLogins(filter: VerifyInstalledFilter = 
     if (filter.packId && filter.packId !== pack.id && filter.packId !== pack.key) continue
     if (filter.secretSlot && !(pack.manifest.secrets ?? []).some((secret) => secret.secretSlot === filter.secretSlot)) continue
     for (const entry of pack.manifest.requires!.login!) {
-      if (filter.onlyIfStale) {
-        const receipt = readLoginReceipt(pack.id, entry.name)
-        if (receipt && !isReceiptStale(receipt, currentLoginInputs(pack.manifest, entry), entry.probe)) continue
+      // One pack's failure to even start its check never costs the others theirs (Codex r8 B7).
+      try {
+        if (filter.onlyIfStale) {
+          const receipt = readLoginReceipt(pack.id, entry.name)
+          if (receipt && !isReceiptStale(receipt, currentLoginInputs(pack.manifest, entry), entry.probe)) continue
+        }
+        results.push({ packId: pack.id, key: pack.key, entry, receipt: await verifyLogin({ manifest: pack.manifest, entry, packId: pack.id }) })
+      } catch (err) {
+        log.error('login check could not run for an installed pack', err, { packId: pack.id, entry: entry.name })
       }
-      results.push({ packId: pack.id, key: pack.key, entry, receipt: await verifyLogin({ manifest: pack.manifest, entry, packId: pack.id }) })
     }
   }
   return results

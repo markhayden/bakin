@@ -586,6 +586,16 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
     if (!broken.success) expect(broken.error.issues.map((i) => i.message)).toContain('login expect must be a valid regular expression')
   })
 
+  it('a binary prereq probe is a bare PATH name of at most 255 characters; an app probe is a path (Codex r8 B7)', () => {
+    const long = { name: 'long', kind: 'binary', probe: 'x'.repeat(256), help: 'https://x.dev' }
+    const refused = safeParseManifest(skillPackWith({ prereqs: [long] }))
+    expect(refused.success).toBe(false)
+    if (!refused.success) expect(refused.error.issues.map((i) => i.path.join('.'))).toContain('requires.prereqs.0.probe')
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ ...long, probe: '/usr/local/bin/gh' }] })).success).toBe(false)
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ ...long, probe: 'x'.repeat(255) }] })).success).toBe(true)
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ name: 'app', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }] })).success).toBe(true)
+  })
+
   it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {
     const prereq = { name: 'echo', kind: 'binary', probe: 'echo', help: 'https://x.dev' }
     expect(loginEntryKey('Work account')).toBe('work-account')
