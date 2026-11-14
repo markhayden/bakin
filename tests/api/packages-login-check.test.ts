@@ -19,7 +19,7 @@ mock.module('@bakin/core/content-dir', () => ({ getContentDir: () => testDir, ge
 mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...p: string[]) => join(testDir, 'openclaw', ...p), resetOpenClawHome: () => {} }))
 mock.module('@/core/logger', () => ({ createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) }))
 
-import { handler } from '../../packages/host/src/api/packages/dynamic'
+import { post as loginCheck } from '../../packages/host/src/api/packages/login-check'
 
 const pathDir = join(testDir, 'onpath')
 const originalPath = process.env.PATH
@@ -50,8 +50,8 @@ function seed(): void {
 }
 
 const post = (id: string) => {
-  const url = new URL(`http://localhost/api/packages/${encodeURIComponent(id)}/login-check`)
-  return handler(new Request(url, { method: 'POST' }), url)
+  const url = new URL('http://localhost/api/packages/login-check')
+  return loginCheck(new Request(url, { method: 'POST', body: JSON.stringify({ packageId: id }), headers: { 'content-type': 'application/json' } }), url)
 }
 
 beforeAll(seed)
@@ -60,7 +60,12 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('POST /api/packages/{id}/login-check', () => {
+describe('POST /api/packages/login-check', () => {
+  it('400 without a packageId', async () => {
+    const url = new URL('http://localhost/api/packages/login-check')
+    expect((await loginCheck(new Request(url, { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } }), url)).status).toBe(400)
+  })
+
   it('404 for a pack that is not installed', async () => {
     expect((await post('nope@1.0.0')).status).toBe(404)
   })

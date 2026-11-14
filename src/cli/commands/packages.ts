@@ -254,7 +254,7 @@ interface LoginCheckReceiptRow { name: string; setup: string; status: 'ok' | 'mi
 
 /** `bakin packages login-check <id>` — run the pack's login probe now and say what it found. */
 async function cmdPackagesLoginCheck(id: string, flags: AgentsCmdFlags): Promise<void> {
-  const body = await apiPost(`/api/packages/${encodeURIComponent(id)}/login-check`, {}) as { ok: boolean; error?: string; receipts?: LoginCheckReceiptRow[] }
+  const body = await apiPost('/api/packages/login-check', { packageId: id }) as { ok: boolean; error?: string; receipts?: LoginCheckReceiptRow[] }
   if (flags.json) {
     print(body)
     if (!body.ok || (body.receipts ?? []).some((r) => r.status !== 'ok')) process.exit(1)

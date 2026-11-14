@@ -31,8 +31,9 @@ describe('bakin packages login-check', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, packId: 'github', key: 'github@1.1.0', receipts: [receipt({ account: 'markhayden' })] }))
     await run('packages', 'login-check', 'github')
     const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/login-check'))!
-    expect(new URL(String(call[0])).pathname).toBe('/api/packages/github/login-check')
+    expect(new URL(String(call[0])).pathname).toBe('/api/packages/login-check')
     expect((call[1] as RequestInit).method).toBe('POST')
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ packageId: 'github' })
     expect(output()).toContain('✓ GitHub account (gh): logged in as markhayden')
   })
 
