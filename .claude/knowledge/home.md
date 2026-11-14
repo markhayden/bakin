@@ -141,8 +141,10 @@ instead of a `PageHeader` (an approved departure, see UI below).
   it was opened (tasks have no "last opened", so their last change counts).
 - **Reading activity:** `lib/client/activity.ts` reads Tasks, Chat,
   Schedule and Projects through their own HTTP routes from the browser and
-  reduces them with the pure `summarizeActivity`. It reads on every visit
-  and again when a chat turn finishes. Nothing below the prompt is drawn
+  reduces them with the pure `summarizeActivity`. It reads on every visit,
+  and again when a chat turn finishes (`chat.done`) or anything on the board changes (the
+  shell's `taskboard` event); changes that arrive together are read once, 750ms after the
+  last (`REFRESH_SETTLE_MS`). Nothing below the prompt is drawn
   until the first read lands, so a returning person never sees the
   starters flash.
 
