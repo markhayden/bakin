@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+Bakin now opens on Home: a first run that introduces your agent, a tour of the place, and a page that keeps up with your work.
+
+### Added
+- **Home (#1072–#1079).** Bakin opens on `/`, first in the sidebar. A new home starts with a short welcome: three questions in your agent's voice (its name, its personality, what to call you) on their own focused screen. After that comes a first day with a few things to ask for. Once there is work, the everyday Home greets you by name and shows Tasks, Projects, Scheduled tasks and Team at a glance, plus your five most recent things. A page that can't answer says so instead of showing a zero.
+- **Sign-in help on Home (#1074).** When no provider is logged in, Home shows the active runtime's own sign-in steps and command, ready to open in a terminal. Bakin never handles the secret.
+- **Suggestions and Make Bakin Yours (#1075, #1076).** Home suggests what to add next, from what this home is actually missing: three at a time, and "Not now" hides one for thirty days. The sidebar card counts them and links to the list.
+- **A tour (#1077).** An illustrated walk through each area of Bakin, offered from Home and never opened on its own.
+- **First-visit introductions (#1078).** The first time you open an area's front page, a short callout says what it's for. It's only shown to people who went through Home's welcome.
+- **`bakin start` shows where Bakin is and opens it (#1080).** At a terminal, the startup prints the local address and, on Tailscale, the address for your other devices. It also opens your browser, but never for `bakin serve`, over SSH, in CI, or on a machine with no screen. Turn it off with `--no-open` or `BAKIN_NO_OPEN=1`.
+- **Agents can change their own avatar** with `bakin_exec_team_set_avatar`, and a new avatar shows up everywhere without a reload.
+
+### Changed
+- **Home follows the board (#1082).** Area cards and recent activity update as tasks move, even while you sit on Home. A burst of changes is read once.
+
+### Fixed
+- **An avatar you chose survives `bakin agents sync` (#1081).** Agents installed from a package could get the package's avatar back on the next sync. `bakin agents sync <agent> --reclaim avatar.png` still restores the package's.
+
 ## [0.0.1-rc.48] - 2026-11-13
 
 A clean first run now finishes clean, the update banner shows on page load again, and search can be uninstalled.
