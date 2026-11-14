@@ -162,7 +162,7 @@ export function CapabilityStatusReport({ cap, color = true, showBrand = false }:
           rows={rows}
           columns={[
             { key: 'leg', header: 'LEG', width: 8, render: row => row.leg },
-            { key: 'name', header: 'NAME', width: 28, render: row => row.name },
+            { key: 'name', header: 'NAME', width: 32, render: row => row.name },
             { key: 'detail', header: 'DETAIL', width: 40, grow: true, render: row => row.detail },
           ]}
           color={color}
