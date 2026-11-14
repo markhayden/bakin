@@ -15,10 +15,10 @@ function cli(def: Omit<CliDef, 'kind' | 'visibility' | 'stability'> & Partial<Pi
 export const CLI_COMMANDS = [
   cli({
     name: 'start',
-    usage: 'bakin start',
+    usage: 'bakin start [--no-open]',
     group: 'Lifecycle',
     summary: 'Start the Bakin server.',
-    description: 'Starts the Bakin HTTP server and dashboard. This is the default command when the compiled binary is launched without arguments.',
+    description: 'Starts the Bakin HTTP server and dashboard. Once it is listening, a box shows the local and network addresses, and the dashboard opens in your browser when you are at a terminal on a machine with a screen: never over SSH, in CI, in a pipe, or as a service (`bakin serve`). `--no-open` (or BAKIN_NO_OPEN=1) keeps the browser closed.',
     examples: [{ title: 'Start Bakin', code: 'bakin start', test: 'illustrative', reason: 'Starts a long-running server process.' }],
   }),
   cli({

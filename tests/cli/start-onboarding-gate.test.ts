@@ -50,25 +50,26 @@ describe('CLI start onboarding gate', () => {
     onboarded = true
     const { dispatchCli } = await import('../../src/core/cli')
 
-    await expect(dispatchCli(['node', 'bakin', 'start'])).resolves.toEqual({ startServer: true, exitCode: 0 })
+    await expect(dispatchCli(['node', 'bakin', 'start'])).resolves.toEqual({ startServer: true, exitCode: 0, interactiveStart: true })
   })
 
   it('allows explicit onboarding gate bypass for development', async () => {
     const { dispatchCli } = await import('../../src/core/cli')
 
-    await expect(dispatchCli(['node', 'bakin', 'start', '--skip-onboarding-check'])).resolves.toEqual({ startServer: true, exitCode: 0 })
+    await expect(dispatchCli(['node', 'bakin', 'start', '--skip-onboarding-check'])).resolves.toEqual({ startServer: true, exitCode: 0, interactiveStart: true })
   })
 
   it('allows env-based onboarding gate bypass for development', async () => {
     process.env.BAKIN_SKIP_ONBOARDING_CHECK = '1'
     const { dispatchCli } = await import('../../src/core/cli')
 
-    await expect(dispatchCli(['node', 'bakin', 'start'])).resolves.toEqual({ startServer: true, exitCode: 0 })
+    await expect(dispatchCli(['node', 'bakin', 'start'])).resolves.toEqual({ startServer: true, exitCode: 0, interactiveStart: true })
   })
 
   it('allows serve without the human onboarding gate for service managers', async () => {
     const { dispatchCli } = await import('../../src/core/cli')
 
+    // A service runs `serve`: it never counts as a person starting Bakin, so it never opens a browser.
     await expect(dispatchCli(['node', 'bakin', 'serve'])).resolves.toEqual({ startServer: true, exitCode: 0 })
   })
 })
