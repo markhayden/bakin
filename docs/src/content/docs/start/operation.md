@@ -9,7 +9,15 @@ description: Start, stop, watch, update, and keep your Bakin instance healthy.
 bakin start
 ```
 
-Once it's running, open **[http://localhost:3737](http://localhost:3737)**. That's Bakin basecamp.
+Once it's running, Bakin prints its address in a box, local and (when you're on a Tailscale network) the address other devices can use, and opens **[http://localhost:3737](http://localhost:3737)** in your browser. That's Bakin basecamp.
+
+The browser only opens when you run `bakin start` yourself at a terminal on a machine with a screen. It never opens over SSH, in CI, when the output goes to a file, or when Bakin runs as a service. To keep it closed:
+
+```sh
+bakin start --no-open
+```
+
+Or set `BAKIN_NO_OPEN=1`.
 
 Want it always running? Set Bakin up to [run as a service](#run-as-a-service-macos).
 

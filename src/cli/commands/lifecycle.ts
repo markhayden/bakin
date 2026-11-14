@@ -30,7 +30,8 @@ async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): 
   const child = spawn(launch.programArgs[0], launch.programArgs.slice(1), {
     cwd: launch.workingDir,
     stdio: 'inherit',
-    env: { ...process.env },
+    // The server runs as `serve`; it is told that a person started it, so it may open the browser.
+    env: { ...process.env, ...(command === 'start' ? { BAKIN_INTERACTIVE_START: '1' } : {}), ...(args.includes('--no-open') ? { BAKIN_NO_OPEN: '1' } : {}) },
   })
   const exitCode = await new Promise<number>((resolvePromise) => {
     child.once('close', (code: number | null) => resolvePromise(code ?? 0))

@@ -27,6 +27,7 @@ registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
 import { createLogger } from './src/core/logger'
 import { findCgnatIPv4 } from './src/core/network-address'
+import { announceReady } from './src/core/startup-announce'
 import { getContentDir, getBakinPaths } from './src/core/content-dir'
 import { broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
@@ -65,12 +66,14 @@ const log = createLogger('server')
 // `plugins ...`, `update`, `--help`) before touching the filesystem.
 // Only `start` (the default) continues past this point. See
 // src/core/cli.ts for the command table.
-{
-  const cliResult = await dispatchCli(process.argv)
-  if (!cliResult.startServer) {
-    process.exit(cliResult.exitCode)
-  }
+const cliResult = await dispatchCli(process.argv)
+if (!cliResult.startServer) {
+  process.exit(cliResult.exitCode)
 }
+// Read once and cleared: a restart child, or a shell an agent runs, inherits this
+// process's environment, and neither should open another browser tab.
+const interactiveStart = cliResult.interactiveStart === true || process.env.BAKIN_INTERACTIVE_START === '1'
+delete process.env.BAKIN_INTERACTIVE_START
 
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
@@ -295,6 +298,13 @@ const eventBus = new BakinEventBus(broadcast)
     log.info(`Bakin ready on http://localhost:${port}`)
     const networkAddress = findCgnatIPv4(networkInterfaces())
     log.info(`Listening on 0.0.0.0:${port}${networkAddress ? ` (network: http://${networkAddress}:${port})` : ''}`)
+    announceReady(`http://localhost:${port}`, networkAddress ? `http://${networkAddress}:${port}` : null, {
+      interactiveStart,
+      noOpen: process.argv.includes('--no-open'),
+      isTTY: process.stdout.isTTY === true,
+      platform: process.platform,
+      env: process.env,
+    })
     if (process.env.BAKIN_DEV === '1') {
       const logPath = join(getBakinPaths().logs, 'server.log')
       log.info(`Full logs: ${logPath}`, { path: logPath })

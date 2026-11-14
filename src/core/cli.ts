@@ -292,6 +292,8 @@ export interface CliResult {
   startServer: boolean
   /** Exit code for one-shot commands. Ignored when startServer is true. */
   exitCode: number
+  /** A person ran `bakin start` at this process (not `serve`, not a restart child). */
+  interactiveStart?: boolean
 }
 
 class DelegatedCliExit extends Error {
@@ -349,7 +351,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
   if (cmd === 'start') {
     const gateExitCode = await checkOnboardedBeforeStart(args)
     if (gateExitCode !== null) return { startServer: false, exitCode: gateExitCode }
-    return { startServer: true, exitCode: 0 }
+    return { startServer: true, exitCode: 0, interactiveStart: true }
   }
 
   if (cmd === 'serve') {
