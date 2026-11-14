@@ -438,6 +438,42 @@ describe('CapabilitiesTab', () => {
     expect(table.getByText('Add the key in Settings').closest('a')?.getAttribute('href')).toBe('/settings?tab=integrations')
   })
 
+  it('a login leg that is missing shows as a leg and a Check login button that posts the shared control, then re-reads (provider-integrations §4.1)', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    let reads = 0
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      if (url.endsWith('/api/packages/login-check')) {
+        return new Response(JSON.stringify({ ok: true, packId: 'google-workspace', key: 'google-workspace@2.0.0', receipts: [{ name: 'Google account (gog)', setup: 'gog auth setup', status: 'ok', account: 'mark@org.example', checkedAt: 'now' }] }), { status: 200 })
+      }
+      reads += 1
+      return new Response(JSON.stringify({
+        capabilities: [{
+          capability: 'google-workspace', packageId: 'google-workspace', version: '2.0.0', name: 'Google Workspace', description: 'Gmail, Calendar, Drive.',
+          skills: [{ name: 'google-workspace', status: 'ok' }], bins: [{ name: 'gog', status: 'ok' }], npm: [], models: [], prereqs: [],
+          login: [{ name: 'Google account (gog)', setup: 'gog auth setup you@example.com --login', help: 'https://gogcli.sh', status: reads > 1 ? 'ok' : 'missing', reason: reads > 1 ? undefined : 'exit' }],
+          secrets: [], platformSupported: true, ready: reads > 1, missing: reads > 1 ? [] : ['Google account (gog): not logged in — run: gog auth setup you@example.com --login'],
+        }],
+      }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    await act(async () => { render(<CapabilitiesTab />) })
+    const table = within(await screen.findByRole('table', { name: 'Installed capabilities' }))
+    expect(table.getByText('Google account (gog) not logged in')).toBeTruthy()
+    expect(table.getByText(/run: gog auth setup you@example.com --login/)).toBeTruthy()
+    const button = table.getByRole('button', { name: 'Check login' })
+    await act(async () => { fireEvent.click(button) })
+    const post = calls.find((c) => c.url.endsWith('/api/packages/login-check'))!
+    expect(post.init?.method).toBe('POST')
+    expect(JSON.parse(String(post.init?.body))).toEqual({ packageId: 'google-workspace' })
+    await waitFor(() => expect(reads).toBeGreaterThan(1))
+    // The re-read shows the fresh receipt: the row is ready, the action is gone.
+    // The table renders a wide and a narrow layout — match all, never one.
+    await waitFor(() => expect(screen.getAllByText('All requirements ready').length).toBeGreaterThan(0))
+    expect(screen.queryByRole('button', { name: 'Check login' })).toBeNull()
+  })
+
   it('empty state invites the user to Explore', async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({ capabilities: [] }), { status: 200 })) as unknown as typeof fetch
     await act(async () => { render(<CapabilitiesTab />) })
