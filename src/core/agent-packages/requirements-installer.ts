@@ -318,7 +318,7 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
   for (const req of logins) {
     const item = { id: loginItemId(req.name), label: `${req.name} (login check)` }
     target?.op.item(target.stageId, { ...item, status: 'active' })
-    const receipt = await verifyLogin({ manifest, entry: req })
+    const receipt = await verifyLogin({ manifest, entry: req, packId })
     target?.op.item(target.stageId, { ...item, status: 'done', message: describeLoginReceipt(receipt, req) })
   }
 }

@@ -298,10 +298,10 @@ describe('listCapabilities — login leg (provider-integrations §4.1)', () => {
     const receipt: LoginReceipt = {
       ...currentLoginInputs(manifest),
       status: 'ok', checkedAt: '2026-11-13T10:00:00.000Z', probe: ['gogprobe', 'auth', 'list', '--check'], exitCode: 0,
-      binaryPath: join(testDir, 'bin', 'gogprobe'), account: 'mark@org.example', output: 'mark@org.example', ...over,
+      account: 'mark@org.example', output: 'mark@org.example', ...over,
     }
-    mkdirSync(join(loginReceiptPath('gw'), '..'), { recursive: true })
-    writeFileSync(loginReceiptPath('gw'), JSON.stringify(receipt))
+    mkdirSync(join(loginReceiptPath('gw', 'Google account (gog)'), '..'), { recursive: true })
+    writeFileSync(loginReceiptPath('gw', 'Google account (gog)'), JSON.stringify(receipt))
   }
 
   it('never checked → unknown, not ready, and the readiness read spawns nothing', async () => {

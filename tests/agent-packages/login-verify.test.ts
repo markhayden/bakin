@@ -119,11 +119,12 @@ describe('verifyLogin — bin route', () => {
     const sha = script(binDir, 'okprobe', 'echo "me@example.com"; exit 0')
     const receipt = await verifyLogin({ manifest: binManifest('okprobe', sha) })
     expect(receipt.status).toBe('ok')
-    expect(receipt.binarySha256).toBe(sha)
+    expect(receipt.binaryIdentity).toBe(`sha256:${sha}`)
+    expect(receipt.binaryPath).toBe(join(binDir, 'okprobe'))
     expect(receipt.exitCode).toBe(0)
     expect(receipt.account).toBe('me@example.com')
-    expect(existsSync(loginReceiptPath('gw'))).toBe(true)
-    expect(readLoginReceipt('gw')).toEqual(receipt)
+    expect(existsSync(loginReceiptPath('gw', 'Google account'))).toBe(true)
+    expect(readLoginReceipt('gw', 'Google account')).toEqual(receipt)
   })
 
   it('non-zero exit is missing with reason exit', async () => {
@@ -215,7 +216,8 @@ describe('receipt staleness', () => {
     const current = currentLoginInputs(manifest)
     expect(isReceiptStale(receipt, current)).toBe(false)
     expect(isReceiptStale(receipt, { ...current, packVersion: '2.0.1' })).toBe(true)
-    expect(isReceiptStale(receipt, { ...current, binarySha256: 'c'.repeat(64) })).toBe(true)
+    expect(isReceiptStale(receipt, { ...current, binaryIdentity: `sha256:${'c'.repeat(64)}` })).toBe(true)
+    expect(isReceiptStale(receipt, current, ['staleprobe', 'auth', 'status'])).toBe(true) // the probe itself changed
     process.env.MY_ACCOUNT = 'changed@example'
     expect(isReceiptStale(receipt, currentLoginInputs(manifest))).toBe(true)
     delete process.env.MY_ACCOUNT
@@ -226,16 +228,27 @@ describe('receipt staleness', () => {
   })
 
   it('readLoginReceipt is null when nothing was ever checked', () => {
-    expect(readLoginReceipt('never-checked')).toBeNull()
+    expect(readLoginReceipt('never-checked', 'x')).toBeNull()
   })
 
   it('a receipt that is not JSON reads as null, never as a status', () => {
-    const path = loginReceiptPath('garbage')
+    const path = loginReceiptPath('garbage', 'Some Login')
+    expect(path.endsWith(join('garbage', 'some-login.json'))).toBe(true)
     mkdirSync(join(path, '..'), { recursive: true })
     writeFileSync(path, '{not json')
-    expect(readLoginReceipt('garbage')).toBeNull()
-    const typed: LoginReceipt | null = readLoginReceipt('garbage')
+    expect(readLoginReceipt('garbage', 'Some Login')).toBeNull()
+    const typed: LoginReceipt | null = readLoginReceipt('garbage', 'Some Login')
     expect(typed).toBeNull()
+  })
+
+  it('a replaced PATH binary makes the receipt stale (size/mtime identity)', async () => {
+    script(pathDir, 'swapprobe', 'exit 0')
+    const manifest = prereqManifest('swapprobe')
+    const receipt = await verifyLogin({ manifest })
+    expect(receipt.binaryIdentity).toMatch(/^stat:\d+:\d+$/)
+    expect(isReceiptStale(receipt, currentLoginInputs(manifest))).toBe(false)
+    script(pathDir, 'swapprobe', 'echo replaced-with-a-longer-body; exit 0')
+    expect(isReceiptStale(receipt, currentLoginInputs(manifest))).toBe(true)
   })
 })
 
@@ -288,7 +301,73 @@ describe('installed packs — list and filtered re-check', () => {
 
     // Fresh receipts exist for both now: onlyIfStale re-checks neither.
     expect(await verifyInstalledPackLogins({ onlyIfStale: true })).toEqual([])
-    rmSync(loginReceiptPath('beta'), { force: true })
+    rmSync(loginReceiptPath('beta', 'beta account'), { force: true })
     expect((await verifyInstalledPackLogins({ onlyIfStale: true })).map((r) => r.packId)).toEqual(['beta'])
+  })
+})
+
+describe('verifyLogin — review hardening (Codex PR1 r1)', () => {
+  it('two login entries on one pack never share a verdict', async () => {
+    const okSha = script(binDir, 'twoprobe', 'exit 0')
+    const platform = binPlatformKey()!
+    const manifest = {
+      id: 'two', kind: 'skill-pack', name: 'two', version: '1.0.0', capability: 'two', runtimes: ['*'], contributions: { skills: ['skills/x'] },
+      requires: {
+        bins: [{ name: 'twoprobe', version: '1.0.0', install: { [platform]: { url: 'https://example.test/two', sha256: okSha } } }],
+        login: [
+          { name: 'First account', probe: ['twoprobe', 'first'], setup: 'first login', help: 'https://x.dev', accountEnv: 'TWO_FIRST' },
+          { name: 'Second account', probe: ['twoprobe', 'second'], setup: 'second login', help: 'https://x.dev' },
+        ],
+      },
+    } as unknown as SkillPackManifest
+    process.env.TWO_FIRST = 'nobody-prints-this'
+    try {
+      const first = await verifyLogin({ manifest, entry: manifest.requires!.login![0] })
+      const second = await verifyLogin({ manifest, entry: manifest.requires!.login![1] })
+      expect(first.status).toBe('missing')
+      expect(second.status).toBe('ok')
+      expect(readLoginReceipt('two', 'First account')?.status).toBe('missing')
+      expect(readLoginReceipt('two', 'Second account')?.status).toBe('ok')
+    } finally {
+      delete process.env.TWO_FIRST
+    }
+  })
+
+  it('the account must appear on STDOUT — a stderr diagnostic naming it is not a login', async () => {
+    process.env.MY_ACCOUNT = 'mark@org.example'
+    const sha = script(binDir, 'stderrprobe', 'echo "someone@else.example"; echo "hint: mark@org.example" >&2; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('stderrprobe', sha, {}, { accountEnv: 'MY_ACCOUNT' }) })
+    expect(receipt.status).toBe('missing')
+    expect(receipt.reason).toBe('account-mismatch')
+  })
+
+  it('a probe ended by a signal we did not send is unknown (killed), not missing', async () => {
+    const sha = script(binDir, 'sigprobe', 'kill -TERM $$')
+    const receipt = await verifyLogin({ manifest: binManifest('sigprobe', sha) })
+    expect(receipt.status).toBe('unknown')
+    expect(receipt.reason).toBe('killed')
+  })
+
+  it('one 16 KB byte budget covers both streams, multibyte included', async () => {
+    const sha = script(binDir, 'utfprobe', 'yes "€" | head -c 24000 | tr -d "\\n"; yes "€" | head -c 24000 | tr -d "\\n" >&2; exit 0')
+    const receipt = await verifyLogin({ manifest: binManifest('utfprobe', sha) })
+    expect(receipt.status).toBe('ok')
+    expect(Buffer.byteLength(receipt.output, 'utf-8')).toBeLessThanOrEqual(16 * 1024 + 8) // + separator and replacement chars at the cut
+  })
+
+  it('dedupe shares a run only for identical inputs — a new pack version gets its own check', async () => {
+    const counter = join(testDir, 'count2.txt')
+    const sha = script(binDir, 'verprobe', `echo x >> "${counter}"; sleep 0.2; exit 0`)
+    const v1 = binManifest('verprobe', sha)
+    const v2 = { ...v1, version: '2.0.1' } as SkillPackManifest
+    await Promise.all([verifyLogin({ manifest: v1 }), verifyLogin({ manifest: v2 })])
+    expect(readFileSync(counter, 'utf-8').trim().split('\n')).toHaveLength(2)
+  })
+
+  it('an aliased install files its receipt under the INSTALLED id', async () => {
+    const sha = script(binDir, 'aliasprobe', 'exit 0')
+    await verifyLogin({ manifest: binManifest('aliasprobe', sha), packId: 'work-gw' })
+    expect(readLoginReceipt('work-gw', 'Google account')?.status).toBe('ok')
+    expect(readLoginReceipt('gw', 'Google account')).toBeNull()
   })
 })

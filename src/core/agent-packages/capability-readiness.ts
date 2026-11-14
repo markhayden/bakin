@@ -257,11 +257,11 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
 
     const login: CapabilityLoginStatus[] = []
     for (const req of manifest.requires?.login ?? []) {
-      const receipt = readLoginReceipt(id)
+      const receipt = readLoginReceipt(id, req.name)
       const row: CapabilityLoginStatus = { name: req.name, setup: req.setup, help: req.help, status: 'unknown', reason: 'never-checked' }
       if (receipt) {
         row.checkedAt = receipt.checkedAt
-        if (isReceiptStale(receipt, currentLoginInputs(manifest, req))) {
+        if (isReceiptStale(receipt, currentLoginInputs(manifest, req), req.probe)) {
           row.reason = 'stale'
         } else {
           row.status = receipt.status

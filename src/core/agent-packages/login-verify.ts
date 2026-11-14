@@ -20,7 +20,7 @@
  *    account input, declared secrets.
  */
 import { createHash } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { getStoredSecret, parseSecretSlot } from '@bakin/core/media/secret-store'
@@ -37,7 +37,7 @@ import { getReceiptsDir } from './receipts'
 const log = createLogger('login-verify')
 
 export type LoginStatus = 'ok' | 'missing' | 'unknown'
-export type LoginReason = 'exit' | 'timeout' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'account-mismatch'
+export type LoginReason = 'exit' | 'timeout' | 'killed' | 'spawn-error' | 'binary-missing' | 'binary-unverifiable' | 'account-mismatch'
 
 export const LOGIN_PROBE_TIMEOUT_MS = 5_000
 export const LOGIN_OUTPUT_CAP_BYTES = 16 * 1024
@@ -45,11 +45,18 @@ export const LOGIN_OUTPUT_CAP_BYTES = 16 * 1024
 /** The inputs a receipt is judged against; any change makes it stale. */
 export interface LoginInputs {
   packVersion: string
-  /** sha256 of the managed binary (bin route); absent on the prereq route. */
-  binarySha256?: string
+  /** The executable the probe resolved to (null when it could not be resolved). */
+  binaryPath: string | null
+  /**
+   * What identifies those bytes: the verified sha256 for a managed bin, a
+   * `stat:<size>:<mtimeMs>` fingerprint for a PATH prereq (hashing a 50 MB
+   * `gh` on every readiness read is not worth it; a replaced or upgraded
+   * binary changes both). Null when unresolved.
+   */
+  binaryIdentity: string | null
   /** sha256 of the accountEnv value ('' when unset or undeclared). */
   accountInputHash: string
-  /** sha256 over the pack's declared secrets (name + where it comes from + value hash). */
+  /** sha256 over the pack's declared secrets — env AND store evidence for each. */
   secretSlotsHash: string
 }
 
@@ -59,24 +66,29 @@ export interface LoginReceipt extends LoginInputs {
   checkedAt: string
   probe: string[]
   exitCode: number | null
-  binaryPath: string | null
-  /** The matched account (accountEnv) or the first non-empty output line. */
+  /** The matched account (accountEnv) or the first non-empty stdout line. */
   account?: string
-  /** Bounded stdout+stderr head — never secrets by the probe's own contract. */
+  /** Bounded stdout+stderr head (one shared 16 KB budget) — never secrets by the probe's own contract. */
   output: string
 }
 
-export function loginReceiptPath(packId: string): string {
-  return join(getReceiptsDir(), 'login', `${packId}.json`)
+/** `Google account (gog)` → `google-account-gog`: one receipt file per login entry. */
+export function loginEntryKey(entryName: string): string {
+  return entryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'login'
 }
 
-export function readLoginReceipt(packId: string): LoginReceipt | null {
-  const path = loginReceiptPath(packId)
+/** One receipt per (installed pack id, login entry) — two probes never share a verdict. */
+export function loginReceiptPath(packId: string, entryName: string): string {
+  return join(getReceiptsDir(), 'login', packId, `${loginEntryKey(entryName)}.json`)
+}
+
+export function readLoginReceipt(packId: string, entryName: string): LoginReceipt | null {
+  const path = loginReceiptPath(packId, entryName)
   if (!existsSync(path)) return null
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<LoginReceipt>
     if (parsed.status !== 'ok' && parsed.status !== 'missing' && parsed.status !== 'unknown') return null
-    if (typeof parsed.checkedAt !== 'string') return null
+    if (typeof parsed.checkedAt !== 'string' || !Array.isArray(parsed.probe)) return null
     return parsed as LoginReceipt
   } catch {
     return null
@@ -93,21 +105,34 @@ function accountValue(entry: LoginRequirement): string | null {
   return raw ? raw : null
 }
 
-/** Declared secrets as a stable digest: env wins over the store, as everywhere. */
+/**
+ * Declared secrets as a stable digest. BOTH the env value and the stored
+ * value count (env wins for injection, but a store change while an injected
+ * value still sits in process.env must still invalidate the receipt).
+ */
 function secretSlotsHash(manifest: SkillPackManifest): string {
   const rows = (manifest.secrets ?? []).map((secret) => {
     const fromEnv = process.env[secret.name]
-    if (fromEnv) return `${secret.name}:env:${sha256(fromEnv)}`
     const slot = secret.secretSlot ? parseSecretSlot(secret.secretSlot) : null
     const stored = slot ? getStoredSecret(slot.provider, slot.name) : null
-    return stored ? `${secret.name}:store:${sha256(stored)}` : `${secret.name}:absent`
+    return `${secret.name}:${fromEnv ? sha256(fromEnv) : '-'}:${stored ? sha256(stored) : '-'}`
   })
   return sha256(rows.join('\n'))
 }
 
 type ResolvedProbe =
-  | { ok: true; path: string; binarySha256?: string }
+  | { ok: true; path: string; identity: string }
   | { ok: false; reason: 'binary-missing' | 'binary-unverifiable'; path: string | null }
+
+/** A PATH binary's cheap identity: size + mtime (a replaced or upgraded executable changes both). */
+function statIdentity(path: string): string | null {
+  try {
+    const stat = statSync(path)
+    return `stat:${stat.size}:${Math.round(stat.mtimeMs)}`
+  } catch {
+    return null
+  }
+}
 
 /**
  * probe[0] → an executable path, by the pack's own declarations only. A
@@ -126,12 +151,14 @@ function resolveProbe(manifest: SkillPackManifest, entry: LoginRequirement): Res
     const verdict = verifyInstalledBin(target, download)
     if (verdict.status === 'missing') return { ok: false, reason: 'binary-missing', path: target }
     if (verdict.status === 'drifted') return { ok: false, reason: 'binary-unverifiable', path: target }
-    return { ok: true, path: target, binarySha256: verdict.onDiskSha256 }
+    return { ok: true, path: target, identity: `sha256:${verdict.onDiskSha256}` }
   }
   // The repo's hand-rolled Bun namespace omits `which` — cast (readiness precedent).
   // PATH is passed explicitly so a server-boot change (~/.bakin/bin prepended) is honoured.
   const found = (Bun as unknown as { which: (bin: string, opts?: { PATH?: string }) => string | null }).which(name, { PATH: process.env.PATH ?? '' })
-  return found ? { ok: true, path: found } : { ok: false, reason: 'binary-missing', path: null }
+  if (!found) return { ok: false, reason: 'binary-missing', path: null }
+  const identity = statIdentity(found)
+  return identity ? { ok: true, path: found, identity } : { ok: false, reason: 'binary-missing', path: found }
 }
 
 /** What a fresh receipt would record as its inputs right now. */
@@ -140,16 +167,23 @@ export function currentLoginInputs(manifest: SkillPackManifest, entry: LoginRequ
   const account = accountValue(entry)
   return {
     packVersion: manifest.version,
-    ...(resolved.ok && resolved.binarySha256 ? { binarySha256: resolved.binarySha256 } : {}),
+    binaryPath: resolved.path,
+    binaryIdentity: resolved.ok ? resolved.identity : null,
     accountInputHash: account ? sha256(account) : '',
     secretSlotsHash: secretSlotsHash(manifest),
   }
 }
 
-/** A receipt whose inputs no longer match is stale — readiness reports it `unknown` until re-checked. */
-export function isReceiptStale(receipt: LoginInputs, current: LoginInputs): boolean {
+/**
+ * A receipt whose inputs no longer match is stale — readiness reports it
+ * `unknown` until re-checked. The recorded probe must also be the entry's
+ * current probe (a manifest edit that changes the command invalidates it).
+ */
+export function isReceiptStale(receipt: LoginInputs & { probe?: string[] }, current: LoginInputs, probe?: string[]): boolean {
+  if (probe && receipt.probe && (receipt.probe.length !== probe.length || receipt.probe.some((arg, i) => arg !== probe[i]))) return true
   return receipt.packVersion !== current.packVersion
-    || (receipt.binarySha256 ?? null) !== (current.binarySha256 ?? null)
+    || receipt.binaryPath !== current.binaryPath
+    || receipt.binaryIdentity !== current.binaryIdentity
     || receipt.accountInputHash !== current.accountInputHash
     || receipt.secretSlotsHash !== current.secretSlotsHash
 }
@@ -162,7 +196,7 @@ export function isReceiptStale(receipt: LoginInputs, current: LoginInputs): bool
  */
 async function drainCapped(
   stream: ReadableStream<Uint8Array> | null | undefined,
-  cap: number,
+  budget: { remaining: number },
   cancel: { current: (() => void) | null },
 ): Promise<string> {
   if (!stream) return ''
@@ -173,28 +207,32 @@ async function drainCapped(
     reader.cancel().catch(() => { /* already closed */ })
   }
   const chunks: Uint8Array[] = []
-  let kept = 0
   try {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      if (kept < cap) {
-        const slice = value.subarray(0, Math.min(value.length, cap - kept))
+      if (budget.remaining > 0) {
+        // ONE byte budget shared by both streams; the decoder below never
+        // throws on a multibyte character cut at the boundary.
+        const slice = value.subarray(0, Math.min(value.length, budget.remaining))
         chunks.push(slice)
-        kept += slice.length
+        budget.remaining -= slice.length
       }
     }
   } catch {
     // cancelled by the timeout path — keep what arrived
   }
-  return Buffer.concat(chunks).toString('utf-8')
+  return new TextDecoder('utf-8', { fatal: false }).decode(Buffer.concat(chunks))
 }
 
 interface ProbeRun {
   exitCode: number | null
+  /** The signal that ended the child, when one did (our timeout kill, or someone else's). */
+  signal: string | null
   timedOut: boolean
   spawnError?: string
-  output: string
+  stdout: string
+  stderr: string
 }
 
 async function runProbe(path: string, args: string[], timeoutMs: number): Promise<ProbeRun> {
@@ -202,7 +240,7 @@ async function runProbe(path: string, args: string[], timeoutMs: number): Promis
   try {
     proc = Bun.spawn([path, ...args], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', env: process.env })
   } catch (err) {
-    return { exitCode: null, timedOut: false, spawnError: err instanceof Error ? err.message : String(err), output: '' }
+    return { exitCode: null, signal: null, timedOut: false, spawnError: err instanceof Error ? err.message : String(err), stdout: '', stderr: '' }
   }
   let timedOut = false
   const cancel: { current: (() => void) | null } = { current: null }
@@ -212,13 +250,14 @@ async function runProbe(path: string, args: string[], timeoutMs: number): Promis
     cancel.current?.()
   }, timeoutMs)
   try {
+    const budget = { remaining: LOGIN_OUTPUT_CAP_BYTES }
     const [stdout, stderr, exitCode] = await Promise.all([
-      drainCapped(proc.stdout as ReadableStream<Uint8Array>, LOGIN_OUTPUT_CAP_BYTES, cancel),
-      drainCapped(proc.stderr as ReadableStream<Uint8Array>, LOGIN_OUTPUT_CAP_BYTES, cancel),
+      drainCapped(proc.stdout as ReadableStream<Uint8Array>, budget, cancel),
+      drainCapped(proc.stderr as ReadableStream<Uint8Array>, budget, cancel),
       proc.exited,
     ])
-    const output = (stdout + (stderr ? `\n${stderr}` : '')).slice(0, LOGIN_OUTPUT_CAP_BYTES)
-    return { exitCode: timedOut ? null : exitCode, timedOut, output }
+    const signal = (proc as { signalCode?: string | null }).signalCode ?? null
+    return { exitCode: timedOut || signal ? null : exitCode, signal, timedOut, stdout, stderr }
   } finally {
     clearTimeout(timer)
   }
@@ -228,63 +267,67 @@ export interface VerifyLoginInput {
   manifest: SkillPackManifest
   /** Defaults to the pack's first login entry. */
   entry?: LoginRequirement
+  /** The INSTALLED pack id the receipt is filed under (an aliased install differs from manifest.id). */
+  packId?: string
   timeoutMs?: number
 }
 
 const inFlight = new Map<string, Promise<LoginReceipt>>()
 
 /**
- * Run the pack's login probe once (concurrent callers share the run), write
- * the receipt, return it. Never throws: every failure is a receipt status.
+ * Run the pack's login probe once — concurrent callers with the SAME inputs
+ * (pack identity, entry, resolved binary, account, secrets) share the run; a
+ * check for a new version or a changed key never attaches to an older run.
+ * Writes the receipt, returns it. Never throws: every failure is a status.
  */
 export function verifyLogin(input: VerifyLoginInput): Promise<LoginReceipt> {
   const entry = input.entry ?? input.manifest.requires?.login?.[0]
   if (!entry) throw new Error(`Pack "${input.manifest.id}" declares no login requirement`)
-  const key = `${input.manifest.id}\u0000${entry.probe.join('\u0000')}`
+  const packId = input.packId ?? input.manifest.id
+  const inputs = currentLoginInputs(input.manifest, entry)
+  const key = JSON.stringify([packId, loginEntryKey(entry.name), entry.probe, inputs])
   const running = inFlight.get(key)
   if (running) return running
-  const run = verifyLoginUncached(input.manifest, entry, input.timeoutMs ?? LOGIN_PROBE_TIMEOUT_MS).finally(() => inFlight.delete(key))
+  const run = verifyLoginUncached(packId, input.manifest, entry, inputs, input.timeoutMs ?? LOGIN_PROBE_TIMEOUT_MS).finally(() => inFlight.delete(key))
   inFlight.set(key, run)
   return run
 }
 
-async function verifyLoginUncached(manifest: SkillPackManifest, entry: LoginRequirement, timeoutMs: number): Promise<LoginReceipt> {
-  const inputs = currentLoginInputs(manifest, entry)
+async function verifyLoginUncached(packId: string, manifest: SkillPackManifest, entry: LoginRequirement, inputs: LoginInputs, timeoutMs: number): Promise<LoginReceipt> {
   const checkedAt = new Date().toISOString()
   const base = { ...inputs, checkedAt, probe: entry.probe }
   const resolved = resolveProbe(manifest, entry)
   let receipt: LoginReceipt
   if (!resolved.ok) {
-    receipt = { ...base, status: 'unknown', reason: resolved.reason, exitCode: null, binaryPath: resolved.path, output: '' }
+    receipt = { ...base, status: 'unknown', reason: resolved.reason, exitCode: null, output: '' }
   } else {
     const run = await runProbe(resolved.path, entry.probe.slice(1), timeoutMs)
-    const firstLine = run.output.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
+    const output = (run.stdout + (run.stderr ? `\n${run.stderr}` : '')).trimEnd()
+    // The account is read from STDOUT only: a diagnostic on stderr that
+    // happens to name the wanted account is not a login.
+    const firstLine = run.stdout.split('\n').map((line) => line.trim()).find((line) => line.length > 0)
     const wanted = accountValue(entry)
     if (run.spawnError !== undefined) {
-      receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, binaryPath: resolved.path, output: run.spawnError.slice(0, LOGIN_OUTPUT_CAP_BYTES) }
+      receipt = { ...base, status: 'unknown', reason: 'spawn-error', exitCode: null, output: run.spawnError.slice(0, LOGIN_OUTPUT_CAP_BYTES) }
     } else if (run.timedOut) {
-      receipt = { ...base, status: 'unknown', reason: 'timeout', exitCode: null, binaryPath: resolved.path, output: run.output }
+      receipt = { ...base, status: 'unknown', reason: 'timeout', exitCode: null, output }
+    } else if (run.signal) {
+      // Ended by a signal we did not send: not a verdict about the account.
+      receipt = { ...base, status: 'unknown', reason: 'killed', exitCode: null, output }
     } else if (run.exitCode !== 0) {
-      receipt = { ...base, status: 'missing', reason: 'exit', exitCode: run.exitCode, binaryPath: resolved.path, output: run.output }
-    } else if (wanted && !run.output.includes(wanted)) {
-      receipt = { ...base, status: 'missing', reason: 'account-mismatch', exitCode: 0, binaryPath: resolved.path, output: run.output }
+      receipt = { ...base, status: 'missing', reason: 'exit', exitCode: run.exitCode, output }
+    } else if (wanted && !run.stdout.includes(wanted)) {
+      receipt = { ...base, status: 'missing', reason: 'account-mismatch', exitCode: 0, output }
     } else {
-      receipt = {
-        ...base,
-        status: 'ok',
-        exitCode: 0,
-        binaryPath: resolved.path,
-        output: run.output,
-        ...((wanted ?? firstLine) ? { account: wanted ?? firstLine } : {}),
-      }
+      receipt = { ...base, status: 'ok', exitCode: 0, output, ...((wanted ?? firstLine) ? { account: wanted ?? firstLine } : {}) }
     }
   }
   try {
-    atomicWriteJson(loginReceiptPath(manifest.id), receipt)
+    atomicWriteJson(loginReceiptPath(packId, entry.name), receipt)
   } catch (err) {
-    log.error('login receipt write failed', err, { packId: manifest.id })
+    log.error('login receipt write failed', err, { packId })
   }
-  log.info('login probe checked', { packId: manifest.id, status: receipt.status, reason: receipt.reason ?? null })
+  log.info('login probe checked', { packId, status: receipt.status, reason: receipt.reason ?? null })
   return receipt
 }
 
@@ -351,10 +394,10 @@ export async function verifyInstalledPackLogins(filter: VerifyInstalledFilter = 
     if (filter.secretSlot && !(pack.manifest.secrets ?? []).some((secret) => secret.secretSlot === filter.secretSlot)) continue
     for (const entry of pack.manifest.requires!.login!) {
       if (filter.onlyIfStale) {
-        const receipt = readLoginReceipt(pack.id)
-        if (receipt && !isReceiptStale(receipt, currentLoginInputs(pack.manifest, entry))) continue
+        const receipt = readLoginReceipt(pack.id, entry.name)
+        if (receipt && !isReceiptStale(receipt, currentLoginInputs(pack.manifest, entry), entry.probe)) continue
       }
-      results.push({ packId: pack.id, key: pack.key, entry, receipt: await verifyLogin({ manifest: pack.manifest, entry }) })
+      results.push({ packId: pack.id, key: pack.key, entry, receipt: await verifyLogin({ manifest: pack.manifest, entry, packId: pack.id }) })
     }
   }
   return results

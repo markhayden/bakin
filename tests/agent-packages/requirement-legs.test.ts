@@ -558,13 +558,13 @@ describe('login leg (provider-integrations §4.1 — explicit triggers)', () => 
     await installPackage({ source: seedLoginPack(1) })
     expect(runs()).toBe(1)
     expect(readLockfile().packages['ghpack@1.1.0']).toBeDefined()
-    expect(readLoginReceipt('ghpack')).toMatchObject({ status: 'missing', reason: 'exit', exitCode: 1 })
+    expect(readLoginReceipt('ghpack', 'GitHub account (gh)')).toMatchObject({ status: 'missing', reason: 'exit', exitCode: 1 })
   })
 
   it('a local repair (sync) re-checks login; a logged-in probe reads ok with the account line', async () => {
     await installPackage({ source: seedLoginPack(0) })
     expect(runs()).toBe(1)
-    expect(readLoginReceipt('ghpack')).toMatchObject({ status: 'ok', account: 'Logged in as markhayden' })
+    expect(readLoginReceipt('ghpack', 'GitHub account (gh)')).toMatchObject({ status: 'ok', account: 'Logged in as markhayden' })
     await repairPackLocally('ghpack@1.1.0')
     expect(runs()).toBe(2)
   })

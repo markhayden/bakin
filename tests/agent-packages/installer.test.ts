@@ -770,6 +770,19 @@ describe('installPackage — single-level dependency', () => {
     expect(lock.packages[depKey].hub).toBeUndefined()
   })
 
+  it('a dependency whose bakin range the host refuses is refused like a parent (provider-integrations plan 1.1, Codex PR1 r1 #4)', async () => {
+    const skillPackSrc = seedSkillPack('range-dep')
+    const depManifestPath = join(skillPackSrc, 'bakin-package.json')
+    const depManifest = JSON.parse(readFileSync(depManifestPath, 'utf-8')) as Record<string, unknown>
+    // A malformed range is refused on every host, the dev checkout included.
+    writeFileSync(depManifestPath, JSON.stringify({ ...depManifest, bakin: 'banana' }))
+    const agentSrc = seedAgentPackage({ id: 'pixel-with-bad-dep', deps: { skills: [skillPackSrc] } })
+
+    await expect(installPackage({ source: agentSrc })).rejects.toThrow(/range-dep.*not a valid semver range/)
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
   it('PR 8 r7 #2: a hub skill-pack installed as a DEPENDENCY carries the ledger flag too', async () => {
     const skillPackSrc = seedSkillPack('hub-image-gen', { upstream: { source: 'clawhub:image-gen', ref: '0.3.1' } })
     const agentSrc = seedAgentPackage({ id: 'pixel-with-hub-dep', deps: { skills: [skillPackSrc] } })

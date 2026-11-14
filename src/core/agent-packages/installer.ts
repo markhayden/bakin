@@ -476,6 +476,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
       assertRuntimePlatformCompatible(r.manifest)
+      // A dependency this host cannot run is refused like a parent would be.
+      assertBakinRangeCompatible(r.manifest)
       validatePackageContributionIntegrity({
         manifest: r.manifest,
         stagingDir: r.fetched.stagingDir,
