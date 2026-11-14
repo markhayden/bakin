@@ -57,11 +57,14 @@ export const BarAndSheet = {
     // The next key typed in the editor takes an armed modifier, a named key too.
     await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
     await userEvent.keyboard('c')
-    await expect(status).toHaveTextContent('Ctrl+c')
-    await expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false')
+    // The key is sent first and the one-shot modifier disarms after it, so the button is named
+    // "Control" again a moment later: wait for that state rather than reading it on the same tick.
+    await waitFor(() => expect(status).toHaveTextContent('Ctrl+c'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false'))
     await userEvent.click(canvas.getByRole('button', { name: 'Control' }))
     await userEvent.keyboard('{ArrowLeft}')
-    await expect(status).toHaveTextContent('Ctrl+Left')
+    await waitFor(() => expect(status).toHaveTextContent('Ctrl+Left'))
+    await waitFor(() => expect(canvas.getByRole('button', { name: 'Control' })).toHaveAttribute('aria-pressed', 'false'))
     // A key inside a composition is not a key, and its interim input is not committed text:
     // the modifier stays until the composition commits.
     await userEvent.click(canvas.getByRole('button', { name: 'Option' }))
