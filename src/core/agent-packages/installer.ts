@@ -33,6 +33,7 @@ import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
 import { announceAgentPackagesChanged } from './change-events'
 import { SkillRefusalError } from './errors'
+import { assertBakinRangeCompatible } from './bakin-range-gate'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
@@ -411,6 +412,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     const resolvedTopId = options.installAs ?? manifest.id
     assertRuntimePlatformCompatible(manifest)
+    assertBakinRangeCompatible(manifest)
     validatePackageContributionIntegrity({
       manifest,
       stagingDir: topFetched.stagingDir,
