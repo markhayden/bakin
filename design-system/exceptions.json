@@ -301,6 +301,52 @@
       "approvalEvidence": "Workflows audit adjudication: user approved Decision 2 (NodeCard component + recorded exception for the ReactFlow integration layer) with 'node card is a good component to add' / 'do it'. Extended to the team org graph on 2026-08-14 with 'the rest are fine' covering the team audit's react-flow decision.",
       "reviewBy": "2027-01-31",
       "removalCondition": "Remove if the kit grows a first-party graph-canvas contract or ReactFlow is replaced; shrink the scope if ReactFlow ships un-styled headless nodes that need no reset."
+    },
+    {
+      "id": "home-first-run-visual-identity",
+      "status": "approved-temporary",
+      "scope": [
+        "plugins/home/components/home-page.tsx",
+        "plugins/home/components/agent-face.tsx",
+        "plugins/home/components/introduction.tsx",
+        "plugins/home/components/tour.tsx",
+        "packages/host/src/components/layout/page-introduction.tsx"
+      ],
+      "allowances": {
+        "plugins/home/components/home-page.tsx": {
+          "inline-style": 6
+        },
+        "plugins/home/components/agent-face.tsx": {
+          "inline-style": 2
+        },
+        "plugins/home/components/introduction.tsx": {
+          "raw-control": 1
+        },
+        "plugins/home/components/tour.tsx": {
+          "inline-style": 2
+        },
+        "packages/host/src/components/layout/page-introduction.tsx": {
+          "inline-style": 3
+        }
+      },
+      "closestPattern": {
+        "storyPath": "storybook/public/primitives/card.stories.tsx",
+        "storyExport": "SelectedAndTone"
+      },
+      "mismatch": "The first-run Home is a branded moment, not a working surface: four area cards each wear their own signal color as a tinted wash and border (Card offers only a status rail), card rows reflow by available width (auto-fit grids), the agent's face floats over an accent glow, the tour dialog is widened to lead each slide with a 16:9 illustration, the first-visit callout floats over a blurred, darkened scrim with an accent glow and an entry animation, and the welcome's personality choices are whole cards acting as one radio group.",
+      "compositionLimit": "Card tones are status rails, not identity tints; Grid layouts are fixed recipes without an auto-fit minimum; Dialog has one width; the kit has no scrim, glow or entry-motion primitive; and Card's interactive overlay renders a single button, so a card-shaped radio needs a button carrying role=radio.",
+      "alternative": "Keep these values as inline styles (and one role=radio button) strictly inside the five listed files. Everything else on these screens composes supported SDK patterns and bakin-* tokens; every color in the inline styles is a bakin signal or surface token mixed with transparency, never a raw palette value. The reusable part, the callout card itself, is the public FirstVisitCallout pattern with its own stories and no inline styling.",
+      "safeguards": {
+        "accessibility": "Tints and the scrim never carry meaning on their own: every card names its area in text, counts are text, and a page that could not answer says so in words. The personality cards are a radiogroup with one tab stop and arrow keys. The callout's motion and the tour shimmer stop under prefers-reduced-motion. All copy balances its line breaks.",
+        "responsiveness": "Grids are auto-fit with minimum widths, so cards wrap instead of squeezing; the tour dialog and the callout cap at the viewport width with no horizontal overflow, verified at 390px; the callout drops its picture at narrow widths.",
+        "routing": "No routing behavior changes: area cards and recent activity are PluginLink overlays, the tour's slide stays URL state, and the callout appears only on an area's front page.",
+        "isolation": "The styles live in Home's own components and one host shell component; no other plugin or shared kit component consumes them."
+      },
+      "approvedBy": "Mark Hayden",
+      "approvedOn": "2026-11-14",
+      "approvalEvidence": "Home design pass: the user directed each of these looks on screen (per-area colored cards from their own reference image, the blurred and darkened callout backdrop, the slide-in bounce, the illustrated wide tour dialog), then explicitly approved recording them as one scoped exception (\"Approve the exception\").",
+      "reviewBy": "2027-05-13",
+      "removalCondition": "Remove when the kit ships an identity-tinted card, an auto-fit card grid, a wide media dialog and a floating callout layer (scrim and entry motion), and Home migrates to them."
     }
   ]
 }
