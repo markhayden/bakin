@@ -51,6 +51,7 @@ import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from './plugins/install-recovery'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { getEntityRegistry } from '@bakin/core/plugins/entity-registry'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
@@ -404,8 +405,20 @@ class PluginRegistryImpl {
     try { removeRouteDocsByPlugin(pluginId) } catch (err) {
       log.warn('sweep: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
+    // Entity kinds are published from the manifest after activation, so a
+    // swept plugin (failed, disabled, reloading) must not keep them.
+    getEntityRegistry().sweep(pluginId)
     const state = this.plugins.get(pluginId)
     if (state) this.clearStateArrays(state)
+  }
+
+  /**
+   * Publish the entity kinds a plugin's manifest declares. Called once a
+   * plugin has activated — at boot/install from finalizeActivation, and by
+   * the hot-reload pipeline with the manifest it re-read from disk.
+   */
+  publishEntities(pluginId: string, manifest: PublicPluginManifest | undefined): void {
+    getEntityRegistry().publish(pluginId, manifest?.contributes?.entities ?? [])
   }
 
   /**
@@ -478,6 +491,7 @@ class PluginRegistryImpl {
     try { removeRouteDocsByPlugin(pluginId) } catch (err) {
       log.warn('deactivate: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
+    getEntityRegistry().sweep(pluginId)
     try {
       const ownedTables = [...getContentTypes().entries()]
         .filter(([, def]) => def.pluginId === pluginId)
@@ -858,6 +872,7 @@ class PluginRegistryImpl {
     }
     this.plugins.set(plugin.id, state)
     this.failedPlugins.delete(plugin.id)
+    this.publishEntities(plugin.id, manifest)
     if (source === 'core') {
       corePluginIds.add(plugin.id)
     } else {
