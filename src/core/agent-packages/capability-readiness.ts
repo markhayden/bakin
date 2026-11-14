@@ -26,6 +26,7 @@ import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
+import { currentLoginInputs, isReceiptStale, readLoginReceipt, type LoginReason, type LoginStatus } from './login-verify'
 import { modelDest, npmPayloadDir } from './requirements-installer'
 import { verifyNpmPayload } from './npm-verify'
 
@@ -71,6 +72,23 @@ export interface CapabilityPrereqStatus {
   status: 'ok' | 'missing'
 }
 
+/**
+ * The login leg (spec provider-integrations §4.1) — READ from the receipt the
+ * explicit verification wrote; readiness never spawns the probe. `unknown`
+ * = never checked, stale inputs, or a probe that could not run; it blocks
+ * `ready` like `missing` does.
+ */
+export interface CapabilityLoginStatus {
+  name: string
+  /** The exact command(s) the operator runs to log in. */
+  setup: string
+  help: string
+  status: LoginStatus
+  reason?: LoginReason | 'never-checked' | 'stale'
+  checkedAt?: string
+  account?: string
+}
+
 export interface CapabilityReadiness {
   capability: string
   packageId: string
@@ -83,6 +101,7 @@ export interface CapabilityReadiness {
   npm: CapabilityNpmStatus[]
   models: CapabilityModelStatus[]
   prereqs: CapabilityPrereqStatus[]
+  login: CapabilityLoginStatus[]
   secrets: CapabilitySecretStatus[]
   /** False when the pack declares `platforms` and this box isn't one of them. */
   platformSupported: boolean
@@ -158,7 +177,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
         version: entry.version,
         name: typeof raw?.name === 'string' ? raw.name : id,
         description: typeof raw?.description === 'string' ? raw.description : '',
-        skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
+        skills: [], bins: [], npm: [], models: [], prereqs: [], login: [], secrets: [],
         platformSupported: true,
         manifestValid: false,
         ready: false,
@@ -236,6 +255,26 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       if (!present && !req.optional) missing.push(`${req.name} is not installed — get it: ${req.help}`)
     }
 
+    const login: CapabilityLoginStatus[] = []
+    for (const req of manifest.requires?.login ?? []) {
+      const receipt = readLoginReceipt(id)
+      const row: CapabilityLoginStatus = { name: req.name, setup: req.setup, help: req.help, status: 'unknown', reason: 'never-checked' }
+      if (receipt) {
+        row.checkedAt = receipt.checkedAt
+        if (isReceiptStale(receipt, currentLoginInputs(manifest, req))) {
+          row.reason = 'stale'
+        } else {
+          row.status = receipt.status
+          if (receipt.reason) row.reason = receipt.reason
+          else delete row.reason
+          if (receipt.account) row.account = receipt.account
+        }
+      }
+      login.push(row)
+      if (row.status === 'missing') missing.push(`${req.name}: not logged in — run: ${req.setup}`)
+      if (row.status === 'unknown') missing.push(`${req.name}: login not verified — click Check login or run: bakin check capabilities`)
+    }
+
     const platformSupported = !manifest.platforms || (platform !== null && manifest.platforms.includes(platform))
     if (!platformSupported) {
       missing.push(`not available on this platform — needs ${manifest.platforms!.join(' or ')}`)
@@ -277,6 +316,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       npm,
       models,
       prereqs,
+      login,
       secrets,
       platformSupported,
       manifestValid: true,
