@@ -25,7 +25,10 @@ import { join } from 'path'
 import { atomicWriteJson } from '@bakin/core/storage/atomic-write'
 import { getStoredSecret, parseSecretSlot } from '@bakin/core/media/secret-store'
 import type { LoginRequirement, SkillPackManifest } from '../../../packages/core/src/agent-packages/manifest'
-import { getBakinPaths } from '../content-dir'
+import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { safeParseManifest } from '../../../packages/core/src/agent-packages/manifest'
+import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
+import { getBakinPaths, getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
 import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
@@ -283,4 +286,76 @@ async function verifyLoginUncached(manifest: SkillPackManifest, entry: LoginRequ
   }
   log.info('login probe checked', { packId: manifest.id, status: receipt.status, reason: receipt.reason ?? null })
   return receipt
+}
+
+export interface InstalledLoginPack {
+  /** Bare pack id (receipts are keyed by it). */
+  id: string
+  /** Lockfile key (`<id>@<version>`). */
+  key: string
+  manifest: SkillPackManifest
+}
+
+/**
+ * Every installed skill-pack that declares `requires.login`, read from the
+ * lockfile + its installed manifest (the same two sources readiness judges).
+ * Invalid or missing manifests are skipped here — readiness already reports
+ * them as not-ready rows; a probe for them cannot be bound anyway.
+ */
+export function listInstalledLoginPacks(): InstalledLoginPack[] {
+  const lock = readLockfile()
+  const out: InstalledLoginPack[] = []
+  const seen = new Set<string>()
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    if (entry.kind !== 'skill-pack') continue
+    const id = key.includes('@') ? key.slice(0, key.lastIndexOf('@')) : key
+    if (seen.has(`${id}@${entry.version}`)) continue
+    seen.add(`${id}@${entry.version}`)
+    const path = join(getPackageSourceDir(getContentDir(), entry.kind, id, entry.version), 'bakin-package.json')
+    if (!existsSync(path)) continue
+    let raw: unknown
+    try {
+      raw = JSON.parse(readFileSync(path, 'utf-8'))
+    } catch {
+      continue
+    }
+    const parsed = safeParseManifest(raw)
+    if (!parsed.success || parsed.data.kind !== 'skill-pack') continue
+    if (!parsed.data.requires?.login?.length) continue
+    out.push({ id, key, manifest: parsed.data })
+  }
+  return out
+}
+
+export interface VerifyInstalledFilter {
+  /** A lockfile key or bare id; absent = every login pack. */
+  packId?: string
+  /** Only packs declaring a secret bound to this `<provider>.<name>` slot. */
+  secretSlot?: string
+  /** Skip packs whose receipt exists and is not stale. */
+  onlyIfStale?: boolean
+}
+
+export interface InstalledLoginResult {
+  packId: string
+  key: string
+  entry: LoginRequirement
+  receipt: LoginReceipt
+}
+
+/** Re-check the login of installed packs matching the filter. Never throws. */
+export async function verifyInstalledPackLogins(filter: VerifyInstalledFilter = {}): Promise<InstalledLoginResult[]> {
+  const results: InstalledLoginResult[] = []
+  for (const pack of listInstalledLoginPacks()) {
+    if (filter.packId && filter.packId !== pack.id && filter.packId !== pack.key) continue
+    if (filter.secretSlot && !(pack.manifest.secrets ?? []).some((secret) => secret.secretSlot === filter.secretSlot)) continue
+    for (const entry of pack.manifest.requires!.login!) {
+      if (filter.onlyIfStale) {
+        const receipt = readLoginReceipt(pack.id)
+        if (receipt && !isReceiptStale(receipt, currentLoginInputs(pack.manifest, entry))) continue
+      }
+      results.push({ packId: pack.id, key: pack.key, entry, receipt: await verifyLogin({ manifest: pack.manifest, entry }) })
+    }
+  }
+  return results
 }

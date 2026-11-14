@@ -242,7 +242,33 @@ export async function run(args: string[]): Promise<void> {
   } else if (sub === 'sync') {
     if (!args[2]) await exitUsage('bakin packages sync <package-id> [--check]')
     await cmdPackagesSync(args[2], parseAgentsFlags(args.slice(3)))
+  } else if (sub === 'login-check') {
+    if (!args[2]) await exitUsage('bakin packages login-check <id>')
+    await cmdPackagesLoginCheck(args[2]!, parseAgentsFlags(args.slice(3)))
   } else {
-    await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync'])
+    await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync', 'login-check'])
   }
+}
+
+interface LoginCheckReceiptRow { name: string; setup: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; account?: string; checkedAt: string }
+
+/** `bakin packages login-check <id>` — run the pack's login probe now and say what it found. */
+async function cmdPackagesLoginCheck(id: string, flags: AgentsCmdFlags): Promise<void> {
+  const body = await apiPost(`/api/packages/${encodeURIComponent(id)}/login-check`, {}) as { ok: boolean; error?: string; receipts?: LoginCheckReceiptRow[] }
+  if (flags.json) {
+    print(body)
+    if (!body.ok || (body.receipts ?? []).some((r) => r.status !== 'ok')) process.exit(1)
+    return
+  }
+  if (!body.ok) {
+    console.error(body.error ?? 'login check failed')
+    process.exit(1)
+  }
+  let allOk = true
+  for (const r of body.receipts ?? []) {
+    if (r.status === 'ok') console.log(`✓ ${r.name}: logged in${r.account ? ` as ${r.account}` : ''}`)
+    else if (r.status === 'missing') { allOk = false; console.log(`✗ ${r.name}: needs login — run: ${r.setup}`) }
+    else { allOk = false; console.log(`? ${r.name}: login not verified (${r.reason ?? 'unknown'})`) }
+  }
+  if (!allOk) process.exit(1)
 }

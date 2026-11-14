@@ -39,8 +39,10 @@ mock.module('../../src/core/logger', () => ({
 import {
   currentLoginInputs,
   isReceiptStale,
+  listInstalledLoginPacks,
   loginReceiptPath,
   readLoginReceipt,
+  verifyInstalledPackLogins,
   verifyLogin,
   type LoginReceipt,
 } from '../../src/core/agent-packages/login-verify'
@@ -73,7 +75,7 @@ function binManifest(name: string, sha: string, extra: Partial<SkillPackManifest
     version: '2.0.0',
     capability: 'google-workspace',
     runtimes: ['*'],
-    contributions: { skills: [] },
+    contributions: { skills: ['skills/x'] },
     requires: {
       bins: [{ name, version: '1.0.0', install: { [platform]: { url: `https://example.test/${name}`, sha256: sha } } }],
       login: [{ name: 'Google account', probe: [name, 'auth', 'list'], setup: 'gog auth setup', help: 'https://gogcli.sh', ...login }],
@@ -90,7 +92,7 @@ function prereqManifest(name: string): SkillPackManifest {
     version: '1.1.0',
     capability: 'github',
     runtimes: ['*'],
-    contributions: { skills: [] },
+    contributions: { skills: ['skills/x'] },
     requires: {
       prereqs: [{ name: 'GitHub CLI', kind: 'binary', probe: name, help: 'https://cli.github.com/', optional: false }],
       login: [{ name: 'GitHub account', probe: [name, 'auth', 'status'], setup: 'gh auth login', help: 'https://cli.github.com/' }],
@@ -234,5 +236,59 @@ describe('receipt staleness', () => {
     expect(readLoginReceipt('garbage')).toBeNull()
     const typed: LoginReceipt | null = readLoginReceipt('garbage')
     expect(typed).toBeNull()
+  })
+})
+
+describe('installed packs — list and filtered re-check', () => {
+  function seedInstalled(id: string, version: string, manifest: Record<string, unknown>, lock: Record<string, unknown>): void {
+    const dir = join(testDir, 'packages', 'skill-packs', `${id}@${version}`)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify(manifest))
+    lock[`${id}@${version}`] = { kind: 'skill-pack', version, source: `github:x/y#packs/${id}`, ref: 'main', commitSha: 'c'.repeat(40), installedAt: new Date().toISOString(), projections: [] }
+  }
+  function writeLock(lock: Record<string, unknown>): void {
+    mkdirSync(join(testDir, 'packages'), { recursive: true })
+    writeFileSync(join(testDir, 'packages', 'lock.json'), JSON.stringify({ version: 1, packages: lock }))
+  }
+  function loginPack(id: string, probe: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id, kind: 'skill-pack', name: id, version: '1.0.0', capability: id, contributions: { skills: ['skills/x'] },
+      requires: {
+        prereqs: [{ name: `${probe} cli`, kind: 'binary', probe, help: 'https://x.dev' }],
+        login: [{ name: `${id} account`, probe: [probe, 'status'], setup: `${probe} login`, help: 'https://x.dev' }],
+      },
+      ...extra,
+    }
+  }
+
+  it('lists only installed skill-packs that declare login, once per identity', () => {
+    const lock: Record<string, unknown> = {}
+    seedInstalled('alpha', '1.0.0', loginPack('alpha', 'alphaprobe'), lock)
+    seedInstalled('plain', '1.0.0', { id: 'plain', kind: 'skill-pack', name: 'plain', version: '1.0.0', capability: 'plain', contributions: { skills: ['skills/x'] } }, lock)
+    lock['alpha@0.9.0'] = { ...(lock['alpha@1.0.0'] as object), version: '1.0.0' } // stale key, same identity
+    writeLock(lock)
+    expect(listInstalledLoginPacks().map((p) => p.key)).toEqual(['alpha@1.0.0'])
+  })
+
+  it('re-checks by id or key, by declared secret slot, and skips fresh receipts when asked', async () => {
+    script(pathDir, 'alphaprobe', 'exit 0')
+    script(pathDir, 'betaprobe', 'exit 1')
+    const lock: Record<string, unknown> = {}
+    seedInstalled('alpha', '1.0.0', loginPack('alpha', 'alphaprobe', { secrets: [{ name: 'ALPHA_TOKEN', description: 'x', required: false, secretSlot: 'skills.alpha.ALPHA_TOKEN' }] }), lock)
+    seedInstalled('beta', '1.0.0', loginPack('beta', 'betaprobe'), lock)
+    writeLock(lock)
+
+    const byId = await verifyInstalledPackLogins({ packId: 'alpha' })
+    expect(byId.map((r) => [r.packId, r.receipt.status])).toEqual([['alpha', 'ok']])
+    const byKey = await verifyInstalledPackLogins({ packId: 'beta@1.0.0' })
+    expect(byKey.map((r) => [r.packId, r.receipt.status])).toEqual([['beta', 'missing']])
+    const bySlot = await verifyInstalledPackLogins({ secretSlot: 'skills.alpha.ALPHA_TOKEN' })
+    expect(bySlot.map((r) => r.packId)).toEqual(['alpha'])
+    expect(await verifyInstalledPackLogins({ secretSlot: 'skills.nobody.X' })).toEqual([])
+
+    // Fresh receipts exist for both now: onlyIfStale re-checks neither.
+    expect(await verifyInstalledPackLogins({ onlyIfStale: true })).toEqual([])
+    rmSync(loginReceiptPath('beta'), { force: true })
+    expect((await verifyInstalledPackLogins({ onlyIfStale: true })).map((r) => r.packId)).toEqual(['beta'])
   })
 })

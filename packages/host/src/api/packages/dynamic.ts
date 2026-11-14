@@ -3,6 +3,7 @@
  *
  *   DELETE /api/packages/{packageId}                  remove (refuses w/ refCount > 0)
  *   POST   /api/packages/{packageId}/sync             fetch + re-project at recorded ref
+ *   POST   /api/packages/{packageId}/login-check      run the pack's login probe now (bounded, synchronous)
  *
  * The packageId here is the lockfile key — for standalone packs that's
  * `<id>@<version>` (e.g. "markhayden.bakin-skills-visual@0.3.1"). The CLI
@@ -26,6 +27,7 @@ import { readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { PackageNotInstalledError, PackageStillRequiredError } from '@/core/agent-packages/errors'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { syncPack } from '@/core/agent-packages/sync'
+import { listInstalledLoginPacks, verifyInstalledPackLogins } from '@/core/agent-packages/login-verify'
 import { reloadAgentPackageRegistries } from '@/core/agent-packages/post-sync-reload'
 import { PACKAGE_REMOVE_PLAN, PACKAGE_SYNC_CHECK_PLAN, PACKAGE_SYNC_PLAN } from '@/core/agent-packages/operation-plans'
 import { parseJsonBodyWeb } from '@/core/middleware'
@@ -113,6 +115,9 @@ export async function handler(req: Request, url: URL): Promise<Response> {
   if (segments.length === 4 && segments[3] === 'sync' && req.method === 'POST') {
     return handleSync(req, packageId)
   }
+  if (segments.length === 4 && segments[3] === 'login-check' && req.method === 'POST') {
+    return handleLoginCheck(packageId)
+  }
 
   return Response.json({ ok: false, error: 'Not found' }, { status: 404 })
 }
@@ -168,4 +173,21 @@ async function handleSync(req: Request, packageId: string): Promise<Response> {
   const parsed = SyncBodySchema.safeParse(raw)
   if (!parsed.success) return invalid(parsed.error.issues)
   return startOperationResponse<RouteBody>(packageSyncOperation(packageId, parsed.data ?? {}, operationOriginFromRequest(req)))
+}
+
+/**
+ * The explicit "Check login" trigger (spec provider-integrations §4.1): runs
+ * the pack's declared probe once (≤ 5 s, in-flight callers share it) and
+ * answers the receipts. Not an operation — bounded and synchronous. The id
+ * is a lockfile key or a bare pack id.
+ */
+async function handleLoginCheck(packageId: string): Promise<Response> {
+  const bare = packageId.includes('@') ? packageId.slice(0, packageId.lastIndexOf('@')) : packageId
+  const installed = readLockfile().packages
+  const isInstalled = Boolean(installed[packageId]) || Object.keys(installed).some((key) => key === bare || key.startsWith(`${bare}@`))
+  if (!isInstalled) return Response.json({ ok: false, error: new PackageNotInstalledError(packageId).message }, { status: 404 })
+  const pack = listInstalledLoginPacks().find((candidate) => candidate.id === bare || candidate.key === packageId)
+  if (!pack) return Response.json({ ok: false, error: `Package "${packageId}" declares no login requirement.`, code: 'no_login_requirement' }, { status: 400 })
+  const results = await verifyInstalledPackLogins({ packId: pack.id })
+  return Response.json({ ok: true, packId: pack.id, key: pack.key, receipts: results.map((r) => ({ name: r.entry.name, setup: r.entry.setup, ...r.receipt })) })
 }

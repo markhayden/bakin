@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { rmSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { resetContentDir } from '../../src/core/content-dir'
 import { del, get, post } from '../../packages/host/src/api/secrets'
+import { waitUntil } from '../helpers/wait'
 
 const url = (q = '') => new URL(`http://localhost/api/secrets${q}`)
 
@@ -22,6 +23,41 @@ describe('/api/secrets', () => {
     else process.env.BAKIN_HOME = originalHome
     resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('saving a slot a pack declares re-runs that pack\'s login probe (provider-integrations §4.1)', async () => {
+    const probeDir = join(testDir, 'onpath')
+    const marker = join(testDir, 'probe-ran.txt')
+    mkdirSync(probeDir, { recursive: true })
+    writeFileSync(join(probeDir, 'slotprobe'), `#!/bin/sh\necho ran >> "${marker}"\nexit 0\n`)
+    chmodSync(join(probeDir, 'slotprobe'), 0o755)
+    const originalPath = process.env.PATH
+    process.env.PATH = `${probeDir}:${originalPath}`
+    try {
+      const dir = join(testDir, 'packages', 'skill-packs', 'slotpack@1.0.0')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+        id: 'slotpack', kind: 'skill-pack', name: 'Slot', version: '1.0.0', capability: 'slot', contributions: { skills: ['skills/x'] },
+        secrets: [{ name: 'SLOT_TOKEN', description: 'x', required: false, secretSlot: 'skills.slotpack.SLOT_TOKEN' }],
+        requires: {
+          prereqs: [{ name: 'slot cli', kind: 'binary', probe: 'slotprobe', help: 'https://x.dev' }],
+          login: [{ name: 'Slot account', probe: ['slotprobe', 'status'], setup: 'slotprobe login', help: 'https://x.dev' }],
+        },
+      }))
+      writeFileSync(join(testDir, 'packages', 'lock.json'), JSON.stringify({ version: 1, packages: {
+        'slotpack@1.0.0': { kind: 'skill-pack', version: '1.0.0', source: 'github:x/y#packs/slotpack', ref: 'main', commitSha: 'c'.repeat(40), installedAt: new Date().toISOString(), projections: [] },
+      } }))
+      const res = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'skills.slotpack', name: 'SLOT_TOKEN', value: 'v' }) }), url())
+      expect(res.status).toBe(200)
+      await waitUntil(() => existsSync(marker), { label: 'login probe re-ran after the secret save' })
+      // An unrelated slot re-runs nothing.
+      rmSync(marker, { force: true })
+      await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'brave', name: 'apiKey', value: 'v' }) }), url())
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      process.env.PATH = originalPath
+    }
   })
 
   it('starts empty', async () => {
