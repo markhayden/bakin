@@ -66,24 +66,41 @@ description?}, recommended?, allowOther? })` (`src/core/exec-tools/tools/ask-use
 Spec: `.claude/specs/projects-revamp.md` D1–D6a.
 
 - **Why a side channel.** Neither runtime transport carries structured tool
-  output: Pi emits only a redacted one-line `summary`; OpenClaw clips previews
-  at 500 chars. So the tool validates (`packages/core/src/conversation/questions.ts`
-  — zod schema with field caps AND a 2 KB serialized cap measured on the
-  minted envelope, so an accepted input always parses), parks the question
-  in the in-process `questionRegistry` (10-min TTL, 256-entry cap evicting
-  the oldest orphan), and returns a SHORT
-  message LED by the token `bakin-question:<id>`.
+  output: Pi and OpenClaw both deliver a redacted one-line `summary` and an
+  `outputPreview` clipped at 500 chars. So the tool validates
+  (`packages/core/src/conversation/questions.ts` — zod schema with field caps
+  AND a 2 KB serialized cap measured on the minted envelope, so an accepted
+  input always parses) and returns the minted question on its result.
+- **Tool receipts** (`packages/core/src/conversation/receipts.ts`). Both
+  exec-tool invoke paths (`src/core/exec-tools/provider.ts`,
+  `src/core/mcp-server.ts`) serialise through ONE function, `sealToolResult`.
+  A result that carries a payload for the conversation has it removed and
+  parked in the in-process `receiptRegistry` (10-min TTL, 256-entry cap
+  evicting the oldest orphan) as `{ id, agentId, toolName, question? }`; the
+  agent reads a fixed outer envelope,
+  `{"receipt":"bakin-receipt:<id>","result":{…}}`. The envelope is
+  host-controlled so the token always leads the text, whatever keys the tool
+  returned (a token inside the result could be pushed past the preview clip by
+  integer-like keys). The envelope key is `receipt`, never `token`: the
+  redactor blanks values under keys containing token/secret/password.
+  `unwrapToolResult` / `summarizeStructured` peel the envelope, so one-line
+  summaries are unchanged. A result with nothing to carry serialises exactly
+  as before.
 - **Engine enrichment.** The turn engine runs every runtime chunk through
-  `enrichQuestionChunk` BEFORE tap/emit/record: a `bakin_exec_ask_user`
-  result carrying the token gets `data.metadata.bakinQuestion` (full validated question) on the
-  live chunk event AND the persisted row (the recorder keeps `metadata`
-  unclipped). Proven through the REAL adapter mappings
+  `enrichReceiptChunk(chunk, agentId)` BEFORE tap/emit/record: a tool result
+  whose `outputPreview` carries a token gets the receipt's payload as row
+  metadata (`data.metadata.bakinQuestion`, the full validated question) on
+  the live chunk event AND the persisted row (the recorder keeps `metadata`
+  unclipped). A receipt is redeemed only by the tool and agent that produced
+  it, and only once (`registry.take`): a replayed frame, or another tool
+  reading a transcript/log that quotes a live token, never reopens an
+  answered question. Proven through the REAL adapter mappings
   (`tests/core/conversation-question-enrichment.test.ts`: Pi
-  `sessionEventChunks`, OpenClaw `OpenClawTurnChunkMachine`). Outside a
-  conversation turn (dispatch runs) nothing enriches → an ordinary tool row,
-  never a broken card. Enrichment CONSUMES the token (`registry.take`): a
-  replayed frame, or another tool reading a transcript/log that quotes the
-  token, never reopens an answered question. A turn that ENDS on a question previews
+  `sessionEventChunks`, OpenClaw `OpenClawTurnChunkMachine`), and the runtime
+  conformance suite pins that every adapter's result chunk carries the head
+  of the tool's output (`toolResultCarriesOutputHead`, with teeth). Outside a
+  conversation turn (dispatch runs) nothing redeems the receipt → an ordinary
+  tool row, never a broken card. A turn that ENDS on a question previews
   `Asked: <question>` on its done event (attention toasts/OS).
 - **Fold.** A tool row/chunk whose `metadata.bakinQuestion` passes the
   structural guard (every rendered field type-checked against

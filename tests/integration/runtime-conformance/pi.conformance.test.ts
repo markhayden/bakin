@@ -58,6 +58,8 @@ let threadSeq = 0
 
 // Minimal echo exec tool so toolCall provider scripts round-trip (mirrors
 // tests/integration/pi/turn.test.ts).
+const CONF_RECEIPT_TOKEN = 'bakin-receipt:r_conformance00001'
+
 const execToolProvider: RuntimeExecToolProvider = {
   list: () => [{
     name: 'bakin_exec_conf_echo',
@@ -68,7 +70,12 @@ const execToolProvider: RuntimeExecToolProvider = {
       required: ['message'],
     },
   }],
-  invoke: async (_name, params) => ({ ok: true, text: JSON.stringify({ ok: true, echoed: params.message }) }),
+  // Shaped like a sealed result (`sealToolResult`): the receipt token leads
+  // the text, and the conformance suite pins that it survives Pi's preview.
+  invoke: async (_name, params) => ({
+    ok: true,
+    text: JSON.stringify({ receipt: CONF_RECEIPT_TOKEN, result: { ok: true, echoed: params.message } }, null, 2),
+  }),
 }
 
 function seedProvider(scripts: FakeTurnScript[]): void {
@@ -157,6 +164,7 @@ const target: RuntimeConformanceTarget = {
     seedProvider([{ steps: [{ text: 'no tools offered, answering in text' }], usage: { prompt: 4, completion: 3 } }])
     return 'conformance: use the echo tool'
   },
+  toolOutputHead: CONF_RECEIPT_TOKEN,
   assertToolsModeNoneEnforced: () => {
     // The evidence that matters: the request the model actually received
     // carried NO tools (the stream path, not only send — a stream that

@@ -39,7 +39,8 @@ import type { PreparedAttachment } from '../media/downscale'
 import { isVisionRasterMime } from '../media/image-format'
 
 import { createTurnRecorder } from './turn-recorder'
-import { enrichQuestionChunk, type BakinQuestion } from './questions'
+import type { BakinQuestion } from './questions'
+import { enrichReceiptChunk } from './receipts'
 import { createLogger } from '../logger'
 
 const log = createLogger('conversation-turns')
@@ -790,7 +791,7 @@ async function runTurn(
         ? { attachments: prepared.map((a) => ({ path: a.path, mimeType: a.mimeType })) }
         : {}),
     })) {
-      const chunk = enrichQuestionChunk(rawChunk)
+      const chunk = enrichReceiptChunk(rawChunk, agentId)
       if (bakinQuestionOf(chunk)) pendingQuestion = bakinQuestionOf(chunk)!.question
       else if (chunk.type === 'text' && chunk.content.trim()) pendingQuestion = undefined
       if (chunk.type === 'tool') sawTool = true

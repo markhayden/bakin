@@ -15,6 +15,7 @@
  * metadata. A receipt is bound to the tool and agent that produced it, so a
  * different tool that merely quotes a live token cannot take it.
  */
+import type { ChatChunk } from '../adapters/runtime/concepts'
 import { parseBakinQuestion, type BakinQuestion } from './questions'
 
 const RECEIPT_TOKEN_RE = /bakin-receipt:(r_[a-z0-9]{16})/
@@ -103,4 +104,25 @@ export function sealToolResult(
   const id = mintReceiptId()
   registry.put({ id, ...owner, question })
   return JSON.stringify({ receipt: `bakin-receipt:${id}`, result: rest }, null, 2)
+}
+
+/**
+ * Redeem the receipt a tool result chunk carries and attach its payload as
+ * row metadata, so the live event and the persisted row both hold it. The
+ * token sits in the clipped output preview (both runtimes) or the chunk text;
+ * anything else is returned untouched. `agentId` is the agent the turn runs
+ * as: with the chunk's tool name it must match the receipt's producer, so a
+ * later tool that reads a transcript or log quoting a live token never takes
+ * it, and a redeemed token is gone.
+ */
+export function enrichReceiptChunk(
+  chunk: ChatChunk,
+  agentId: string,
+  registry: ReceiptRegistry = receiptRegistry,
+): ChatChunk {
+  if (chunk.type !== 'tool' || chunk.data.phase !== 'result') return chunk
+  const id = findReceiptToken(chunk.data.outputPreview) ?? findReceiptToken(chunk.content)
+  const receipt = id ? registry.take(id, { agentId, toolName: chunk.data.toolName }) : null
+  if (!receipt?.question) return chunk
+  return { ...chunk, data: { ...chunk.data, metadata: { ...chunk.data.metadata, bakinQuestion: receipt.question } } }
 }

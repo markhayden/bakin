@@ -17,11 +17,8 @@ mock.module('../../packages/core/src/content-dir', contentDirMock)
 
 import {
   QUESTION_LIMITS,
-  createQuestionRegistry,
-  findQuestionToken,
   mintQuestionId,
   parseBakinQuestion,
-  questionToken,
   validateBakinQuestionInput,
 } from '../../packages/core/src/conversation/questions'
 
@@ -93,58 +90,6 @@ describe('parseBakinQuestion', () => {
     expect(parseBakinQuestion({ ...valid, v: 1 })).toBeNull() // no id
     expect(parseBakinQuestion({ ...valid, v: 2, id: mintQuestionId() })).toBeNull()
     expect(parseBakinQuestion({ ...valid, v: 1, id: 'not-an-id' })).toBeNull()
-  })
-})
-
-describe('question tokens', () => {
-  test('a token embedded in arbitrary text is found', () => {
-    const id = mintQuestionId()
-    expect(findQuestionToken(`Question posted (${questionToken(id)}). End your turn.`)).toBe(id)
-  })
-
-  test('no token → null', () => {
-    expect(findQuestionToken('Applied a project plan')).toBeNull()
-    expect(findQuestionToken(undefined)).toBeNull()
-  })
-})
-
-describe('createQuestionRegistry', () => {
-  const mint = () => {
-    const input = validateBakinQuestionInput(valid)
-    if (!input.ok) throw new Error(input.error)
-    return { v: 1 as const, id: mintQuestionId(), ...input.value }
-  }
-
-  test('take returns a question once, then it is gone', () => {
-    const registry = createQuestionRegistry()
-    const question = mint()
-    registry.put(question)
-    expect(registry.take(question.id)).toEqual(question)
-    expect(registry.take(question.id)).toBeNull()
-  })
-
-  test('an entry expires after its TTL', () => {
-    let now = 1_000
-    const registry = createQuestionRegistry({ ttlMs: 500, now: () => now })
-    const question = mint()
-    registry.put(question)
-    now += 501
-    expect(registry.take(question.id)).toBeNull()
-  })
-
-  test('capacity evicts the oldest orphan first', () => {
-    const registry = createQuestionRegistry({ capacity: 2 })
-    const [a, b, c] = [mint(), mint(), mint()]
-    registry.put(a)
-    registry.put(b)
-    registry.put(c)
-    expect(registry.take(a.id)).toBeNull()
-    expect(registry.take(b.id)).toEqual(b)
-    expect(registry.take(c.id)).toEqual(c)
-  })
-
-  test('unknown ids are null', () => {
-    expect(createQuestionRegistry().take(mintQuestionId())).toBeNull()
   })
 })
 

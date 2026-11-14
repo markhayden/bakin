@@ -288,6 +288,31 @@ describe('conformance suite teeth (broken adapter must fail every check)', () =>
       .rejects.toThrow(/conformance violation: stream yielded unclassified chunk type 'garbage'/)
   })
 
+  it('fails the tool-output-head check when a result chunk carries only a summary', async () => {
+    const base = createMockRuntimeAdapter()
+    const summaryOnly: RuntimeConformanceTarget = {
+      ...quietTarget({
+        ...base,
+        messaging: {
+          ...base.messaging,
+          stream: async function* (): AsyncIterable<ChatChunk> {
+            yield { type: 'tool', data: { phase: 'call', toolName: 'mock_tool', status: 'running' } }
+            yield { type: 'tool', data: { phase: 'result', toolName: 'mock_tool', status: 'completed', summary: 'done' } }
+            yield { type: 'done' }
+          },
+        },
+      }),
+    }
+    await expect(runtimeConformanceChecks.toolResultCarriesOutputHead(summaryOnly))
+      .rejects.toThrow(/conformance violation: tool result chunk carries no outputPreview/)
+  })
+
+  it('fails the tool-output-head check when the preview drops the leading output', async () => {
+    const clipped: RuntimeConformanceTarget = { ...quietTarget(createMockRuntimeAdapter()), toolOutputHead: 'bakin-receipt:r_0000000000000000' }
+    await expect(runtimeConformanceChecks.toolResultCarriesOutputHead(clipped))
+      .rejects.toThrow(/conformance violation: tool result outputPreview does not contain the tool's leading output/)
+  })
+
   it('fails the terminal-failure check when the iterator throws', async () => {
     await expect(runtimeConformanceChecks.streamTerminalFailureIsTypedErrorChunk(brokenTarget()))
       .rejects.toThrow(/conformance violation: failing stream THREW/)

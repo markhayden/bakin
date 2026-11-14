@@ -39,7 +39,7 @@ await import('../../src/core/exec-tools/tools/ask-user')
 const { getExecTool } = await import('../../src/core/exec-tools/registry')
 const { sessionEventChunks } = await import('../../packages/adapter-pi/src/messaging')
 const { OpenClawTurnChunkMachine } = await import('../../packages/adapter-openclaw/src/stream-events')
-const { enrichQuestionChunk } = await import('../../packages/core/src/conversation/questions')
+const { enrichReceiptChunk, sealToolResult } = await import('../../packages/core/src/conversation/receipts')
 const { createConversationTurnService } = await import('../../packages/core/src/conversation/turns')
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -55,17 +55,20 @@ const ARGS = {
 }
 
 /**
- * Run the real tool and serialize its result exactly as the runtime exec-tool
- * provider does for both adapters (`src/core/exec-tools/provider.ts`:
- * `JSON.stringify(result, null, 2)`). The provider itself needs a fully
+ * Run the real tool and serialize its result exactly as both invoke paths do
+ * (`sealToolResult`, `src/core/exec-tools/provider.ts` and
+ * `src/core/mcp-server.ts`). The provider itself needs a fully
  * initialized AppServices for its per-call tool context, which ask_user never
  * reads; the adapter mappings below are the real code under test.
  */
-async function callAskUser(): Promise<string> {
-  const result = await getExecTool('bakin_exec_ask_user')!.handler(ARGS, 'roscoe')
+async function callAskUser(args: typeof ARGS = ARGS): Promise<string> {
+  const result = await getExecTool('bakin_exec_ask_user')!.handler(args, 'roscoe')
   if (!result.ok) throw new Error(`ask_user failed: ${String(result.error)}`)
-  return JSON.stringify(result, null, 2)
+  return sealToolResult(result, { agentId: 'roscoe', toolName: 'bakin_exec_ask_user' })
 }
+
+/** The turn engine's enrichment for the agent these turns run as. */
+const enrich = (chunk: ChatChunk, agentId = 'roscoe') => enrichReceiptChunk(chunk, agentId)
 
 function bakinQuestionOf(chunk: ChatChunk): Record<string, unknown> | undefined {
   if (chunk.type !== 'tool') return undefined
@@ -74,8 +77,8 @@ function bakinQuestionOf(chunk: ChatChunk): Record<string, unknown> | undefined 
 }
 
 /** The Pi chunk for a finished tool call, produced by Pi's real mapping. */
-async function piResultChunk(): Promise<ChatChunk> {
-  const text = await callAskUser()
+async function piResultChunk(args: typeof ARGS = ARGS): Promise<ChatChunk> {
+  const text = await callAskUser(args)
   const chunks = sessionEventChunks(
     {
       type: 'tool_execution_end',
@@ -90,11 +93,12 @@ async function piResultChunk(): Promise<ChatChunk> {
   return chunks[0]!
 }
 
-describe('enrichQuestionChunk through real adapter mappings', () => {
-  test('Pi (summary-only result) carries the full question after enrichment', async () => {
+describe('enrichReceiptChunk through real adapter mappings', () => {
+  test('Pi carries the full question after enrichment, and its summary stays human', async () => {
     const chunk = await piResultChunk()
     expect(bakinQuestionOf(chunk)).toBeUndefined()
-    const question = bakinQuestionOf(enrichQuestionChunk(chunk))
+    expect((chunk.data as { summary?: string }).summary).toBe("Question posted. End your turn and wait for the user's answer.")
+    const question = bakinQuestionOf(enrich(chunk))
     expect(question).toMatchObject({ v: 1, question: ARGS.question, recommended: 0, allowOther: true })
     expect((question!.options as unknown[]).length).toBe(3)
   })
@@ -113,31 +117,46 @@ describe('enrichQuestionChunk through real adapter mappings', () => {
       },
     } as AgentEventPayload)
     expect(chunks).toHaveLength(1)
-    expect(bakinQuestionOf(enrichQuestionChunk(chunks[0]!))).toMatchObject({ question: ARGS.question })
+    expect(bakinQuestionOf(enrich(chunks[0]!))).toMatchObject({ question: ARGS.question })
   })
 
   test('non-question tool chunks are returned untouched', () => {
     const chunk: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'bakin_exec_heartbeat', status: 'completed', summary: 'ok' } }
-    expect(enrichQuestionChunk(chunk)).toBe(chunk)
+    expect(enrich(chunk)).toBe(chunk)
   })
 
   test('a token is honoured once; replays (and other tools quoting it) stay plain rows', async () => {
     const chunk = await piResultChunk()
-    expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeDefined()
+    expect(bakinQuestionOf(enrich(chunk))).toBeDefined()
     // The same result replayed — e.g. a duplicate frame — no longer opens a card.
-    expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeUndefined()
+    expect(bakinQuestionOf(enrich(chunk))).toBeUndefined()
 
     // A different tool reading a transcript that quotes a LIVE token.
     const fresh = await piResultChunk()
-    const summary = (fresh.data as { summary?: string }).summary
-    const reader: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'read_file', status: 'completed', outputPreview: JSON.stringify({ summary }) } }
-    expect(bakinQuestionOf(enrichQuestionChunk(reader))).toBeUndefined()
-    expect(bakinQuestionOf(enrichQuestionChunk(fresh))).toBeDefined()
+    const quoted = (fresh.data as { outputPreview?: string }).outputPreview
+    expect(quoted).toContain('bakin-receipt:')
+    const reader: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'read_file', status: 'completed', outputPreview: JSON.stringify({ quoted }) } }
+    expect(bakinQuestionOf(enrich(reader))).toBeUndefined()
+    expect(bakinQuestionOf(enrich(fresh))).toBeDefined()
+  })
+
+  test('the asking tool in another agent\'s turn cannot take the receipt', async () => {
+    const chunk = await piResultChunk()
+    expect(bakinQuestionOf(enrich(chunk, 'scout'))).toBeUndefined()
+    expect(bakinQuestionOf(enrich(chunk))).toBeDefined()
+  })
+
+  test('two calls in flight for one agent each get their own question', async () => {
+    const first = await piResultChunk({ ...ARGS, question: 'First question?' })
+    const second = await piResultChunk({ ...ARGS, question: 'Second question?' })
+    // Results arrive out of order, as they do across concurrent turns.
+    expect(bakinQuestionOf(enrich(second))).toMatchObject({ question: 'Second question?' })
+    expect(bakinQuestionOf(enrich(first))).toMatchObject({ question: 'First question?' })
   })
 
   test('an unknown or expired id is left as a plain tool row', () => {
-    const chunk: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'bakin_exec_ask_user', status: 'completed', summary: 'bakin-question:q_0000000000000000 posted.' } }
-    expect(bakinQuestionOf(enrichQuestionChunk(chunk))).toBeUndefined()
+    const chunk: ChatChunk = { type: 'tool', content: 'x', data: { phase: 'result', toolName: 'bakin_exec_ask_user', status: 'completed', outputPreview: '{"receipt":"bakin-receipt:r_0000000000000000","result":{}}' } }
+    expect(bakinQuestionOf(enrich(chunk))).toBeUndefined()
   })
 })
 

@@ -513,6 +513,10 @@ export function sessionEventChunks(event: AgentSessionEvent, state: { announcedT
         // preview field: summaries echo tool output, which can carry the
         // secrets the tool was called with.
         summary: redactSummary(summarizeStructured(unwrapToolResult(event.result))),
+        // The head of the tool's own output, redacted and clipped (parity
+        // with OpenClaw's preview). The one-line summary cannot carry a host
+        // tool receipt (`@bakin/core/conversation/receipts`); this can.
+        outputPreview: safePreview(toolOutputText(event.result), 500),
       },
     }]
   }
@@ -837,6 +841,19 @@ function throwOnTerminalFailure(
 function redactSummary(value: string): string | undefined {
   if (!value) return undefined
   return redactSensitiveText(value)
+}
+
+/** A tool result's text content when it has any, else the result itself. */
+function toolOutputText(result: unknown): unknown {
+  const content = (result as { content?: unknown } | null | undefined)?.content
+  if (!Array.isArray(content)) return result
+  const text = content
+    .map((part: unknown) => {
+      const p = part as { type?: unknown; text?: unknown } | null
+      return p?.type === 'text' && typeof p.text === 'string' ? p.text : ''
+    })
+    .join('')
+  return text || result
 }
 
 function safePreview(value: unknown, cap = 200): string | undefined {

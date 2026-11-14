@@ -2,18 +2,16 @@
  * Structured questions — an agent asks ONE question with options and a
  * recommendation; the conversation kit renders an answerable card.
  *
- * Runtime transports cannot carry the structured question (Pi emits only a
- * one-line result summary; OpenClaw clips previews at 500 chars), so the
- * exec tool returns a short `bakin-question:<id>` token and parks the full
- * question in the in-process registry; the turn engine swaps the token for
- * `metadata.bakinQuestion` before emitting and persisting the row.
+ * Runtime transports cannot carry the structured question, so the tool
+ * returns the minted question on its result and the host carries it to the
+ * conversation row as a tool receipt (`./receipts.ts`), where the turn
+ * engine attaches it as `metadata.bakinQuestion`.
  *
  * Type homes: `BakinQuestion` here (zod-inferred, server) mirrors the
  * canonical `@makinbakin/sdk/types` declaration and the dependency-free UI
  * copy; the SDK's private message-contract module pins all three.
  */
 import { z } from 'zod'
-import type { ChatChunk } from '../adapters/runtime/concepts'
 
 export const QUESTION_LIMITS = {
   question: 200,
@@ -26,7 +24,6 @@ export const QUESTION_LIMITS = {
 } as const
 
 const QUESTION_ID_RE = /^q_[a-z0-9]{16}$/
-const QUESTION_TOKEN_RE = /bakin-question:(q_[a-z0-9]{16})/
 const ENVELOPE_ID_PLACEHOLDER = 'q_0000000000000000'
 
 const optionSchema = z.object({
@@ -97,79 +94,4 @@ export function parseBakinQuestion(value: unknown): BakinQuestion | null {
 
 export function mintQuestionId(): string {
   return `q_${globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
-}
-
-export function questionToken(id: string): string {
-  return `bakin-question:${id}`
-}
-
-/** The question id a tool result's text carries, if any. */
-export function findQuestionToken(text: string | undefined): string | null {
-  return text ? QUESTION_TOKEN_RE.exec(text)?.[1] ?? null : null
-}
-
-export interface QuestionRegistry {
-  put(question: BakinQuestion): void
-  /** Remove and return a question; a token is honoured exactly once. */
-  take(id: string): BakinQuestion | null
-}
-
-/**
- * In-memory id → question map. Enrichment happens in-process within the
- * same turn, so nothing is persisted here: the TTL and the capacity bound
- * cap what orphans (a dispatch turn that never reaches the turn engine)
- * can hold. Insertion order is expiry order — every entry gets the same
- * TTL — so a sweep stops at the first live entry.
- */
-export function createQuestionRegistry(
-  { ttlMs = 10 * 60_000, capacity = 256, now = Date.now }: { ttlMs?: number; capacity?: number; now?: () => number } = {},
-): QuestionRegistry {
-  const entries = new Map<string, { question: BakinQuestion; expiresAt: number }>()
-  const sweep = () => {
-    const at = now()
-    for (const [id, entry] of entries) {
-      if (entry.expiresAt > at) break
-      entries.delete(id)
-    }
-  }
-  return {
-    put(question) {
-      sweep()
-      entries.delete(question.id)
-      entries.set(question.id, { question, expiresAt: now() + ttlMs })
-      while (entries.size > capacity) entries.delete(entries.keys().next().value!)
-    },
-    take(id) {
-      sweep()
-      const entry = entries.get(id)
-      if (!entry) return null
-      entries.delete(id)
-      return entry.question
-    },
-  }
-}
-
-/** The process-wide registry shared by the tool and the turn engine. */
-export const questionRegistry: QuestionRegistry = createQuestionRegistry()
-
-/**
- * Attach the registered question to a tool chunk that carries its token, so
- * the live event and the persisted row both hold `metadata.bakinQuestion`.
- * The token can sit in the summary (Pi), the clipped output preview
- * (OpenClaw) or the chunk text; anything else is returned untouched. Only
- * the asking tool's own result is enriched, and the token is consumed: a
- * later tool that merely reads a transcript or log quoting the token never
- * reopens the question.
- */
-/** The asking tool. Both adapters report bare tool names (OpenClaw strips its MCP server prefix). */
-export const ASK_USER_TOOL = 'bakin_exec_ask_user'
-
-export function enrichQuestionChunk(chunk: ChatChunk, registry: QuestionRegistry = questionRegistry): ChatChunk {
-  if (chunk.type !== 'tool' || chunk.data.phase !== 'result' || chunk.data.toolName !== ASK_USER_TOOL) return chunk
-  const id = findQuestionToken(chunk.data.summary)
-    ?? findQuestionToken(chunk.data.outputPreview)
-    ?? findQuestionToken(chunk.content)
-  const question = id ? registry.take(id) : null
-  if (!question) return chunk
-  return { ...chunk, data: { ...chunk.data, metadata: { ...chunk.data.metadata, bakinQuestion: question } } }
 }
