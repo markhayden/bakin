@@ -4,7 +4,7 @@
  * reduced here. Pure apart from `useHomeActivity`; nothing is stored, and a
  * source that cannot answer contributes nothing rather than a guess.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 
 /** The fields Home reads from a task on the board. */
@@ -53,6 +53,9 @@ export interface HomeActivity {
   scheduled: { jobs: number; comingUp: number } | 'unknown'
   pickUp: PickUpItem[]
 }
+
+/** How long Home waits after the last change it heard of before reading again. */
+export const REFRESH_SETTLE_MS = 750
 
 /** "Recently" and "coming up" both mean a week. */
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
@@ -132,7 +135,7 @@ async function read<T>(url: string, pick: (body: Record<string, unknown>) => T):
 /** Not there is the same as could not answer, for a page Home always has. */
 const known = <T,>(answer: T | 'absent' | 'unknown'): T | 'unknown' => (answer === 'absent' ? 'unknown' : answer)
 
-/** The activity summary, or null until the first read. Looks again when a chat turn finishes; every visit to Home reads afresh. */
+/** The activity summary, or null until the first read. Looks again when a chat turn finishes or the board changes; every visit to Home reads afresh. */
 export function useHomeActivity(enabled: boolean): HomeActivity | null {
   const [activity, setActivity] = useState<HomeActivity | null>(null)
   const load = useCallback(async () => {
@@ -154,6 +157,18 @@ export function useHomeActivity(enabled: boolean): HomeActivity | null {
     }, now))
   }, [])
   useEffect(() => { if (enabled) void load() }, [enabled, load])
-  usePluginEvent('chat.done', () => { if (enabled) void load() })
+
+  // Changes elsewhere: a chat turn finishing, or anything on the board (the shell turns every task
+  // change into one `taskboard` event). A busy board fires often, so changes that arrive together
+  // are read once, a moment after the last.
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadSoon = useCallback(() => {
+    if (!enabled) return
+    if (pending.current) clearTimeout(pending.current)
+    pending.current = setTimeout(() => { pending.current = null; void load() }, REFRESH_SETTLE_MS)
+  }, [enabled, load])
+  useEffect(() => () => { if (pending.current) clearTimeout(pending.current) }, [])
+  usePluginEvent('chat.done', loadSoon)
+  usePluginEvent('taskboard', loadSoon)
   return enabled ? activity : null
 }
