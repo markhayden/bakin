@@ -1,27 +1,87 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { rmSync } from 'fs'
-import { join } from 'path'
+/**
+ * /api/secrets — masked store + declared slots. Every test gets its own
+ * home through the mocked resolvers (both content-dir facades + the OpenClaw
+ * home), never ~/.bakin.
+ */
 import { tmpdir } from 'os'
-import { resetContentDir } from '../../src/core/content-dir'
+import { join } from 'path'
+import { randomUUID } from 'crypto'
+
+let testDir = join(tmpdir(), `bakin-api-secrets-${Date.now()}-${randomUUID()}`)
+process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
+process.env.BAKIN_HOME = testDir
+
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+
+const paths = () => ({ home: testDir, db: join(testDir, 'bakin.db'), bin: join(testDir, 'bin'), media: join(testDir, 'media') })
+mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: paths, isUsingBakinHome: () => true }))
+mock.module('@bakin/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: paths, isUsingBakinHome: () => true }))
+mock.module('@bakin/adapter-openclaw/home', () => ({ getOpenClawHome: () => join(testDir, 'openclaw'), getOpenClawPath: (...p: string[]) => join(testDir, 'openclaw', ...p), resetOpenClawHome: () => {} }))
+mock.module('@/core/logger', () => ({ createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }) }))
+
 import { del, get, post } from '../../packages/host/src/api/secrets'
+import { loginReceiptPath, readLoginReceipt } from '../../src/core/agent-packages/login-verify'
+import { settleFor, waitUntil } from '../helpers/wait'
 
 const url = (q = '') => new URL(`http://localhost/api/secrets${q}`)
 
 describe('/api/secrets', () => {
-  let testDir: string
-  const originalHome = process.env.BAKIN_HOME
-
   beforeEach(() => {
-    testDir = join(tmpdir(), `bakin-api-secrets-${Date.now()}-${Math.random().toString(16).slice(2)}`)
-    process.env.BAKIN_HOME = testDir
-    resetContentDir()
+    // A fresh home per test; the mocked resolvers read `testDir` at call time.
+    testDir = join(tmpdir(), `bakin-api-secrets-${Date.now()}-${randomUUID()}`)
+    mkdirSync(testDir, { recursive: true })
   })
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.BAKIN_HOME
-    else process.env.BAKIN_HOME = originalHome
-    resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('saving a slot a pack declares re-runs that pack\'s login probe (provider-integrations §4.1)', async () => {
+    const probeDir = join(testDir, 'onpath')
+    const marker = join(testDir, 'probe-ran.txt')
+    mkdirSync(probeDir, { recursive: true })
+    writeFileSync(join(probeDir, 'slotprobe'), `#!/bin/sh\necho ran >> "${marker}"\nexit 0\n`)
+    chmodSync(join(probeDir, 'slotprobe'), 0o755)
+    const originalPath = process.env.PATH
+    const originalBrave = process.env.BRAVE_SEARCH_API_KEY
+    const originalSlotToken = process.env.SLOT_TOKEN
+    process.env.PATH = `${probeDir}:${originalPath}`
+    try {
+      const dir = join(testDir, 'packages', 'skill-packs', 'slotpack@1.0.0')
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify({
+        id: 'slotpack', kind: 'skill-pack', name: 'Slot', version: '1.0.0', capability: 'slot', contributions: { skills: ['skills/x'] },
+        secrets: [{ name: 'SLOT_TOKEN', description: 'x', required: false, secretSlot: 'skills.slotpack.SLOT_TOKEN' }],
+        requires: {
+          prereqs: [{ name: 'slot cli', kind: 'binary', probe: 'slotprobe', help: 'https://x.dev' }],
+          login: [{ name: 'Slot account', probe: ['slotprobe', 'status'], setup: 'slotprobe login', help: 'https://x.dev' }],
+        },
+      }))
+      writeFileSync(join(testDir, 'packages', 'lock.json'), JSON.stringify({ version: 1, packages: {
+        'slotpack@1.0.0': { kind: 'skill-pack', version: '1.0.0', source: 'github:x/y#packs/slotpack', ref: 'main', commitSha: 'c'.repeat(40), installedAt: new Date().toISOString(), projections: [] },
+      } }))
+      const res = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'skills.slotpack', name: 'SLOT_TOKEN', value: 'v' }) }), url())
+      expect(res.status).toBe(200)
+      // The fire-and-forget re-check is DONE when its receipt lands — the
+      // marker alone would leave the write in flight past the test's end.
+      const receiptPath = loginReceiptPath('slotpack', 'Slot account')
+      await waitUntil(() => existsSync(receiptPath), { label: 'login receipt written after the secret save' })
+      expect(existsSync(marker)).toBe(true)
+      expect(readLoginReceipt('slotpack', 'Slot account')).toMatchObject({ status: 'ok' })
+      // An unrelated slot re-runs nothing.
+      rmSync(marker, { force: true })
+      await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'brave', name: 'apiKey', value: 'v' }) }), url())
+      await settleFor(150, 'an unrelated slot must not re-run the probe — absence cannot be polled for')
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      process.env.PATH = originalPath
+      // Saves live-inject their env vars (D18); never leak them into the next test.
+      if (originalBrave === undefined) delete process.env.BRAVE_SEARCH_API_KEY
+      else process.env.BRAVE_SEARCH_API_KEY = originalBrave
+      if (originalSlotToken === undefined) delete process.env.SLOT_TOKEN
+      else process.env.SLOT_TOKEN = originalSlotToken
+    }
   })
 
   it('starts empty', async () => {

@@ -23,7 +23,7 @@ export class PackageNotInstalledError extends Error {
 export class SkillRefusalError extends Error {
   constructor(
     message: string,
-    public readonly reason: 'hub-verdict' | 'binary-files' | 'unsafe-path' | 'size-cap' | 'platform' | 'runtime' | 'unsupported-os',
+    public readonly reason: 'hub-verdict' | 'binary-files' | 'unsafe-path' | 'size-cap' | 'platform' | 'runtime' | 'unsupported-os' | 'bakin-range',
   ) {
     super(message)
     this.name = 'SkillRefusalError'

@@ -57,6 +57,25 @@ async function candidates(): Promise<RecommendedCapability[]> {
   return normalizeCatalog((await loadUnifiedCatalog()).entries).filter((c) => !installed.has(c.id))
 }
 
+interface LoginRow { packageId: string; name: string; status: string; account?: string; checkedAt?: string }
+
+/** Every login receipt's evidence (status, account, age) — the check reports it, it never runs a probe. */
+function loginRows(readiness: Awaited<ReturnType<typeof listCapabilities>>): LoginRow[] {
+  return readiness.flatMap((c) => (c.login ?? []).map((l) => ({ packageId: c.packageId, name: l.name, status: l.status, ...(l.account ? { account: l.account } : {}), ...(l.checkedAt ? { checkedAt: l.checkedAt } : {}) })))
+}
+
+/**
+ * The logged-in receipts as one human clause for the message, so the plain
+ * CLI, the TUI and `--json` all carry the evidence (not-logged-in entries
+ * already lead the remediation through the readiness engine's own lines).
+ */
+function loginEvidence(rows: LoginRow[]): string {
+  return rows
+    .filter((row) => row.status === 'ok')
+    .map((row) => `${row.name}: logged in${row.account ? ` as ${row.account}` : ''}${row.checkedAt ? ` (checked ${row.checkedAt})` : ''}`)
+    .join('; ')
+}
+
 async function check(): Promise<CheckResult> {
   try {
     const readiness = await listCapabilities()
@@ -68,6 +87,9 @@ async function check(): Promise<CheckResult> {
     const missing = uninstalled.filter((c) => c.defaultSelected)
     const optional = uninstalled.length - missing.length
     const optionalNote = optional > 0 ? ` (${optional} more available in Explore → Capabilities)` : ''
+    const logins = loginRows(readiness)
+    const evidence = loginEvidence(logins)
+    const evidenceNote = evidence ? ` — ${evidence}` : ''
 
     if (notReady.length === 0 && missing.length === 0) {
       return {
@@ -75,8 +97,8 @@ async function check(): Promise<CheckResult> {
         status: 'ok',
         message: (readiness.length === 0
           ? 'No capability packs installed (browse Explore → Capabilities)'
-          : `${readiness.length} capability pack${readiness.length === 1 ? ' is' : 's are'} ready`) + optionalNote,
-        details: { ready: readiness.map((c) => c.capability), recommended: [], optionalAvailable: optional },
+          : `${readiness.length} capability pack${readiness.length === 1 ? ' is' : 's are'} ready`) + optionalNote + evidenceNote,
+        details: { ready: readiness.map((c) => c.capability), recommended: [], optionalAvailable: optional, logins },
       }
     }
 
@@ -86,12 +108,13 @@ async function check(): Promise<CheckResult> {
     return {
       name: 'capabilities',
       status: 'missing',
-      message: parts.join('; ') + optionalNote,
+      message: parts.join('; ') + optionalNote + evidenceNote,
       remediation: notReady.length > 0
         ? notReady.flatMap((c) => c.missing).join('; ')
         : 'Install with `bakin packages install <name>` or from Explore → Capabilities.',
       details: {
         notReady: notReady.map((c) => ({ capability: c.capability, packageId: c.packageId, missing: c.missing })),
+        logins,
         recommended: missing.map((c) => ({ id: c.id, name: c.name, capability: c.capability, defaultSelected: c.defaultSelected })),
       },
     }

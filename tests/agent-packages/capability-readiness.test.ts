@@ -10,7 +10,7 @@ const testDir = pathJoin(tmpdir(), `bakin-test-cap-readiness-${Date.now()}-${ran
 process.env.BAKIN_HOME = testDir
 
 import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 mock.module('@/core/content-dir', () => ({
@@ -48,6 +48,8 @@ mock.module('@/core/app-services', () => {
 
 import { listCapabilities } from '../../src/core/agent-packages/capability-readiness'
 import { binPlatformKey } from '../../src/core/agent-packages/bin-installer'
+import { currentLoginInputs, loginReceiptPath, type LoginReceipt } from '../../src/core/agent-packages/login-verify'
+import type { SkillPackManifest } from '../../packages/core/src/agent-packages/manifest'
 import { setStoredSecret } from '../../packages/core/src/media/secret-store'
 import { resetContentDir } from '../../src/core/content-dir'
 
@@ -244,5 +246,107 @@ describe('listCapabilities', () => {
     delete manifest.capability
     writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify(manifest))
     expect(await listCapabilities()).toEqual([])
+  })
+})
+
+describe('listCapabilities — login leg (provider-integrations §4.1)', () => {
+  const PROBE_BYTES = '#!/bin/sh\necho ran >> "' + join(testDir, 'probe-ran.txt') + '"\nexit 0\n'
+  const PROBE_SHA = require('crypto').createHash('sha256').update(PROBE_BYTES).digest('hex') as string
+
+  function loginManifest(): SkillPackManifest {
+    return {
+      id: 'gw',
+      kind: 'skill-pack',
+      name: 'Google Workspace',
+      version: '2.0.0',
+      capability: 'google-workspace',
+      runtimes: ['*'],
+      contributions: { skills: ['skills/google-workspace'] },
+      requires: {
+        bins: [{ name: 'gogprobe', version: '0.48.0', install: { [key]: { url: 'https://example.com/gog', sha256: PROBE_SHA } } }],
+        login: [{ name: 'Google account (gog)', probe: ['gogprobe', 'auth', 'list', '--check'], setup: 'gog auth setup you@example.com --login', help: 'https://gogcli.sh/quickstart' }],
+      },
+    } as SkillPackManifest
+  }
+
+  function seedLoginPack(): SkillPackManifest {
+    const manifest = loginManifest()
+    const dir = join(testDir, 'packages', 'skill-packs', 'gw@2.0.0')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify(manifest))
+    mkdirSync(join(testDir, 'bin'), { recursive: true })
+    writeFileSync(join(testDir, 'bin', 'gogprobe'), PROBE_BYTES)
+    chmodSync(join(testDir, 'bin', 'gogprobe'), 0o755)
+    mkdirSync(join(testDir, 'packages'), { recursive: true })
+    writeFileSync(join(testDir, 'packages', 'lock.json'), JSON.stringify({
+      version: 1,
+      packages: {
+        'gw@2.0.0': {
+          kind: 'skill-pack', version: '2.0.0', source: 'github:x/y#packs/gw', ref: 'main', commitSha: 'c'.repeat(40), installedAt: new Date().toISOString(),
+          projections: [
+            { kind: 'skill', target: 'runtime:global-skill:google-workspace', sha256: 'd'.repeat(64) },
+            { kind: 'bin', target: join(testDir, 'bin', 'gogprobe'), sha256: PROBE_SHA },
+          ],
+        },
+      },
+    }))
+    projectedSkills.add('google-workspace')
+    return manifest
+  }
+
+  function writeReceipt(manifest: SkillPackManifest, over: Partial<LoginReceipt>): void {
+    const receipt: LoginReceipt = {
+      ...currentLoginInputs(manifest),
+      status: 'ok', checkedAt: '2026-11-13T10:00:00.000Z', probe: ['gogprobe', 'auth', 'list', '--check'], exitCode: 0,
+      account: 'mark@org.example', output: 'mark@org.example', ...over,
+    }
+    mkdirSync(join(loginReceiptPath('gw', 'Google account (gog)'), '..'), { recursive: true })
+    writeFileSync(loginReceiptPath('gw', 'Google account (gog)'), JSON.stringify(receipt))
+  }
+
+  it('never checked → unknown, not ready, and the readiness read spawns nothing', async () => {
+    seedLoginPack()
+    const [cap] = await listCapabilities()
+    expect(cap!.login).toEqual([expect.objectContaining({ name: 'Google account (gog)', status: 'unknown', reason: 'never-checked', setup: 'gog auth setup you@example.com --login' })])
+    expect(cap!.ready).toBe(false)
+    expect(cap!.missing.some((line) => /login not verified/.test(line) && /Check login/.test(line))).toBe(true)
+    expect(existsSync(join(testDir, 'probe-ran.txt'))).toBe(false)
+  })
+
+  it('a setup command that runs the pack\'s own binary shows that binary\'s path — the operator\'s shell has no ~/.bakin/bin on PATH', async () => {
+    const manifest = seedLoginPack()
+    manifest.requires!.login![0]!.setup = 'gogprobe auth setup you@example.com --login'
+    writeFileSync(join(testDir, 'packages', 'skill-packs', 'gw@2.0.0', 'bakin-package.json'), JSON.stringify(manifest))
+    writeReceipt(manifest, { status: 'missing', reason: 'no-match', exitCode: 0, account: undefined })
+    const [cap] = await listCapabilities()
+    const runnable = `${join(testDir, 'bin', 'gogprobe')} auth setup you@example.com --login`
+    expect(cap!.login[0]!.setup).toBe(runnable)
+    expect(cap!.missing).toContain(`Google account (gog): not logged in — run: ${runnable}`)
+  })
+
+  it('a missing receipt blocks ready with the setup command as remediation', async () => {
+    const manifest = seedLoginPack()
+    writeReceipt(manifest, { status: 'missing', reason: 'exit', exitCode: 1, account: undefined })
+    const [cap] = await listCapabilities()
+    expect(cap!.login[0]).toMatchObject({ status: 'missing', reason: 'exit', checkedAt: '2026-11-13T10:00:00.000Z' })
+    expect(cap!.ready).toBe(false)
+    expect(cap!.missing).toContain('Google account (gog): not logged in — run: gog auth setup you@example.com --login')
+  })
+
+  it('an ok receipt whose inputs still match reads ok and the pack is ready', async () => {
+    const manifest = seedLoginPack()
+    writeReceipt(manifest, {})
+    const [cap] = await listCapabilities()
+    expect(cap!.login[0]).toMatchObject({ status: 'ok', account: 'mark@org.example', checkedAt: '2026-11-13T10:00:00.000Z' })
+    expect(cap!.ready).toBe(true)
+    expect(cap!.missing).toEqual([])
+  })
+
+  it('a receipt whose inputs changed is stale → unknown, keeping when it was checked', async () => {
+    const manifest = seedLoginPack()
+    writeReceipt(manifest, { packVersion: '1.9.0' })
+    const [cap] = await listCapabilities()
+    expect(cap!.login[0]).toMatchObject({ status: 'unknown', reason: 'stale', checkedAt: '2026-11-13T10:00:00.000Z' })
+    expect(cap!.ready).toBe(false)
   })
 })

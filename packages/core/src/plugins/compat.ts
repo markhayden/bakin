@@ -111,15 +111,25 @@ export type BakinRangeCheck = { ok: true } | { ok: false; message: string }
  * `hostVersion` defaults to the build's APP_VERSION; tests pass explicit
  * versions to exercise stamped-host behavior on a dev checkout.
  */
+export interface BakinRangeSubject {
+  /** The thing declaring the range — "Plugin" (default) or "Package". */
+  label: string
+  /** The manifest file name the message points at. */
+  file: string
+}
+
+const PLUGIN_SUBJECT: BakinRangeSubject = { label: 'Plugin', file: 'bakin-plugin.json' }
+
 export function checkBakinRangeCompatibility(
   range: string,
   hostVersion: string = APP_VERSION,
+  subject: BakinRangeSubject = PLUGIN_SUBJECT,
 ): BakinRangeCheck {
   if (!isWellFormedSemverRange(range)) {
     return {
       ok: false,
       message:
-        `bakin-plugin.json field "bakin" is not a valid semver range: "${range}". ` +
+        `${subject.file} field "bakin" is not a valid semver range: "${range}". ` +
         'Use a range like ">=0.5.0" (no space after the operator).',
     }
   }
@@ -143,8 +153,8 @@ export function checkBakinRangeCompatibility(
     return {
       ok: false,
       message:
-        `Plugin requires Bakin "${range}" but this host is ${hostVersion}. ` +
-        'Upgrade Bakin, or update the plugin\'s "bakin" range if it actually supports this version.',
+        `${subject.label} requires Bakin "${range}" but this host is ${hostVersion}. ` +
+        `Upgrade Bakin, or update the ${subject.label.toLowerCase()}'s "bakin" range if it actually supports this version.`,
     }
   }
   return { ok: true }

@@ -293,22 +293,37 @@ export interface OperationRenderer {
   finish(result: OperationFollowResult): void
 }
 
+/**
+ * The tty renderer can show a WAITING line before the operation's first view
+ * arrives — the request is in flight, or the server has not answered yet — so
+ * a slow start is never a silent terminal. The first real frame replaces it.
+ */
+export interface WaitingOperationRenderer extends OperationRenderer {
+  /** Show (or reword) the waiting line; ignored once a view has arrived. */
+  waiting(text: string): void
+  /** Stop the clock and erase the waiting line — the start failed before any view. */
+  dispose(): void
+}
+
 export function createOperationRenderer(opts: {
   mode: OperationRenderMode
   write: (text: string) => void
   now?: () => number
   /** Redraw cadence for clocks in tty mode; 0 disables (tests). */
   tickMs?: number
-}): OperationRenderer {
+}): WaitingOperationRenderer {
   const now = opts.now ?? Date.now
   let last: { view: OperationView; children: readonly OperationView[] } | null = null
   let drawn = 0
   const notes: string[] = []
   let timer: ReturnType<typeof setInterval> | undefined
+  let waiting: { text: string; since: number } | null = null
 
   const draw = () => {
-    if (!last) return
-    const frame = [...renderOperationFrame(last.view, last.children, now()), ...notes]
+    const frame = last
+      ? [...renderOperationFrame(last.view, last.children, now()), ...notes]
+      : waiting ? [`${waiting.text} · ${formatDuration(now() - waiting.since)}`] : null
+    if (!frame) return
     const clear = drawn > 0 ? `\x1b[${drawn}F\x1b[J` : ''
     opts.write(`${clear}${frame.join('\n')}\n`)
     drawn = frame.length
@@ -320,6 +335,16 @@ export function createOperationRenderer(opts: {
   }
 
   return {
+    waiting(text) {
+      if (opts.mode !== 'tty' || last) return
+      waiting = { text, since: waiting?.since ?? now() }
+      draw()
+    },
+    dispose() {
+      if (timer) clearInterval(timer)
+      if (!last && drawn > 0) opts.write(`\x1b[${drawn}F\x1b[J`)
+      drawn = 0
+    },
     update(view, children) {
       const next = { view, children }
       if (opts.mode === 'plain') {

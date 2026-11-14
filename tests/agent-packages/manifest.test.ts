@@ -41,6 +41,7 @@ import {
   parseManifest,
   safeParseManifest,
   formatManifestError,
+  loginEntryKey,
   type Manifest,
 } from '../../packages/core/src/agent-packages/manifest'
 
@@ -511,6 +512,118 @@ describe('manifest schema — requirement legs (npm/models/prereqs/platforms)', 
     expect(m.platforms).toEqual(['darwin-arm64'])
     expect(() => parseManifest(skillPackWith({}, { platforms: [] }))).toThrow()
     expect(() => parseManifest(skillPackWith({}, { platforms: ['windows-x64'] }))).toThrow()
+  })
+})
+
+describe('manifest schema — login leg (provider-integrations §4.1)', () => {
+  function skillPackWith(requires: Record<string, unknown>): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return { ...base, requires: { ...(base.requires as Record<string, unknown> ?? {}), ...requires } }
+  }
+  const ghLogin = { name: 'GitHub account (gh)', probe: ['gh', 'auth', 'status'], setup: 'gh auth login', help: 'https://cli.github.com/manual/gh_auth_login' }
+
+  it('parses the google-workspace 2.0.0 pack manifest byte-for-byte (the Bits pack fixture)', () => {
+    const m = parseManifest(loadFixture('google-workspace-2.0.0'))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login).toHaveLength(1)
+    expect(m.requires?.login?.[0]).toMatchObject({ probe: ['gog', 'auth', 'list', '--check', '--json', '--no-input'], accountEnv: 'GOG_ACCOUNT' })
+    // Every `gog auth` command exits 0 when logged out — the pack's output contract decides.
+    const pattern = new RegExp(m.requires!.login![0]!.expect!)
+    expect(pattern.exec('{\n  "accounts": []\n}')).toBeNull()
+    const valid = pattern.exec('{\n  "accounts": [\n    {\n      "email": "mark@example.com",\n      "client": "default",\n      "services": ["gmail"],\n      "valid": true\n    }\n  ]\n}')
+    expect(valid?.[1]).toBe('mark@example.com')
+    // An invalid first account never lends its email to a valid second one.
+    const mixed = pattern.exec('{"accounts":[{"email":"old@example.com","valid":false,"error":"revoked"},{"email":"new@example.com","valid":true}]}')
+    expect(mixed?.[1]).toBe('new@example.com')
+    expect(pattern.exec('{"accounts":[{"email":"old@example.com","valid":false}]}')).toBeNull()
+    expect(m.bakin).toBe('>=0.1.0-rc.9')
+  })
+
+  it('binds a login probe to a binary prereq by its probe name', () => {
+    const m = parseManifest(skillPackWith({
+      prereqs: [{ name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }],
+      login: [ghLogin],
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].accountEnv).toBeUndefined()
+  })
+
+  it('rejects a login probe whose binary is neither a declared bin nor a binary prereq', () => {
+    expect(() => parseManifest(skillPackWith({ login: [ghLogin] }))).toThrow(/login probe .*gh.* is not a declared bin/)
+    // A prereq's display NAME never binds — only its probe does.
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'gh', kind: 'binary', probe: 'github-cli', help: 'https://x.dev' }],
+      login: [ghLogin],
+    }))).toThrow(/login probe .*gh.* is not a declared bin/)
+    // An app prereq is not a binary.
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'gh', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }],
+      login: [ghLogin],
+    }))).toThrow(/login probe .*gh.* is not a declared bin/)
+  })
+
+  it('expect is an optional regular expression the probe output must match — an invalid pattern is refused', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: 'Logged in to ([^ ]+)' }] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].expect).toBe('Logged in to ([^ ]+)')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: '(' }] }))).toThrow(/valid regular expression/)
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: '' }] }))).toThrow()
+  })
+
+  it('expect beside accountEnv must capture the account; a pattern over 1 KB is refused', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: 'Logged in' }] })))
+      .toThrow(/capturing group .*accountEnv/)
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: 'Logged in to (?:github\\.com) as ([^ ]+)' }] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].accountEnv).toBe('GH_ACCOUNT')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: 'x'.repeat(1025) }] }))).toThrow()
+    // Both fields with a pattern that does not compile: an error RESULT, never a throw out of safeParse (Codex r5 B4) —
+    // a malformed installed manifest must not abort every capability enumeration.
+    const broken = safeParseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: '(' }] }))
+    expect(broken.success).toBe(false)
+    if (!broken.success) expect(broken.error.issues.map((i) => i.message)).toContain('login expect must be a valid regular expression')
+  })
+
+  it('a binary prereq probe is a bare PATH name of at most 255 characters; an app probe is a path (Codex r8 B7)', () => {
+    const long = { name: 'long', kind: 'binary', probe: 'x'.repeat(256), help: 'https://x.dev' }
+    const refused = safeParseManifest(skillPackWith({ prereqs: [long] }))
+    expect(refused.success).toBe(false)
+    if (!refused.success) expect(refused.error.issues.map((i) => i.path.join('.'))).toContain('requires.prereqs.0.probe')
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ ...long, probe: '/usr/local/bin/gh' }] })).success).toBe(false)
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ ...long, probe: 'x'.repeat(255) }] })).success).toBe(true)
+    expect(safeParseManifest(skillPackWith({ prereqs: [{ name: 'app', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }] })).success).toBe(true)
+  })
+
+  it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {
+    const prereq = { name: 'echo', kind: 'binary', probe: 'echo', help: 'https://x.dev' }
+    expect(loginEntryKey('Work account')).toBe('work-account')
+    expect(loginEntryKey('Work-account')).toBe('work-account')
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [
+      { name: 'Work account', probe: ['echo', 'first@example.com'], setup: 'x', help: 'https://x.dev' },
+      { name: 'Work-account', probe: ['echo', 'second@example.com'], setup: 'y', help: 'https://x.dev' },
+    ] }))).toThrow(/share the receipt key .*work-account/)
+    // Distinct keys are two receipts.
+    const m = parseManifest(skillPackWith({ prereqs: [prereq], login: [
+      { name: 'Work account', probe: ['echo', 'first@example.com'], setup: 'x', help: 'https://x.dev' },
+      { name: 'Personal account', probe: ['echo', 'second@example.com'], setup: 'y', help: 'https://x.dev' },
+    ] }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login).toHaveLength(2)
+  })
+
+  it('rejects a path as probe[0], an empty probe, an empty setup, a non-https help and a lowercase accountEnv', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: ['/usr/bin/gh', 'auth'] }] }))).toThrow()
+    // An empty probe is an error RESULT (the schema's other refinements run after `.min(1)` fails), never a TypeError
+    // out of safeParse that would 500 the capabilities endpoint over one installed manifest (Codex r7 B6).
+    const empty = safeParseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: [] }] }))
+    expect(empty.success).toBe(false)
+    if (!empty.success) expect(empty.error.issues.some((i) => i.path.join('.') === 'requires.login.0.probe')).toBe(true)
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, setup: '' }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, help: 'not a url' }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'gog_account' }] }))).toThrow()
   })
 })
 

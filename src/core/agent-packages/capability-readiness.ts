@@ -26,7 +26,9 @@ import { createAppServices, maybeGetAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { binPlatformKey } from './bin-installer'
 import { verifyInstalledBin } from './bin-verify'
+import { currentLoginInputs, isReceiptStale, readLoginReceipt, type LoginReason, type LoginStatus } from './login-verify'
 import { modelDest, npmPayloadDir } from './requirements-installer'
+import { runnableLoginSetup } from './login-setup'
 import { verifyNpmPayload } from './npm-verify'
 
 const log = createLogger('capability-readiness')
@@ -71,6 +73,23 @@ export interface CapabilityPrereqStatus {
   status: 'ok' | 'missing'
 }
 
+/**
+ * The login leg (spec provider-integrations §4.1) — READ from the receipt the
+ * explicit verification wrote; readiness never spawns the probe. `unknown`
+ * = never checked, stale inputs, or a probe that could not run; it blocks
+ * `ready` like `missing` does.
+ */
+export interface CapabilityLoginStatus {
+  name: string
+  /** The exact command(s) the operator runs to log in. */
+  setup: string
+  help: string
+  status: LoginStatus
+  reason?: LoginReason | 'never-checked' | 'stale'
+  checkedAt?: string
+  account?: string
+}
+
 export interface CapabilityReadiness {
   capability: string
   packageId: string
@@ -83,6 +102,7 @@ export interface CapabilityReadiness {
   npm: CapabilityNpmStatus[]
   models: CapabilityModelStatus[]
   prereqs: CapabilityPrereqStatus[]
+  login: CapabilityLoginStatus[]
   secrets: CapabilitySecretStatus[]
   /** False when the pack declares `platforms` and this box isn't one of them. */
   platformSupported: boolean
@@ -158,7 +178,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
         version: entry.version,
         name: typeof raw?.name === 'string' ? raw.name : id,
         description: typeof raw?.description === 'string' ? raw.description : '',
-        skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
+        skills: [], bins: [], npm: [], models: [], prereqs: [], login: [], secrets: [],
         platformSupported: true,
         manifestValid: false,
         ready: false,
@@ -227,13 +247,38 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
     for (const req of manifest.requires?.prereqs ?? []) {
       // The repo's hand-rolled Bun namespace omits `which` — cast (findSystemBun precedent).
       const bunWhich = (Bun as unknown as { which: (bin: string) => string | null }).which
-      const present = req.kind === 'binary'
-        ? Boolean(bunWhich(req.probe))
-        : existsSync(req.probe)
+      let present = false
+      try {
+        present = req.kind === 'binary' ? Boolean(bunWhich(req.probe)) : existsSync(req.probe)
+      } catch (err) {
+        // A name the lookup cannot even try (`Bun.which` throws past ~1 KB) is absent, never a 500 for every pack.
+        log.warn('prereq lookup failed', { packId: id, prereq: req.name, error: err instanceof Error ? err.message : String(err) })
+      }
       prereqs.push({ name: req.name, kind: req.kind, help: req.help, optional: req.optional, status: present ? 'ok' : 'missing' })
       // Prereqs are user-installed, never Bakin-installed — remediation is the
       // help link. Optional prereqs surface as a leg but never block ready.
       if (!present && !req.optional) missing.push(`${req.name} is not installed — get it: ${req.help}`)
+    }
+
+    const login: CapabilityLoginStatus[] = []
+    for (const req of manifest.requires?.login ?? []) {
+      const receipt = readLoginReceipt(id, req.name)
+      const setup = runnableLoginSetup(manifest, req)
+      const row: CapabilityLoginStatus = { name: req.name, setup, help: req.help, status: 'unknown', reason: 'never-checked' }
+      if (receipt) {
+        row.checkedAt = receipt.checkedAt
+        if (isReceiptStale(receipt, currentLoginInputs(manifest, req), req.probe)) {
+          row.reason = 'stale'
+        } else {
+          row.status = receipt.status
+          if (receipt.reason) row.reason = receipt.reason
+          else delete row.reason
+          if (receipt.account) row.account = receipt.account
+        }
+      }
+      login.push(row)
+      if (row.status === 'missing') missing.push(`${req.name}: not logged in — run: ${setup}`)
+      if (row.status === 'unknown') missing.push(`${req.name}: login not verified — click Check login or run: bakin packages login-check ${id}`)
     }
 
     const platformSupported = !manifest.platforms || (platform !== null && manifest.platforms.includes(platform))
@@ -277,6 +322,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       npm,
       models,
       prereqs,
+      login,
       secrets,
       platformSupported,
       manifestValid: true,

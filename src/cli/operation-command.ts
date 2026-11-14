@@ -37,22 +37,32 @@ export async function startAndFollow(
     signal?: AbortSignal
   },
 ): Promise<CommandOperationResult> {
-  const started = jsonObject(await start()) as Partial<OperationStartResponse> | null
+  const tty = (opts.stdout ?? process.stdout).isTTY === true
+  const stdoutWrite = opts.stdout?.write
+  const write = stdoutWrite ? (text: string) => { stdoutWrite.call(opts.stdout, text) } : (text: string) => { process.stdout.write(text) }
+  // On a terminal the waiting line shows the moment the request goes out and
+  // stays (with its clock) until the operation's first view replaces it.
+  const live = !opts.json && tty ? createOperationRenderer({ mode: 'tty', write }) : null
+  live?.waiting('Starting · waiting for Bakin to answer')
+  let started: Partial<OperationStartResponse> | null
+  try {
+    started = jsonObject(await start()) as Partial<OperationStartResponse> | null
+  } catch (err) {
+    live?.dispose()
+    throw err
+  }
   if (typeof started?.operationId !== 'string' || typeof started.bootId !== 'string') {
+    live?.dispose()
     throw new Error('The server did not start an operation — is this CLI newer than the running server? Restart Bakin and try again.')
   }
-  const tty = (opts.stdout ?? process.stdout).isTTY === true
+  live?.waiting('Started · waiting for its first update')
   const renderer = opts.json
     ? silentOperationRenderer()
-    : tty
-      ? undefined
-      : createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
-  const stdoutWrite = opts.stdout?.write
+    : live ?? createOperationRenderer({ mode: 'plain', write: (text) => { process.stderr.write(text) } })
   const follow = await followAndRender(
     { operationId: started.operationId, bootId: started.bootId },
     {
-      ...(renderer ? { renderer } : {}),
-      ...(stdoutWrite ? { write: (text: string) => { stdoutWrite.call(opts.stdout, text) } } : {}),
+      renderer,
       ...(opts.onUpdate ? { onUpdate: opts.onUpdate } : {}),
       ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}),
       ...(opts.signal ? { signal: opts.signal } : {}),

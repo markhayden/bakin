@@ -79,7 +79,7 @@ import { parseHealthCheckRunInput } from '../../../../src/core/health-contract'
 
 function cap(over: Partial<CapabilityReadiness> & Pick<CapabilityReadiness, 'capability' | 'packageId'>): CapabilityReadiness {
   return {
-    version: '1.0.0', name: over.capability, description: '', skills: [], bins: [], npm: [], models: [], prereqs: [], secrets: [],
+    version: '1.0.0', name: over.capability, description: '', skills: [], bins: [], npm: [], models: [], prereqs: [], login: [], secrets: [],
     platformSupported: true, manifestValid: true, ready: false, missing: ['something'], ...over,
   }
 }

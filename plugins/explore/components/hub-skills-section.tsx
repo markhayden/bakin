@@ -81,6 +81,8 @@ interface CapabilityReadinessWire {
   missing: string[]
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>
   prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
+  /** Explicit login receipts (provider-integrations §4.1); absent on hosts before the leg existed. */
+  login?: Array<{ name: string; setup: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; account?: string; checkedAt?: string }>
 }
 
 /** The readiness row for an installed skill: same pack id (bare or `id@version`) or the same capability slug. */
@@ -102,8 +104,35 @@ function rowHighlighted(row: InstalledSkillRow, readiness: CapabilityReadinessWi
  * lines verbatim, plus the one link a human can act on from here (keys live
  * in Settings → Integrations & Keys). Prereq help rides the lines already.
  */
-function CapabilityLegs({ readiness }: { readiness: CapabilityReadinessWire }) {
-  if (readiness.ready) return <StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge>
+function CapabilityLegs({ readiness, onCheckLogin }: { readiness: CapabilityReadinessWire; onCheckLogin: (packageId: string) => Promise<void> }) {
+  const [checking, setChecking] = useState(false)
+  const hasLogin = (readiness.login ?? []).length > 0
+  const checkButton = hasLogin && (
+    <div>
+      <Button
+        size="xs"
+        variant="outline"
+        busy={checking}
+        onClick={() => { setChecking(true); void onCheckLogin(readiness.packageId).finally(() => setChecking(false)) }}
+      >
+        Check login
+      </Button>
+    </div>
+  )
+  if (readiness.ready) {
+    // A provider logout leaves an old green receipt behind: keep the evidence and the re-check.
+    return (
+      <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
+        <div><StatusBadge size="xs" tone="success" variant="soft">Ready</StatusBadge></div>
+        {(readiness.login ?? []).map((login) => (
+          <Text key={login.name} size="meta" tone="muted" as="p">
+            {login.name}: logged in{login.account ? ` as ${login.account}` : ''}{login.checkedAt ? ` (checked ${new Date(login.checkedAt).toLocaleString()})` : ''}
+          </Text>
+        ))}
+        {checkButton}
+      </div>
+    )
+  }
   const needsKey = readiness.secrets.some((secret) => secret.required && secret.status === 'missing')
   return (
     <div className="grid gap-bakin-1" data-testid={`capability-legs-${readiness.capability}`}>
@@ -116,6 +145,7 @@ function CapabilityLegs({ readiness }: { readiness: CapabilityReadinessWire }) {
           Add the key in Settings → Integrations & Keys
         </PluginLink>
       )}
+      {checkButton}
     </div>
   )
 }
@@ -341,6 +371,24 @@ export function HubSkillsSection() {
   const readinessFetch = useJsonFetch<{ capabilities: CapabilityReadinessWire[] }>('/api/packages/capabilities', { timeoutMs: LIST_TIMEOUT_MS })
   const [highlightCapability] = useQueryState('capability', '')
   const readinessRows = readinessFetch.data?.capabilities
+  // The explicit login trigger (provider-integrations §4.1): run the probe on
+  // the shared host control, then re-read readiness so the legs show the receipt.
+  const checkLogin = async (packageId: string) => {
+    try {
+      const res = await fetch('/api/packages/login-check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ packageId }) })
+      const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; receipts?: Array<{ name: string; status: string; account?: string; setup: string }> } | null
+      if (!res.ok || !body?.ok) toast(body?.error ?? `Login check failed (HTTP ${res.status})`, 'error')
+      else for (const receipt of body.receipts ?? []) {
+        if (receipt.status === 'ok') toast(`${receipt.name}: logged in${receipt.account ? ` as ${receipt.account}` : ''}`, 'success')
+        else if (receipt.status === 'missing') toast(`${receipt.name}: not logged in — run: ${receipt.setup}`, 'error')
+        else toast(`${receipt.name}: login could not be verified`, 'error')
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Login check failed', 'error')
+    } finally {
+      readinessFetch.refresh()
+    }
+  }
   useEffect(() => {
     if (highlightCapability === '') return
     const row = document.querySelector<HTMLElement>('[data-capability-row][data-highlighted="true"]')
@@ -490,7 +538,7 @@ export function HubSkillsSection() {
                     </TooltipTrigger>
                     <TooltipContent>{row.source}</TooltipContent>
                   </Tooltip>
-                  {readiness && <CapabilityLegs readiness={readiness} />}
+                  {readiness && <CapabilityLegs readiness={readiness} onCheckLogin={checkLogin} />}
                 </div>
                 <ListRowActions>
                   <Button

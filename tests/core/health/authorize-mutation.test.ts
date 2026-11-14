@@ -54,11 +54,12 @@ describe('authorizeMutation — the item and `none` rules (Codex r1 #4 / r2)', (
     expect(decisionControlOwnedBy('/api/plugins/spend/incidents/1/resolve', { kind: 'plugin', id: 'health' })).toBe(false)
     expect(decisionControlOwnedBy('/api/plugins/disable?x=1', { kind: 'plugin', id: 'health' })).toBe(true)
     expect(decisionControlOwnedBy('/api/plugins/disable', { kind: 'plugin', id: 'health' })).toBe(true)
+    expect(decisionControlOwnedBy('/api/packages/login-check', { kind: 'plugin', id: 'health' })).toBe(true) // the pack login check (provider-integrations §4.1)
     expect(decisionControlOwnedBy('/api/settings', { kind: 'plugin', id: 'health' })).toBe(false)
     expect(decisionControlOwnedBy('/api/settings', { kind: 'core', id: 'core' })).toBe(true)
     expect(decisionControlOwnedBy('/api/runtime/switch', { kind: 'adapter', id: 'openclaw' })).toBe(true)
     expect(decisionControlOwnedBy('/runtime', { kind: 'adapter', id: 'openclaw' })).toBe(false)
-    expect(SHARED_DECISION_CONTROLS).toEqual(['/api/plugins/disable', '/api/plugins/enable'])
+    expect(SHARED_DECISION_CONTROLS).toEqual(['/api/plugins/disable', '/api/plugins/enable', '/api/packages/login-check'])
   })
   it('ownership is judged on the canonical pathname: traversal, encoded bytes and scheme tricks never walk out of the owner prefix (Codex r3 R3-1)', () => {
     const demo = { kind: 'plugin' as const, id: 'demo' }

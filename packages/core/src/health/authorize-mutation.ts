@@ -35,7 +35,7 @@ export const MUTATION_KINDS = HEALTH_MUTATION_KINDS
 export const SHARED_ENGINE_ACTIONS: readonly string[] = Object.freeze(['core.diagnose'])
 
 /** Host decision controls any owner's `request` choice may name (explicit delegation; everything else must be the owner's own route). */
-export const SHARED_DECISION_CONTROLS: readonly string[] = Object.freeze(['/api/plugins/disable', '/api/plugins/enable'])
+export const SHARED_DECISION_CONTROLS: readonly string[] = Object.freeze(['/api/plugins/disable', '/api/plugins/enable', '/api/packages/login-check'])
 
 /**
  * Is `url` a route this owner may put a request choice on? A plugin owns

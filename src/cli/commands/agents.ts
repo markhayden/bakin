@@ -14,6 +14,7 @@ import { exitUsage, exitUnknownSubcommand, confirmPrompt } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
 import type { PackageActionData } from '../../core/cli/ui/readonly'
 import { printRuntimeActionTui } from './runtime'
+import { resolveLocalSource } from '../local-source'
 
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
   return renderInkReport(() => import('../../core/cli/ui/readonly'), (m) => m.AgentsListReport, { agents })
@@ -212,9 +213,10 @@ export interface AgentsCmdFlags {
   json?: boolean
 }
 
-async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): Promise<void> {
+async function cmdAgentPackagesInstall(typed: string, flags: AgentsCmdFlags): Promise<void> {
+  const source = resolveLocalSource(typed)
   const body: Record<string, unknown> = { source }
-  if (flags.adopt) body.adopt = source // installer reads any truthy adopt as the agentId
+  if (flags.adopt) body.adopt = typed // installer reads any truthy adopt as the agentId
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
   const operation = await startAndFollow(() => apiPost('/api/agent-packages/install', body), { json: Boolean(flags.json) })
@@ -224,7 +226,7 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
     await printPackageActionTui({
       action: 'installed',
       scope: 'agent package',
-      target: flags.installAs ?? source,
+      target: flags.installAs ?? typed,
       result,
     })
     return
