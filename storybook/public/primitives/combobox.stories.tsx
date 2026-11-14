@@ -36,7 +36,8 @@ export const CanonicalUsage = {
     if (args.disabled) { await expect(input).toBeDisabled(); return }
     await userEvent.type(input, 'Open')
     const page = within(document.body)
-    await expect(page.findByRole('option', { name: 'OpenClaw' })).resolves.toBeVisible()
+    // The popup mounts a frame before it shows (it starts at opacity 0): wait until it is visible, never check once.
+    await waitFor(() => expect(page.getByRole('option', { name: 'OpenClaw' })).toBeVisible())
     await expect(page.queryByRole('option', { name: 'Pi' })).not.toBeInTheDocument()
     await userEvent.keyboard('{ArrowDown}{Enter}')
     await expect(input).toHaveValue('OpenClaw')
@@ -75,7 +76,7 @@ export const GroupedOptions = {
     const input = canvas.getByRole('combobox', { name: 'Grouped runtime' })
     const page = within(document.body)
     await userEvent.type(input, 'Pi')
-    await expect(page.findByRole('option', { name: 'Pi' })).resolves.toBeVisible()
+    await waitFor(() => expect(page.getByRole('option', { name: 'Pi' })).toBeVisible())
     await expect(page.queryByRole('option', { name: 'OpenClaw' })).not.toBeInTheDocument()
     await expect(input).toHaveAttribute('aria-controls', page.getByRole('listbox').id)
     await userEvent.keyboard('{Escape}')
@@ -129,7 +130,7 @@ export const AsyncAndUnavailable = {
     const input = canvas.getByRole('combobox', { name: 'Remote runtime' })
     await userEvent.type(input, 'error')
     const page = within(document.body)
-    await expect(page.findByRole('button', { name: 'Retry runtime search' })).resolves.toBeVisible()
+    await waitFor(() => expect(page.getByRole('button', { name: 'Retry runtime search' })).toBeVisible())
     await expect(page.queryByText('No matching remote runtimes.')).not.toBeInTheDocument()
     await userEvent.click(page.getByRole('button', { name: 'Retry runtime search' }))
     await waitFor(() => expect(canvas.getByRole('status')).toHaveTextContent('3 runtimes available.'))
