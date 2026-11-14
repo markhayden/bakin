@@ -114,7 +114,9 @@ never on the server's event loop (Codex r4 B1: a backtracking pattern such as
 `a*a*a*a*a*a*a*a*b` over 10 KB stalls a thread indefinitely and a Worker's
 `terminate()` does not stop it): `src/core/agent-packages/expect-match.ts`
 spawns the checkout's script or, in the compiled binary, the binary itself on
-the hidden `__bakin-expect-match` command (stdin JSON in, stdout JSON out),
+the hidden `__bakin-expect-match` command (stdin JSON in, a bounded
+`{ matched, captures }` summary out — match count plus at most 256 distinct
+first captures, flushed before the child exits; the server reads at most 8 MB),
 SIGKILLs it at the login deadline (the child, which runs the regex on a worker
 thread, also exits itself a second later — an orphan never spins for good),
 and reports `unknown`/`expect-timeout`

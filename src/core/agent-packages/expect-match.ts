@@ -11,8 +11,8 @@
  * process never exits). So the match runs in a CHILD PROCESS we can SIGKILL:
  * the bakin binary re-entered on its hidden `__bakin-expect-match` command
  * (compiled), or this module as a script (checkout). Each side of the protocol
- * is one JSON document: `{ pattern, input, deadlineMs }` on stdin,
- * `{ matches }` on stdout.
+ * is one JSON document: `{ pattern, input, deadlineMs }` on stdin, the
+ * bounded `{ matched, captures }` summary on stdout.
  *
  * The child also ends ITSELF: it runs the regex on a worker thread and exits
  * the whole process at `deadlineMs` (a second after the server's own kill),
@@ -24,6 +24,16 @@ import { fileURLToPath } from 'url'
 import { RUNNING_FROM_BINARY } from '../plugin-resources'
 
 export const EXPECT_MATCH_COMMAND = '__bakin-expect-match'
+/** Exit code of a child that reached its own deadline. */
+export const EXPECT_MATCH_DEADLINE_EXIT = 124
+/** Distinct captured accounts the answer carries at most — a login listing never has this many. */
+export const EXPECT_MATCH_CAPTURE_LIMIT = 256
+/**
+ * The most the server reads back from the child; anything longer is not an
+ * answer. A complete answer is at most the capture limit × the 16 KB a probe
+ * can print (every capture is a substring of it) plus JSON overhead.
+ */
+export const EXPECT_MATCH_ANSWER_CAP_BYTES = 8 * 1024 * 1024
 
 export interface ExpectMatchRequest {
   pattern: string
@@ -32,19 +42,32 @@ export interface ExpectMatchRequest {
   deadlineMs: number
 }
 
-/** Exit code of a child that reached its own deadline. */
-export const EXPECT_MATCH_DEADLINE_EXIT = 124
-
-/** Every match of the pattern, each as `[whole, ...captures]` (an unmatched group is null). */
-export type ExpectMatches = (string | null)[][]
+/**
+ * What the server needs from a match, and nothing that can grow with the
+ * pattern: a 16 KB input under `(?=(a*))` yields ~128 MB of whole matches
+ * (Codex r5 B3), while the distinct first captures of it fit in a line.
+ */
+export interface ExpectSummary {
+  /** How many times the pattern matched. */
+  matched: number
+  /** Distinct, non-empty first-group captures in match order — the accounts — capped at `EXPECT_MATCH_CAPTURE_LIMIT`. */
+  captures: string[]
+}
 
 export type ExpectMatchResult =
-  | { ok: true; matches: ExpectMatches }
+  | { ok: true; summary: ExpectSummary }
   | { ok: false; reason: 'expect-timeout' | 'expect-error'; detail: string }
 
-/** The matcher proper — only ever called inside the child. */
-export function matchExpectInProcess(pattern: string, input: string): ExpectMatches {
-  return Array.from(input.matchAll(new RegExp(pattern, 'g')), (match) => Array.from(match, (group) => group ?? null))
+/** The matcher proper — only ever run on the child's worker thread (and serialized into it below). */
+export function summarizeExpect(pattern: string, input: string, captureLimit: number): ExpectSummary {
+  let matched = 0
+  const captures: string[] = []
+  for (const match of input.matchAll(new RegExp(pattern, 'g'))) {
+    matched += 1
+    const account = match[1]
+    if (typeof account === 'string' && account.length > 0 && !captures.includes(account) && captures.length < captureLimit) captures.push(account)
+  }
+  return { matched, captures }
 }
 
 /**
@@ -53,12 +76,21 @@ export function matchExpectInProcess(pattern: string, input: string): ExpectMatc
  * loads from a data: URL, so nothing has to be bundled beside the binary.
  */
 function matcherWorkerUrl(): string {
-  const source = `const matchExpectInProcess = ${matchExpectInProcess.toString()};
+  const source = `const summarizeExpect = ${summarizeExpect.toString()};
 self.onmessage = (event) => {
-  try { postMessage({ matches: matchExpectInProcess(event.data.pattern, event.data.input) }) }
+  try { postMessage({ summary: summarizeExpect(event.data.pattern, event.data.input, ${EXPECT_MATCH_CAPTURE_LIMIT}) }) }
   catch (err) { postMessage({ error: err instanceof Error ? err.message : String(err) }) }
 }`
   return `data:application/javascript;base64,${Buffer.from(source).toString('base64')}`
+}
+
+/** A writer the child must await: `process.stdout.write` only queues, and the process exits right after (Codex r5 B3). */
+export type ChildWriter = (text: string) => Promise<void>
+
+function flushing(stream: NodeJS.WriteStream): ChildWriter {
+  return (text) => new Promise((resolve, reject) => {
+    stream.write(text, (err) => (err ? reject(err) : resolve()))
+  })
 }
 
 /**
@@ -68,7 +100,7 @@ self.onmessage = (event) => {
  * must then end the PROCESS, because a regex thread cannot be stopped any
  * other way (`worker.terminate()` returns while it keeps spinning).
  */
-export async function runExpectMatchChild(stdin: string, stdout: (text: string) => void, stderr: (text: string) => void): Promise<number> {
+export async function runExpectMatchChild(stdin: string, stdout: ChildWriter, stderr: ChildWriter): Promise<number> {
   let request: ExpectMatchRequest
   try {
     const parsed: unknown = JSON.parse(stdin)
@@ -78,26 +110,26 @@ export async function runExpectMatchChild(stdin: string, stdout: (text: string) 
     if (typeof deadlineMs !== 'number' || !(deadlineMs > 0)) throw new Error('request needs a positive deadlineMs')
     request = { pattern, input, deadlineMs }
   } catch (err) {
-    stderr(`expect-match: bad request: ${err instanceof Error ? err.message : String(err)}\n`)
+    await stderr(`expect-match: bad request: ${err instanceof Error ? err.message : String(err)}\n`)
     return 1
   }
   const worker = new Worker(matcherWorkerUrl())
-  const answer = await new Promise<{ matches?: ExpectMatches; error?: string } | 'deadline'>((resolve) => {
+  const answer = await new Promise<{ summary?: ExpectSummary; error?: string } | 'deadline'>((resolve) => {
     const timer = setTimeout(() => resolve('deadline'), request.deadlineMs)
-    worker.onmessage = (event: MessageEvent<{ matches?: ExpectMatches; error?: string }>) => { clearTimeout(timer); resolve(event.data) }
+    worker.onmessage = (event: MessageEvent<{ summary?: ExpectSummary; error?: string }>) => { clearTimeout(timer); resolve(event.data) }
     worker.onerror = (event: ErrorEvent) => { clearTimeout(timer); resolve({ error: event.message }) }
     worker.postMessage({ pattern: request.pattern, input: request.input })
   })
   void worker.terminate()
   if (answer === 'deadline') {
-    stderr(`expect-match: the pattern did not finish within ${request.deadlineMs} ms\n`)
+    await stderr(`expect-match: the pattern did not finish within ${request.deadlineMs} ms\n`)
     return EXPECT_MATCH_DEADLINE_EXIT
   }
-  if (answer.error !== undefined || answer.matches === undefined) {
-    stderr(`expect-match: ${answer.error ?? 'the matcher answered nothing'}\n`)
+  if (answer.error !== undefined || answer.summary === undefined) {
+    await stderr(`expect-match: ${answer.error ?? 'the matcher answered nothing'}\n`)
     return 1
   }
-  stdout(`${JSON.stringify({ matches: answer.matches })}\n`)
+  await stdout(`${JSON.stringify(answer.summary)}\n`)
   return 0
 }
 
@@ -114,7 +146,7 @@ export async function readStdinText(): Promise<string> {
  */
 export async function dispatchExpectMatch(argv: readonly string[]): Promise<number | null> {
   if (!argv.includes(EXPECT_MATCH_COMMAND)) return null
-  return runExpectMatchChild(await readStdinText(), (text) => process.stdout.write(text), (text) => process.stderr.write(text))
+  return runExpectMatchChild(await readStdinText(), flushing(process.stdout), flushing(process.stderr))
 }
 
 /** How the server re-enters itself to run one match. */
@@ -131,6 +163,14 @@ export interface MatchExpectOptions {
   argv?: string[]
 }
 
+function summaryOf(text: string): ExpectSummary | null {
+  const parsed: unknown = JSON.parse(text)
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const { matched, captures } = parsed as Record<string, unknown>
+  if (typeof matched !== 'number' || !Array.isArray(captures) || !captures.every((c) => typeof c === 'string')) return null
+  return { matched, captures: captures as string[] }
+}
+
 /** Run one match in a killable child. Never throws: every failure is a reason. */
 export function matchExpect(pattern: string, input: string, opts: MatchExpectOptions): Promise<ExpectMatchResult> {
   const argv = opts.argv ?? expectMatchArgv()
@@ -144,12 +184,23 @@ export function matchExpect(pattern: string, input: string, opts: MatchExpectOpt
     }
     const out: Buffer[] = []
     const err: Buffer[] = []
+    let outBytes = 0
     let timedOut = false
+    let overflowed = false
     const timer = setTimeout(() => {
       timedOut = true
       child.kill('SIGKILL')
     }, opts.timeoutMs)
-    child.stdout!.on('data', (chunk: Buffer) => out.push(chunk))
+    child.stdout!.on('data', (chunk: Buffer) => {
+      outBytes += chunk.byteLength
+      if (outBytes > EXPECT_MATCH_ANSWER_CAP_BYTES) {
+        // Not an answer any more: stop reading and stop the child.
+        overflowed = true
+        child.kill('SIGKILL')
+        return
+      }
+      out.push(chunk)
+    })
     child.stderr!.on('data', (chunk: Buffer) => err.push(chunk))
     child.once('error', (error) => {
       clearTimeout(timer)
@@ -161,16 +212,19 @@ export function matchExpect(pattern: string, input: string, opts: MatchExpectOpt
         resolve({ ok: false, reason: 'expect-timeout', detail: `the pattern did not finish within ${opts.timeoutMs} ms` })
         return
       }
+      if (overflowed) {
+        resolve({ ok: false, reason: 'expect-error', detail: `the matcher answered more than ${EXPECT_MATCH_ANSWER_CAP_BYTES} bytes` })
+        return
+      }
       if (code !== 0) {
         resolve({ ok: false, reason: 'expect-error', detail: Buffer.concat(err).toString('utf-8').trim() || `matcher exited ${code}` })
         return
       }
       try {
-        const parsed: unknown = JSON.parse(Buffer.concat(out).toString('utf-8'))
-        const matches = (parsed as { matches?: unknown })?.matches
-        resolve(Array.isArray(matches)
-          ? { ok: true, matches: matches as ExpectMatches }
-          : { ok: false, reason: 'expect-error', detail: 'matcher answered without matches' })
+        const summary = summaryOf(Buffer.concat(out).toString('utf-8'))
+        resolve(summary
+          ? { ok: true, summary }
+          : { ok: false, reason: 'expect-error', detail: 'the matcher answered without a summary' })
       } catch (error) {
         resolve({ ok: false, reason: 'expect-error', detail: `unreadable matcher answer: ${error instanceof Error ? error.message : String(error)}` })
       }
@@ -182,7 +236,10 @@ export function matchExpect(pattern: string, input: string, opts: MatchExpectOpt
   })
 }
 
+// The checkout's child entry. No top-level await: this module also sits in
+// server.ts's import graph, and `bun build --compile` refuses one there.
 if (import.meta.main) {
-  const code = await runExpectMatchChild(await readStdinText(), (text) => process.stdout.write(text), (text) => process.stderr.write(text))
-  process.exit(code)
+  void readStdinText()
+    .then((stdin) => runExpectMatchChild(stdin, flushing(process.stdout), flushing(process.stderr)))
+    .then((code) => process.exit(code))
 }

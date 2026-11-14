@@ -162,9 +162,18 @@ const LoginRequirementSchema = z.object({
     path: ['expect'],
   })
 
-/** How many capturing groups a (compiling) pattern has — the empty alternative matches without running it. */
+/**
+ * How many capturing groups a pattern has — the empty alternative matches
+ * without running it. A pattern that does not compile counts as capturing:
+ * the syntax refinement above already refused it, and zod runs every
+ * refinement regardless, so this one must not throw (Codex r5 B4).
+ */
 function regexCaptureCount(pattern: string): number {
-  return (new RegExp(`${pattern}|`).exec('')?.length ?? 1) - 1
+  try {
+    return (new RegExp(`${pattern}|`).exec('')?.length ?? 1) - 1
+  } catch {
+    return 1
+  }
 }
 
 /**

@@ -579,6 +579,11 @@ describe('manifest schema — login leg (provider-integrations §4.1)', () => {
     if (m.kind !== 'skill-pack') throw new Error('kind')
     expect(m.requires?.login?.[0].accountEnv).toBe('GH_ACCOUNT')
     expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, expect: 'x'.repeat(1025) }] }))).toThrow()
+    // Both fields with a pattern that does not compile: an error RESULT, never a throw out of safeParse (Codex r5 B4) —
+    // a malformed installed manifest must not abort every capability enumeration.
+    const broken = safeParseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'GH_ACCOUNT', expect: '(' }] }))
+    expect(broken.success).toBe(false)
+    if (!broken.success) expect(broken.error.issues.map((i) => i.message)).toContain('login expect must be a valid regular expression')
   })
 
   it('rejects two login entries whose names share one receipt key (a second receipt would overwrite the first)', () => {

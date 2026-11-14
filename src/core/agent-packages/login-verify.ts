@@ -361,7 +361,7 @@ type StdoutVerdict =
  *
  * With `expect`: the pattern runs in a killable child (a pack-authored
  * regex must never stall the server). No match is `no-match`. The
- * accounts are the first capturing group of EVERY match, and a configured
+ * accounts are the distinct first captures of EVERY match, and a configured
  * account must BE one of them exactly — a valid second account never
  * vouches for a revoked first one, and the configured one succeeds wherever
  * it sits in the list (PR1 Codex r4 B2).
@@ -375,8 +375,8 @@ async function judgeStdout(entry: LoginRequirement, stdout: string, timeoutMs: n
   }
   const matched = await matchExpect(entry.expect, stdout, { timeoutMs })
   if (!matched.ok) return { status: 'unknown', reason: matched.reason, detail: matched.detail }
-  if (matched.matches.length === 0) return { status: 'missing', reason: 'no-match' }
-  const accounts = matched.matches.map((match) => match[1]).filter((account): account is string => typeof account === 'string' && account.length > 0)
+  const { matched: count, captures: accounts } = matched.summary
+  if (count === 0) return { status: 'missing', reason: 'no-match' }
   if (wanted) return accounts.includes(wanted) ? { status: 'ok', account: wanted } : { status: 'missing', reason: 'account-mismatch' }
   return { status: 'ok', ...(accounts[0] ? { account: accounts[0] } : {}) }
 }

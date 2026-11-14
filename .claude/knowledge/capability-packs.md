@@ -119,7 +119,10 @@ A capability pack is `kind: "skill-pack"` plus:
   and the pattern's first capturing group is the account shown (a JSON
   probe's first line is `{`). The schema refuses a pattern that does not
   compile or runs past 1 KB, and — beside `accountEnv` — one without a
-  capturing group: with both declared, the configured account must BE one of
+  capturing group (the group count is read without throwing, so a pattern
+  that fails the syntax check is a schema RESULT, never an exception out of
+  `safeParseManifest` that would abort every capability enumeration): with
+  both declared, the configured account must BE one of
   the captures of SOME match (every match is read, so the configured
   account valid in second place is a login; a valid second account never
   vouches for a revoked first one — whole-output substring matching would,
@@ -131,7 +134,11 @@ A capability pack is `kind: "skill-pack"` plus:
   PR1 Codex r4 B1). On a checkout the child is `bun expect-match.ts`; inside
   the compiled binary it is the binary itself on the hidden
   `__bakin-expect-match` command (`dispatchExpectMatch` runs first in
-  `dispatchCli`, stdin → stdout, one JSON document each way; the compiled
+  `dispatchCli`, stdin → stdout, one JSON document each way — the answer is
+  the bounded `{ matched, captures }` summary (match count + at most 256
+  distinct first captures), never the matches themselves, since a lookahead
+  pattern expands 16 KB of input into ~128 MB of whole matches; the child
+  awaits the flush before it exits; the server reads at most 8 MB; the compiled
   teeth test `tests/integration/agent-packages/compiled-expect-match.test.ts`
   pins the re-entry, the kill and the self-exit). The child also ends
   ITSELF: it runs the regex on a worker thread and exits the whole process

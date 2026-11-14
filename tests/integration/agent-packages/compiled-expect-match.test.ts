@@ -49,7 +49,7 @@ describe('compiled expect matcher', () => {
 
     const viaCommand = [binary, EXPECT_MATCH_COMMAND]
     const matched = await matchExpect(GOG, '{"accounts":[{"email":"old@x","valid":false},{"email":"new@x","valid":true}]}', { timeoutMs: 20_000, argv: viaCommand })
-    expect(matched).toEqual({ ok: true, matches: [['"email":"new@x","valid":true', 'new@x']] })
+    expect(matched).toEqual({ ok: true, summary: { matched: 1, captures: ['new@x'] } })
 
     const killed = await matchExpect('a*a*a*a*a*a*a*a*b', 'a'.repeat(10_000), { timeoutMs: 1_500, argv: viaCommand })
     expect(killed).toEqual({ ok: false, reason: 'expect-timeout', detail: 'the pattern did not finish within 1500 ms' })
