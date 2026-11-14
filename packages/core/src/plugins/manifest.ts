@@ -4,6 +4,7 @@ import type {
   CliCommandContribution,
   ClientRouteContribution,
   ClientRoutePatternContribution,
+  EntityContribution,
   ExecToolContribution,
   HttpMethod,
   NavItem,
@@ -302,13 +303,51 @@ function parseRoutePattern(raw: unknown, index: number): ClientRoutePatternContr
   }
 }
 
+const ENTITY_KIND_RE = /^[a-z][a-z0-9-]{0,39}$/
+/** A reported kind's public identity: `<pluginId>:<kind>`. */
+export const ENTITY_REF_KIND_RE = /^[a-z][a-z0-9-]{0,39}:[a-z][a-z0-9-]{0,39}$/
+/** Path characters between placeholders: no braces, whitespace or backslashes. */
+const ENTITY_HREF_RE = /^\/(?:[^{}\s\\]|\{[A-Za-z][A-Za-z0-9]*\})*$/
+
 function parseExecTool(raw: unknown, index: number): ExecToolContribution {
-  if (!isRecord(raw)) throw new PluginManifestError(`contributes.execTools[${index}] must be an object`)
+  const label = `contributes.execTools[${index}]`
+  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  const reports = raw.reports
+  if (reports !== undefined) {
+    if (!Array.isArray(reports) || !reports.every((kind) => typeof kind === 'string' && ENTITY_REF_KIND_RE.test(kind))) {
+      throw new PluginManifestError(`${label}.reports must be an array of "<pluginId>:<kind>" entity kinds`)
+    }
+  }
   return {
     name: stringField(raw, 'name', { required: true })!,
     summary: stringField(raw, 'summary', { required: true })!,
     description: stringField(raw, 'description'),
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
+    ...(reports ? { reports: [...new Set(reports as string[])] } : {}),
+  }
+}
+
+function parseEntity(raw: unknown, index: number): EntityContribution {
+  const label = `contributes.entities[${index}]`
+  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  const kind = stringField(raw, 'kind', { required: true })!
+  if (!ENTITY_KIND_RE.test(kind)) {
+    throw new PluginManifestError(`${label}.kind "${kind}" must match ${ENTITY_KIND_RE}`)
+  }
+  const href = stringField(raw, 'href', { required: true })!
+  // In-app only: one leading slash (never `//host`), `{name}` placeholders.
+  if (!ENTITY_HREF_RE.test(href) || href.startsWith('//')) {
+    throw new PluginManifestError(`${label}.href "${href}" must be an in-app path starting with "/" whose placeholders are written {name}`)
+  }
+  if (raw.handoff !== undefined && typeof raw.handoff !== 'boolean') {
+    throw new PluginManifestError(`${label}.handoff must be a boolean`)
+  }
+  return {
+    kind,
+    label: stringField(raw, 'label', { required: true })!,
+    icon: stringField(raw, 'icon', { required: true })!,
+    href,
+    ...(raw.handoff === undefined ? {} : { handoff: raw.handoff }),
   }
 }
 
@@ -460,6 +499,15 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   if (input.execTools !== undefined) {
     if (!Array.isArray(input.execTools)) throw new PluginManifestError('contributes.execTools must be an array')
     out.execTools = input.execTools.map(parseExecTool)
+  }
+  if (input.entities !== undefined) {
+    if (!Array.isArray(input.entities)) throw new PluginManifestError('contributes.entities must be an array')
+    out.entities = input.entities.map(parseEntity)
+    const seen = new Set<string>()
+    for (const entity of out.entities) {
+      if (seen.has(entity.kind)) throw new PluginManifestError(`contributes.entities declares duplicate kind "${entity.kind}"`)
+      seen.add(entity.kind)
+    }
   }
   if (input.socketRoutes !== undefined) {
     if (!Array.isArray(input.socketRoutes)) throw new PluginManifestError('contributes.socketRoutes must be an array')

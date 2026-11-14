@@ -186,13 +186,13 @@ T27 release guard ← T3, T6      T28 pin bump + e2e ← Bits      T29 docs reco
 
 ### Phase 1 — Correlation (highest risk first) → PR 1
 
-- [ ] **T1: Receipt registry and envelope on both invoke paths.**
+- [x] **T1: Receipt registry and envelope on both invoke paths.**
   - Acceptance: one shared post-handler function; envelope shape fixed; a plugin-supplied
     `receipt` key cannot override it; results without entities/question are unchanged;
     `unwrapToolResult`/`summarizeStructured` peel the envelope.
   - Verify: unit tests incl. integer-like keys, a 600-character leading value, large
     payloads, escaped MCP wrapper. Size: M.
-- [ ] **T2: Provenance-checked enrichment; migrate `ask_user`; Pi `outputPreview`.**
+- [x] **T2: Provenance-checked enrichment; migrate `ask_user`; Pi `outputPreview`.**
   - Acceptance: receipt consumed only on matching tool + agent; `bakinQuestion` behaviour
     unchanged for consumers; old question plumbing deleted.
   - Verify: live-token-quotation regression test kept; runtime-conformance check (with a
@@ -200,7 +200,10 @@ T27 release guard ← T3, T6      T28 pin bump + e2e ← Bits      T29 docs reco
     mock, Pi and the OpenClaw mock; two concurrent turns for one agent each get their own.
     Size: M.
 
-**Checkpoint A** — `bun run test`, `lint`, `typecheck` green. On the isolated rig
+**Checkpoint A (2026-11-14, partial)** — suite, lint, typecheck green; envelope confirmed
+over MCP on an isolated server. The real-model leg is OPEN: the isolated rigs could not run
+a turn (Pi login expired, OpenClaw rig has no provider key). PR 1 (#1089) is held until it
+passes. Original criterion: `bun run test`, `lint`, `typecheck` green. On the isolated rig
 (`--mode isolated`, each runtime) a chat question still renders its card. If the token does
 not survive a real runtime, stop and revisit A1.
 

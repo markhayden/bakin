@@ -110,6 +110,23 @@ describe('syncPluginManifest', () => {
     expect(() => parsePluginManifest(manifest)).not.toThrow()
   })
 
+  it('keeps declared entity kinds and the kinds a tool reports', async () => {
+    const dir = writePlugin({ dist: DIST_WITH_SURFACES })
+    const manifestPath = join(dir, 'bakin-plugin.json')
+    const authored = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    const entities = [{ kind: 'thing', label: 'Thing', icon: 'Box', href: '/things/{id}' }]
+    const tool = { name: `bakin_exec_${authored.id}_do`, summary: 'Do it', reports: [`${authored.id}:thing`] }
+    writeFileSync(manifestPath, JSON.stringify({ ...authored, contributes: { entities, execTools: [tool] } }, null, 2))
+
+    // The routes are undeclared, so the sync rewrites the file.
+    const result = await syncPluginManifest(dir, { skipBuild: true })
+    expect(result.written).toBe(true)
+
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    expect(manifest.contributes.entities).toEqual(entities)
+    expect(manifest.contributes.execTools).toEqual([tool])
+  })
+
   it('is idempotent: second run reports in-sync and does not rewrite', async () => {
     const dir = writePlugin({ dist: DIST_WITH_SURFACES })
     await syncPluginManifest(dir, { skipBuild: true })
