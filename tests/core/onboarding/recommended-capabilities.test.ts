@@ -91,6 +91,13 @@ describe('capabilities onboarding component', () => {
     expect(result.remediation).toContain('BRAVE_SEARCH_API_KEY')
   })
 
+  it('a pack whose login is missing is not ready; the remediation is the exact setup command (provider-integrations §4.1)', async () => {
+    readiness = [{ capability: 'google-workspace', packageId: 'google-workspace', ready: false, missing: ['Google account (gog): not logged in — run: gog auth setup you@example.com --login'] }]
+    const result = await recommendedCapabilitiesComponent.check()
+    expect(result.status).toBe('missing')
+    expect(result.remediation).toContain('run: gog auth setup you@example.com --login')
+  })
+
   it('uninstalled à-la-carte packs never flip the check to missing', async () => {
     lockPackages = { 'web-search-brave@1.0.0': { kind: 'skill-pack', version: '1.0.0' } }
     readiness = [{ capability: 'web-search', packageId: 'web-search-brave', ready: true, missing: [] }]

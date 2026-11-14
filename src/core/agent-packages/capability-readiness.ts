@@ -272,7 +272,7 @@ export async function listCapabilities(): Promise<CapabilityReadiness[]> {
       }
       login.push(row)
       if (row.status === 'missing') missing.push(`${req.name}: not logged in — run: ${req.setup}`)
-      if (row.status === 'unknown') missing.push(`${req.name}: login not verified — click Check login or run: bakin check capabilities`)
+      if (row.status === 'unknown') missing.push(`${req.name}: login not verified — click Check login or run: bakin packages login-check ${id}`)
     }
 
     const platformSupported = !manifest.platforms || (platform !== null && manifest.platforms.includes(platform))
