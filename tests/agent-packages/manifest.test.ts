@@ -514,6 +514,54 @@ describe('manifest schema — requirement legs (npm/models/prereqs/platforms)', 
   })
 })
 
+describe('manifest schema — login leg (provider-integrations §4.1)', () => {
+  function skillPackWith(requires: Record<string, unknown>): Record<string, unknown> {
+    const base = loadFixture('skill-pack') as Record<string, unknown>
+    return { ...base, requires: { ...(base.requires as Record<string, unknown> ?? {}), ...requires } }
+  }
+  const ghLogin = { name: 'GitHub account (gh)', probe: ['gh', 'auth', 'status'], setup: 'gh auth login', help: 'https://cli.github.com/manual/gh_auth_login' }
+
+  it('parses the google-workspace 2.0.0 pack manifest byte-for-byte (the Bits pack fixture)', () => {
+    const m = parseManifest(loadFixture('google-workspace-2.0.0'))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login).toHaveLength(1)
+    expect(m.requires?.login?.[0]).toMatchObject({ probe: ['gog', 'auth', 'list', '--check'], accountEnv: 'GOG_ACCOUNT' })
+    expect(m.bakin).toBe('>=0.1.0-rc.9')
+  })
+
+  it('binds a login probe to a binary prereq by its probe name', () => {
+    const m = parseManifest(skillPackWith({
+      prereqs: [{ name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }],
+      login: [ghLogin],
+    }))
+    if (m.kind !== 'skill-pack') throw new Error('kind')
+    expect(m.requires?.login?.[0].accountEnv).toBeUndefined()
+  })
+
+  it('rejects a login probe whose binary is neither a declared bin nor a binary prereq', () => {
+    expect(() => parseManifest(skillPackWith({ login: [ghLogin] }))).toThrow(/login probe .*gh.* is not a declared bin/)
+    // A prereq's display NAME never binds — only its probe does.
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'gh', kind: 'binary', probe: 'github-cli', help: 'https://x.dev' }],
+      login: [ghLogin],
+    }))).toThrow(/login probe .*gh.* is not a declared bin/)
+    // An app prereq is not a binary.
+    expect(() => parseManifest(skillPackWith({
+      prereqs: [{ name: 'gh', kind: 'app', probe: '/Applications/gh.app', help: 'https://x.dev' }],
+      login: [ghLogin],
+    }))).toThrow(/login probe .*gh.* is not a declared bin/)
+  })
+
+  it('rejects a path as probe[0], an empty probe, an empty setup, a non-https help and a lowercase accountEnv', () => {
+    const prereq = { name: 'GitHub CLI (gh)', kind: 'binary', probe: 'gh', help: 'https://cli.github.com/' }
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: ['/usr/bin/gh', 'auth'] }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, probe: [] }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, setup: '' }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, help: 'not a url' }] }))).toThrow()
+    expect(() => parseManifest(skillPackWith({ prereqs: [prereq], login: [{ ...ghLogin, accountEnv: 'gog_account' }] }))).toThrow()
+  })
+})
+
 describe('manifest schema — review hardening pins', () => {
   function skillPackWithBin(download: Record<string, unknown>): Record<string, unknown> {
     const base = loadFixture('skill-pack') as Record<string, unknown>

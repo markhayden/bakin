@@ -1,0 +1,52 @@
+{
+  "id": "google-workspace",
+  "kind": "skill-pack",
+  "name": "Google Workspace",
+  "version": "2.0.0",
+  "description": "Lets your agents work your Google account — search Gmail, read and add calendar events, find files in Drive, and read or update Sheets and Docs — through the open-source `gog` command line tool.",
+  "author": "Bakin (uses gog by the OpenClaw project, MIT)",
+  "bakin": ">=0.1.0-rc.9",
+  "capability": "google-workspace",
+  "runtimes": ["*"],
+  "contributions": { "skills": ["skills/google-workspace"] },
+  "requires": {
+    "bins": [
+      {
+        "name": "gog",
+        "version": "0.48.0",
+        "install": {
+          "darwin-arm64": {
+            "url": "https://github.com/openclaw/gogcli/releases/download/v0.48.0/gogcli_0.48.0_darwin_arm64.tar.gz",
+            "sha256": "a8c6142fcb9f41f0eff02ffef78298cbe4981061f149c2b3a42d5a13bad931bd",
+            "archive": { "format": "tar.gz", "member": "gog", "extractedSha256": "7957d49fe75bef040bdb191cccd41cca0000e79c8f497b05f8ff8a4887c552b9" }
+          },
+          "darwin-x64": {
+            "url": "https://github.com/openclaw/gogcli/releases/download/v0.48.0/gogcli_0.48.0_darwin_amd64.tar.gz",
+            "sha256": "423d8ac93530e13cd7cb599de2655db3262ddc763181996771d74188ffcefc5a",
+            "archive": { "format": "tar.gz", "member": "gog", "extractedSha256": "023744603a56c9b88386ba6f0ddf94ed16b81d973d3b406822a5feb6f7c2a1eb" }
+          },
+          "linux-x64": {
+            "url": "https://github.com/openclaw/gogcli/releases/download/v0.48.0/gogcli_0.48.0_linux_amd64.tar.gz",
+            "sha256": "8809d2f4fe95a0299b1a2a5c6bc912c4aba4b90a7b5e2c1f5cf11b9945a50004",
+            "archive": { "format": "tar.gz", "member": "gog", "extractedSha256": "7d86d981714c624d5b0719040fa632b245aeb61ae53c379646524a67cf037c15" }
+          },
+          "linux-arm64": {
+            "url": "https://github.com/openclaw/gogcli/releases/download/v0.48.0/gogcli_0.48.0_linux_arm64.tar.gz",
+            "sha256": "fc40524368d2cb6213bdfe0b736b5884e1b55c6368706d7a285542cb7e559b68",
+            "archive": { "format": "tar.gz", "member": "gog", "extractedSha256": "1137f6e970ea95ca225054ef646510d666a968e6e3a261901e0e0bc5f0f0620c" }
+          }
+        },
+        "verifyArgs": ["--version"]
+      }
+    ],
+    "login": [
+      {
+        "name": "Google account (gog)",
+        "probe": ["gog", "auth", "list", "--check"],
+        "setup": "gog auth setup you@example.com --credentials ~/Downloads/client_secret_*.json --login",
+        "help": "https://gogcli.sh/quickstart",
+        "accountEnv": "GOG_ACCOUNT"
+      }
+    ]
+  }
+}

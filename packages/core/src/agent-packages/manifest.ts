@@ -124,6 +124,26 @@ const PrereqRequirementSchema = z
     message: 'app probes must be absolute paths; binary probes must be bare PATH names',
   })
 
+/**
+ * Login verification (spec provider-integrations §4.1). A read-only command
+ * whose exit status says whether the operator has logged the pack's tool
+ * into its provider. Run only on explicit triggers (install/sync
+ * completion, `bakin check capabilities`, a "Check login" action) — never on
+ * a readiness read — and recorded as a receipt readiness reports with its age.
+ */
+const LoginRequirementSchema = z.object({
+  /** Human name shown in readiness/doctor findings. */
+  name: z.string().min(1),
+  /** argv, no shell. probe[0] is a bare binary name bound to a declared bin or binary prereq. */
+  probe: z.array(z.string().min(1)).min(1),
+  /** The exact command(s) the operator runs to log in — shown verbatim as remediation. */
+  setup: z.string().min(1),
+  /** Where the operator reads more. */
+  help: z.string().url(),
+  /** Env var naming the intended account; when set, the probe output must mention it. */
+  accountEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/, { message: 'accountEnv must be an environment variable name' }).optional(),
+}).refine((l) => !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
+
 const RequiresSchema = z
   .object({
     bins: z.array(BinRequirementSchema).optional(),
@@ -131,6 +151,27 @@ const RequiresSchema = z
     models: z.array(ModelRequirementSchema).optional(),
     /** Checked, never installed — external software the pack needs present. */
     prereqs: z.array(PrereqRequirementSchema).optional(),
+    /** Explicit login verification probes — each bound to a declared bin or binary prereq. */
+    login: z.array(LoginRequirementSchema).optional(),
+  })
+  .superRefine((requires, ctx) => {
+    // A login probe may only run a binary this pack itself declares: a Bakin-
+    // managed bin (verified path) or a binary prereq (PATH). Prereq display
+    // names never bind — only their probe does.
+    const bound = new Set<string>([
+      ...(requires.bins ?? []).map((b) => b.name),
+      ...(requires.prereqs ?? []).filter((p) => p.kind === 'binary').map((p) => p.probe),
+    ])
+    requires.login?.forEach((entry, index) => {
+      const bin = entry.probe[0]!
+      if (!bound.has(bin)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['login', index, 'probe'],
+          message: `login probe "${bin}" is not a declared bin or binary prereq of this pack`,
+        })
+      }
+    })
   })
   .optional()
 
@@ -359,6 +400,7 @@ export type AgentManifest = z.infer<typeof AgentManifestSchema>
 export type SkillPackManifest = z.infer<typeof SkillPackManifestSchema>
 export type WorkflowPackManifest = z.infer<typeof WorkflowPackManifestSchema>
 export type LessonPackManifest = z.infer<typeof LessonPackManifestSchema>
+export type LoginRequirement = z.infer<typeof LoginRequirementSchema>
 export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
 export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>
