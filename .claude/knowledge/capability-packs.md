@@ -279,6 +279,20 @@ rollback, receipts) with two additions:
   readiness; the CLI (`bakin packages install <name>`, consent + `--yes`)
   and Explore's install dialog both offer key entry into the masked secret
   store, skippable — "installed, needs key" is an honest standing state.
+- **CLI screens** — `bakin packages install` resolves a local path
+  (`./`, `../`, `~/`) against the OPERATOR's folder before anything else
+  (`src/cli/local-source.ts`; `agents install` and `skills install` share it):
+  the server resolves a relative path against its own cwd, so the consent
+  preview and the install would otherwise read different directories. The
+  consent is the Ink `PackInstallConsentReport` (every skill, pinned
+  binary + download host, npm payload, model size, prereq and login probe +
+  setup command, read from that absolute path; a remote source says its
+  requirements list after install; an unreadable manifest says why), then
+  ONE `[y/N]`. After install `CapabilityStatusReport` lays out every leg
+  (login rows carry account + checked-at) with the remediation lines as
+  next steps, and `bakin packages login-check` renders `LoginCheckReport`
+  on a terminal (plain lines when piped; reason wording in the Ink-free
+  `reports/login-reason.ts`).
 
 ## Readiness — ONE engine
 
