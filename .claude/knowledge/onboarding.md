@@ -438,6 +438,13 @@ anything:
   scenario's own declared endpoints (`home.allowEndpoint`), logs it and
   answers 403. There is no blanket localhost exemption. Git is confined to
   local files, so ssh and git transports are refused by git itself.
+  Only proxied traffic is a breach: an absolute-form request or a CONNECT.
+  A request with a bare path (`GET /api/x`) was aimed at the proxy's own
+  port; nothing in a home knows that port except as its proxy, and Bun's
+  fetch skips the proxy for localhost, so that is another process with a
+  stale target on a recycled ephemeral port (it flaked CI once, 2026-11-14).
+  It reached nothing outside, so it lands in `home.strayRequests()`, never
+  in `violations()`.
 
 Rules for adding a scenario:
 

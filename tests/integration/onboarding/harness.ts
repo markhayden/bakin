@@ -101,6 +101,8 @@ export interface OnboardingHome {
   violations(): { commands: string[]; network: string[] }
   /** Every request the deny proxy refused, including blackholed defaults. */
   deniedRequests(): string[]
+  /** Requests aimed at the proxy's own port (a bare path, not proxied): recorded, never a breach. */
+  strayRequests(): string[]
   /** The complete environment a child gets. Mutate to add scenario vars. */
   env: Record<string, string>
   readSettings(): Record<string, unknown>
@@ -138,15 +140,30 @@ function writeCommandShims(binDir: string, recordPath: string): void {
 
 interface DenyProxy {
   url: string
+  /** Requests that went out through the proxy. */
   records: string[]
+  /** Requests aimed at the proxy's own port: never a breach (see startDenyProxy). */
+  strays: string[]
   stop(): Promise<void>
 }
 
-/** A local listener that logs every request or CONNECT and answers 403. */
+/**
+ * A local listener that logs every proxied request or CONNECT and answers 403.
+ *
+ * Only proxied traffic is a record: an absolute-form request (`GET http://host/path`) or a
+ * CONNECT is a child going OUT through the proxy. A request with a bare path (`GET /api/x`) was
+ * aimed at this port itself, and nothing in a home is told this port except as its proxy. Bun's
+ * fetch bypasses the proxy for localhost, so that is a client that believes a server listens here:
+ * on CI, another test file's process whose stale target landed on a recycled ephemeral port. It
+ * reached nothing outside (it got this 403), so it is kept in `strays` and is never a breach.
+ */
 function startDenyProxy(): Promise<DenyProxy> {
   const records: string[] = []
+  const strays: string[] = []
   const server: Server = createServer((req, res) => {
-    records.push(`${req.method ?? 'GET'} ${req.url ?? ''}`)
+    const line = `${req.method ?? 'GET'} ${req.url ?? ''}`
+    if ((req.url ?? '').startsWith('/')) strays.push(line)
+    else records.push(line)
     res.writeHead(403, { 'content-type': 'text/plain', connection: 'close' })
     res.end('denied by the onboarding harness\n')
   })
@@ -162,6 +179,7 @@ function startDenyProxy(): Promise<DenyProxy> {
       resolve({
         url: `http://127.0.0.1:${port}`,
         records,
+        strays,
         stop: () => new Promise<void>((done) => {
           server.closeAllConnections()
           server.close(() => done())
@@ -207,6 +225,7 @@ export async function createOnboardingHome(options: CreateHomeOptions = {}): Pro
       network: proxy.records.filter((record) => !blackholed.has(recordTarget(record))),
     }),
     deniedRequests: () => [...proxy.records],
+    strayRequests: () => [...proxy.strays],
     env: {
       // The allowlist. Nothing is inherited: no BAKIN_URL from the test
       // preload, no developer shell state, no proxy or token variables.

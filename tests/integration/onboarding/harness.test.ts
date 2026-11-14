@@ -226,6 +226,19 @@ describe('onboarding harness: network', () => {
     expect(home.violations().network).toEqual(['GET http://outside.invalid/'])
   }, TEST_TIMEOUT)
 
+  test('a request aimed at the proxy\'s own port is a stray, not a breach: it reached nothing outside', async () => {
+    const home = await homes.create()
+    // What a client with a stale target does when its port was recycled into this proxy:
+    // a direct request with a bare path, never proxied.
+    // Real HTTP: the test preload replaces global fetch with a browser emulation.
+    const realFetch = (Bun as unknown as { fetch: typeof fetch }).fetch
+    const res = await realFetch(`${home.proxyUrl}/api/channels`)
+    expect(res.status).toBe(403)
+    expect(home.strayRequests()).toEqual(['GET /api/channels'])
+    expect(home.violations().network).toEqual([])
+    expect(() => assertIsolated(home)).not.toThrow()
+  }, TEST_TIMEOUT)
+
   test('a declared fixture endpoint is reached directly and not recorded', async () => {
     const home = await homes.create()
     const server = createServer((_req, res) => { res.end('fixture') })
