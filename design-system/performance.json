@@ -286,13 +286,13 @@
       "repository": "bakin-bits-official",
       "pluginId": "messaging",
       "path": "bakin-bits-official/plugins/messaging/dist/client.js",
-      "bytes": 257990
+      "bytes": 258803
     },
     {
       "repository": "bakin-bits-official",
       "pluginId": "projects",
       "path": "bakin-bits-official/plugins/projects/dist/client.js",
-      "bytes": 179590
+      "bytes": 179944
     },
     {
       "repository": "bakin-bits-official",
