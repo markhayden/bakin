@@ -1,72 +1,79 @@
 # Spec: Provider integrations — Google Workspace + GitHub via capability packs
 
-Status: **rev 5, for Mark's sign-off** (2026-11-13). Rev 1 was reviewed by Mark
-(interview) and by Codex (static source review); rev 2 closed those findings and
-got a second Codex round whose six blocking defects rev 3 closed; a third round
-found replay/recovery windows that rev 4 closed (replayable approval
-application, ledger-held admission identity, `attempting` consumption, account
-verification) and two pre-existing scheduler bookkeeping gaps recorded in §10;
-a fourth round found three contradictions inside rev 4's text that rev 5
-fixes (replay guard, `accountEnv` in the schema, admission on recovery).
-Every Codex factual finding was verified against the source before adoption. Supersedes the research handoff
-`20261113-engineering-handoff-fa3f767d` (margo) and its seven supporting assets
-as the controlling document. Plan: `provider-integrations-plan.md` (written after
-sign-off).
+Status: **rev 6, for Mark's sign-off** (2026-11-14). Rev 5 (2026-11-13) was
+signed off and PR1 was built against it. A spike
+(`provider-integrations-spike.md`) then re-opened the integration surface:
+the runtimes' own Google/GitHub integrations are the same CLIs, no native
+plugin passes the bar, and runtime hooks are defense in depth only. Mark's
+answers (spike § "Mark's answers") plus a seven-question interview, each
+question run past Codex first, produced rev 6: agents reach providers through
+**local MCP servers that Bakin runs and relays as Bakin tools**, gated by ONE
+approval check at the relay, with a **Bakin-owned Google OAuth client**. PR1
+(login verification) is unchanged. Rev 5's agent-executes-a-CLI gate, `ask_user`
+chat path and tasks-plugin gate are retired. Supersedes the research handoff
+`20261113-engineering-handoff-fa3f767d` (margo) as the controlling document.
+Plan: `provider-integrations-plan.md` (rev 4 follows this sign-off).
 
 ## 1. Objective
 
-Give Bakin agents real, human-gated access to Mark's Google Workspace (Gmail,
-Calendar, Drive, Docs, Sheets) and GitHub (issues, PRs, Projects v2) using the
-primitives Bakin already has — capability packs, secret slots, the approvals
-primitive, the Bakin-owned scheduler and the chat kit — with **zero new
-integration infrastructure**: no connector platform, no token broker, no
-wrappers, no MCP bridge.
+Give Bakin agents real, human-gated access to Google Workspace (Gmail,
+Calendar, Drive, Docs, Sheets) and GitHub (repos, issues, PRs) for any Bakin
+user, using the primitives Bakin already has — capability packs, pinned bins,
+the approvals primitive, exec tools, the scheduler and the chat kit — plus ONE
+new piece: a **provider relay** that runs vetted local MCP servers and exposes
+their tools to every runtime through the tool-access path each runtime already
+uses (Pi's in-process exec-tool bridge, OpenClaw via Bakin's MCP server). No
+per-runtime plugins or hooks, no token broker, no provider wrappers.
 
-Success = four workflows passing live on this box (3737 serving the branch)
+Success = six workflows passing live on this box (3737 serving the branch)
 with Mark's real accounts; each is a PR's acceptance test:
 
 | # | Workflow | Proves | PR |
 |---|---|---|---|
-| W1 | In chat: "what needs my attention from this week's mail, and what is on my calendar tomorrow?" | pack install → gog pinned bin → login check → skill quality | Bits + PR1 |
-| W2 | A dispatched task drafts a reply to a named thread, saves the draft as an asset, calls `request_approval`; Mark approves on the board or Discord; the agent sends | the task approval gate end to end incl. Discord card and resume | PR2 |
-| W3 | A task triages open issues on a repo Mark names, proposes labels/comments, requests approval; Mark picks "Approve all `github.comment` for this task"; the agent applies the rest without asking | standing grants | PR2 |
-| W4 | A schedule job targets a chat: every morning the agent posts a mail + calendar digest as a chat reply | the schedule chat target + unread attention | PR3 |
+| W1 | In chat: "what needs my attention from this week's mail, and what is on my calendar tomorrow?" | pack install → pinned bins → login check → relayed read tools | Bits + PR1 (CLI) → re-run on PR2 (relay) |
+| W2 | A dispatched task drafts a reply to a named thread (draft = private, no card) and tries to send; the send is refused with a card showing the exact message; Mark approves on the board or Discord; the task resumes and the send goes through once | relay gate, exact-argument binding, task resume | PR2 |
+| W3 | A task triages issues on a repo Mark names and comments; Mark picks "Approve all `github.comment` for this task"; the remaining comments go through without cards | standing grants per action class | PR2 |
+| W4 | In chat: "email Sam that the meeting moved" → card inline in the chat; approve → a follow-up turn in that chat sends it | chat cards + follow-up turn | PR2 |
+| W5 | A schedule job targets a chat: every morning the agent posts a mail + calendar digest as a chat reply | the schedule chat target + unread attention | PR3 |
+| W6 | A fresh home: Explore → Google Workspace → Connect Google → consent in the browser → paste the final address back → login leg ready, no Google Cloud steps | Bakin-owned client + Connect flow | PR4 |
 
 ### What the research got wrong, and why this spec differs
 
 The handoff blocks every write until Bakin proves agents cannot bypass tool
 policy via shell, plugins or inherited credentials, and sizes the work for an
-engineering org. It never saw capability packs, the `google-workspace`/`github`
-packs already in Bits (merged 2026-07-30, never installed), the approvals
-primitive, `bakin_exec_ask_user`, or the 546 commits since the checkout it
-inspected. Its provider semantics (handoff §7, §9.4, §10) are accurate and are
-folded into the skills. Codex's framing is adopted: this is a **cooperative
-approval policy** — the research's non-bypass finding stands; we choose a
-policy that does not need it.
+engineering org. It never saw capability packs, the Bits packs, the approvals
+primitive or the 546 commits since its checkout. Its provider semantics
+(handoff §7, §9.4, §10) are accurate and are folded into the skills and the
+class tables. This is a **cooperative approval policy** (D1, reaffirmed by
+Mark 2026-11-14): the non-bypass finding stands; we choose a policy that does
+not need it. The shell, the CLIs and the stored tokens remain reachable by a
+determined agent.
 
 ## 2. Decisions
 
 | ID | Decision | Consequence |
 |---|---|---|
-| D1 | **Trusted operator, human-gated effects.** Agents hold real credentials via packs; safety = skill guidance + a Bakin approval before outward-facing writes. No attempt to make the shell non-bypassable. | Handoff V4/V5/X02 dropped. |
-| D2 | **Google Workspace + GitHub now.** Microsoft 365 and Jira Cloud are follow-up packs (§10). | — |
-| D3 | **Approval unblocks; the agent executes** on re-dispatch with a structured resume section. (Server-side execution of a frozen argv was offered and declined.) | §4.3. |
-| D4 | **Chat: `ask_user`. Task: approval record.** | §4.3 caller rule. |
-| D5 | **Gated = anything other people can see, or that cannot be undone. Unknown operation → ask.** No ownership exceptions (Codex, adopted over rev 1). Ungated: reads; gmail drafts and label changes; calendar freebusy; GitHub draft PRs on the agent's own branch. Classes in §4.3. | Skills carry the lists. |
-| D6 | **Standing grants per task**, `approvedActions: string[]`, set by the card option, the task editor, the CLI, or inherited from a schedule job; refused for any detected agent context. Lifecycle in §4.3. | — |
-| D7 | **Gate lives in the tasks plugin** (`bakin_exec_tasks_request_approval` + a `tasks` plugin-gate kind). | No new plugin, no new approval kind in core. |
-| D8 | **Data policy: accept as-is with skill restraint.** `--wrap-untrusted` is guidance, not isolation; a body saved as an asset or shown on a card persists there. | No redaction machinery. |
-| D9 | **Login verification is explicit** (hybrid, adopted over rev 1): the probe runs at pack install/sync completion, on `bakin check capabilities`, and from a "Check login" action; passive readiness reads never spawn anything and report the last result with its age. `unknown` blocks ready. | §4.1. |
-| D10 | **gog is a sha256-pinned bin from upstream tar.gz** (all four platforms committed); gh stays a PATH prereq with a documented floor (≥ 2.90). | §4.2. |
-| D11 | **One Bakin entry skill per pack; gog's MIT skills vendored under `references/`** at the pinned tag (adopted over rev 1's nine side-by-side skills). | §4.2. |
-| D12 | **Accounts:** Google via OAuth on Mark's Workspace-org account (Internal consent screen); the skill always passes an explicit account (`GOG_ACCOUNT` set by the operator, or `--account`), never an ambient default. GitHub via the existing `gh auth login`; the login probe reports the active account. | — |
-| D13 | **Digest = chat reply from a schedule job with a chat target**, built properly as PR3 with its own design (§4.4), after Codex recommended deferral and Mark chose to build. | — |
-| D14 | **Delivery:** three stacked bakin PRs + one Bits PR; ≥2 Codex rounds per PR; branches in the main checkout; **Mark live-tests before any merge; nothing is self-merged or released.** Server-side changes need a 3737 restart to test (CLAUDE.md dev loop). | §8. |
+| D1 | **Trusted operator, cooperative approvals.** Safety = skill guidance + ONE Bakin approval check at the relay before any write others can see or that destroys something. No attempt to make the shell non-bypassable (reaffirmed 2026-11-14, spike decision A). | Handoff V4/V5/X02 dropped. |
+| D2 | **Google Workspace + GitHub now.** Microsoft 365 and Jira Cloud are follow-ups (§10). | — |
+| D3 | **Refuse, card, one matching call.** A gated call without approval is refused with `needs_approval`; the card is bound to caller + provider account + tool + canonical arguments; after approval the agent's next identical call passes once (consumed atomically before forwarding); changed arguments need a new card. Approvals expire. | §4.3. Replaces rev 5's agent-runs-a-CLI-after-approval. |
+| D4 | **One card for tasks and chats.** Task cards show on the board; chat cards render inline in the chat; both announce through the approvals attention provider and Discord. Approving a chat card starts a follow-up turn in that chat. `ask_user` stays for questions, never for authorizing writes. | §4.3. Replaces rev 5 D4. |
+| D5 | **Three classes from a reviewed table, never server annotations.** `read` (no card), `private` (only the operator sees it — Gmail drafts, labels, read/unread, archive — no card by default; settings can tighten it), `external` (anything others can see or anything destructive — card). Multiplexed tools classify by argument; trash via label change is external; branch creation and draft PRs are external; a tool missing from the table is external. | §4.2 tables. |
+| D6 | **Standing grants per task, per action class** (`gmail.send`, `github.comment`, …), never per group. Set by the card's "Approve all <class> for this task", the task editor, the CLI, or inherited from a task-target schedule job; refused for any detected agent context. Chats get one-shot approvals only. | §4.3 (rev 5 lifecycle kept). |
+| D7 | **The gate lives in core, at the relay** (`src/core/integrations/`), with a new approval owner kind `integration-action` anchored to a task or a chat. | Approvals core type change (approved here). |
+| D8 | **Data policy: accept as-is with skill restraint.** gog's `--wrap-untrusted` stays on; bodies shown on a card persist in the approval record. | No redaction machinery. |
+| D9 | **Login verification is explicit** (PR1, unchanged). | §4.1. |
+| D10 | **Pinned bins:** `gog` (tar.gz, member `gog`) and `github-mcp-server` (tar.gz, member `github-mcp-server`), sha256-pinned, all four platforms committed; `gh` stays a PATH prereq (floor ≥ 2.90) used for login and the token only. | §4.2. |
+| D11 | **One Bakin skill per pack, written against the relayed tools.** gog's vendored CLI references are dropped — agents no longer drive the CLI. | §4.2. |
+| D12 | **Accounts.** Google: a **Bakin-owned OAuth desktop client** registered into gog as client `bakin`, signed in through a Connect button with paste-back, full access by default, taken through Google verification including Gmail's restricted scopes. GitHub: the token comes from `gh auth token` at each server spawn, handed only to the child, never stored. | §4.5 (Google), §4.2 (GitHub). |
+| D13 | **Digest = chat reply from a schedule job with a chat target** (PR3, §4.4). Writes inside a scheduled chat use the chat card. | — |
+| D14 | **Delivery:** PR1 as built; a standalone paste-a-link fix; PR2 relay + gate (tasks and chats); PR3 schedule chat target; PR4 Google client + Connect; Bits #143 reworked and held until PR2 is live-tested. ≥2 Codex rounds per PR; Mark live-tests before any merge; nothing self-merged or released. | §6, plan. |
+| D15 | **Relay, not runtime-native MCP** (interview Q1, Codex agreed). Bakin spawns each pack-declared MCP server, lists its tools, and registers one exec tool per tool; every runtime already reaches exec tools. Never retry a write automatically. | §4.3. Pi's built-in MCP extension stays unused. |
+| D16 | **gog MCP coverage gaps ship as gaps.** Calendar writes, Drive upload and Docs create are absent from `gog mcp` v0.48.0; they are contributed upstream, never filled with a shell path. | §10. |
 
 ## 3. Tech stack and constraints
 
 Bun 1.4.3, TypeScript strict, zod at boundaries, React 19 + `@makinbakin/sdk`
-kit. No new dependencies in bakin. Bits packs are `skill-pack` manifests
+kit. No new dependencies in bakin: the relay uses the existing `@modelcontextprotocol/sdk` Client over its stdio transport. Bits packs are `skill-pack` manifests
 contract-tested by `packs/pack-contract.test.ts`. Standing rules: UI
 conformance skill on every UI touch; `bun run lint` zero-warning; every test
 mocks both content-dir resolvers + OpenClaw home; Pi pinned for throwaway
@@ -191,200 +198,148 @@ ENFORCE that range (today `manifest.bakin` is parsed but "cosmetic", and
 and report ready without checking) — mirroring plugins' `bakinRange`,
 prerelease-aware via `Bun.semver`.
 
-### 4.2 Packs (Bits PR)
+### 4.2 Packs (Bits PR #143, reworked)
 
-**google-workspace 2.0.0**
-- `bakin: ">=0.0.1-rc.NN"` (the rc that ships PR1).
-- `requires.bins[]`: `gog` 0.48.0 from `github.com/openclaw/gogcli/releases/download/v0.48.0/gogcli_0.48.0_<os>_<arch>.tar.gz`, `archive: { format: 'tar.gz', member: 'gog', extractedSha256 }`, `verifyArgs: ['--version']`. Committed pins (checksums.txt + member hashes, 2026-11-13):
-
-  | platform | tarball sha256 | extracted `gog` sha256 |
-  |---|---|---|
-  | darwin-arm64 | `a8c6142fcb9f41f0eff02ffef78298cbe4981061f149c2b3a42d5a13bad931bd` | `7957d49fe75bef040bdb191cccd41cca0000e79c8f497b05f8ff8a4887c552b9` |
-  | darwin-x64 | `423d8ac93530e13cd7cb599de2655db3262ddc763181996771d74188ffcefc5a` | `023744603a56c9b88386ba6f0ddf94ed16b81d973d3b406822a5feb6f7c2a1eb` |
-  | linux-x64 | `8809d2f4fe95a0299b1a2a5c6bc912c4aba4b90a7b5e2c1f5cf11b9945a50004` | `7d86d981714c624d5b0719040fa632b245aeb61ae53c379646524a67cf037c15` |
-  | linux-arm64 | `fc40524368d2cb6213bdfe0b736b5884e1b55c6368706d7a285542cb7e559b68` | `1137f6e970ea95ca225054ef646510d666a968e6e3a261901e0e0bc5f0f0620c` |
-
-- `requires.login[]`: `{ name: 'Google account (gog)', probe: ['gog','auth','list','--check','--json','--no-input'], setup: 'gog auth setup you@example.com --credentials ~/Downloads/client_secret_*.json --login', help: 'https://gogcli.sh/quickstart', accountEnv: 'GOG_ACCOUNT', expect: '"email":\\s*"([^"]+)"[^}]*"valid":\\s*true' }` (see §4.1 `expect`: every `gog auth` command exits 0 when logged out). README: the one-time Google Cloud steps (project, APIs, **Internal** consent screen for Workspace orgs, Desktop client), `GOG_ACCOUNT` export, admin "unconfigured apps" caveat.
-- `contributions.skills`: ONE skill `google-workspace`: `SKILL.md` (when to use gog; the fast path `gog auth list --check`; read discipline `--readonly --no-input --wrap-untrusted --json`, explicit `--account`; the gate rule and classes; chat vs task confirmation; assets discipline; honest failure; the handoff cautions that matter — opaque IDs, lost send response → never resend, all-day vs timed events, `sheets update` overwrites, Docs edits need batchUpdate semantics) + `references/gog.md`, `references/gog-gmail.md`, `-calendar`, `-drive`, `-docs`, `-sheets`, `-inbox-triage.md`, `-weekly-digest.md` vendored verbatim from the v0.48.0 tag (LICENSE kept; `agents/openai.yaml` dropped). SKILL.md names each reference and when to open it. A `scripts/vendor-gog-skills.ts` in Bits re-vendors from a tag; the pack contract test asserts the vendored tag equals the bin version.
-- Drops the stale `prereqs.gog` and the wrong `gog auth credentials` example.
-- Context cost is measured: `bakin agents context` before/after on the live box, recorded in the PR.
-
-**github 1.1.0**
-- `bakin` floor as above; `requires.prereqs.gh` keeps `probe: 'gh'`, help text states the floor (≥ 2.90; margo 2.93, local current).
-- `requires.login[]`: `{ name: 'GitHub account (gh)', probe: ['gh','auth','status'], setup: 'gh auth login', help: 'https://cli.github.com/manual/gh_auth_login' }`.
-- SKILL.md: gate rule + classes; chat vs task confirmation; Projects v2 cautions (node IDs, `read:project`/`project` scopes); `GH_TOKEN` note: when the slot is set it overrides the keyring login — the login probe's account line shows which identity is active.
-
-**Action classes** (documented in each pack; core validates only the shape):
-
-| class | gated operations |
-|---|---|
-| `gmail.send` | send, reply, forward (drafts and labels ungated) |
-| `calendar.write` | create, update, delete, respond, invite |
-| `drive.share` | permissions, link sharing |
-| `drive.delete` | trash, delete |
-| `docs.write` / `sheets.write` | any mutation of a document/spreadsheet |
-| `github.issue` | create, edit, close, reopen, label, assign |
-| `github.comment` | issue/PR comments |
-| `github.pr` | create non-draft, ready-for-review, edit, close |
-| `github.merge` | merge, delete branch |
-| `github.release` | publish/edit a release |
-| `github.project` | Projects v2 item/field mutations |
-
-Anything not listed → ask (chat) / request with the closest class or
-`<provider>.other` (task).
-
-**Contract test**: `login` entries bind to a declared bin/prereq, have a
-non-empty `setup`, an https `help`; vendored references match the pinned tag.
-Catalog entries unchanged (`defaultSelected: false`).
-
-### 4.3 Task approval gate + standing grants (bakin PR2)
-
-**Field** `approvedActions?: string[]` (classes, shape
-`^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$`) on `Task`, `TaskCreateInput`,
-`TaskUpdateInput` (null clears), the task store schema, the REST task routes,
-`BakinJobMeta`, and the schedule job routes.
-
-**Provenance (one policy, every HUMAN entry path):** every REST/CLI/plugin-
-hook request that sets, adds or removes `approvedActions` on a task OR a
-schedule job first runs `assertOperatorDecision(approvalProvenanceFromRequest(
-req))` (the ONE policy from `src/core/approvals/service.ts`; refusal → 403
-with its `code`). The `bakin_exec_tasks_*` / `bakin_exec_schedule_*` tools
-never expose the field. `bakin tasks allow|disallow` and `bakin schedule …
---allow` need `--as human`. A job's grants are stored WITH the provenance and
-revision of the request that set them (`grants: { actions, setBy:
-ApprovalProvenance, revision }`); the fire engine COPIES that record onto each
-task it creates (no request, no new declaration — the copy carries
-`inheritedFrom: { jobId, revision, setBy }`). The card's `approve-all` writes
-the grant from the committed approval record's provenance. Every grant change
-is audited (`task.grant.added|removed`, provenance, source: card / editor /
-cli / schedule-inherit).
-
-**Grant lifecycle:** grants live on the task until it is archived or deleted;
-reopening a done task keeps them (the human who reopens sees the chips).
-Schedule grants are copied onto each task at creation (audited
-`schedule-inherit`); editing or removing the job's grants affects future tasks
-only. Moving a task to another agent keeps grants (they are per task).
-
-**Exec tool** `bakin_exec_tasks_request_approval`:
+**Manifest addition — `mcpServers[]`** (core schema in
+`packages/core/src/agent-packages/manifest.ts`; accepted ONLY from official
+Bits sources in this release — hub skills and third-party packs are refused
+with a typed error at install):
 
 ```ts
-parameters: {
-  taskId: z.string(),
-  action: z.string().regex(ACTION_CLASS_RE),          // gmail.send
-  command: z.string().max(4_000),                     // the exact command you will run
-  summary: z.string().max(1_000),                     // one line: what, to whom
-  contentAssetId: z.string().optional(),              // the saved draft/body (durable, hashed)
-  details: z.string().max(8_000).optional(),          // recipients, ids, preview
-}
+mcpServers: [{
+  id: 'google',                       // exec tools become bakin_exec_google_<tool>
+  bin: 'gog',                         // must name one of this pack's requires.bins
+  args: ['mcp', '--client', 'bakin', '--wrap-untrusted', '--allow-write', '--allow-gmail-send'],
+  readonlyArgs: ['mcp', '--client', 'bakin', '--wrap-untrusted', '--readonly'],
+  account: { login: 'Google account (gog)', flag: '--account' },  // account captured by that login leg
+  token?: { command: ['gh', 'auth', 'token'], env: 'GITHUB_PERSONAL_ACCESS_TOKEN', prereq: 'gh' },
+  tools: { /* the class table, below */ },
+}]
 ```
 
-Companion tool `bakin_exec_tasks_approval_outcome({ taskId, approvalId,
-outcome: 'attempting' | 'done' | 'failed' | 'unknown', detail })`. The
-contract is two calls per approved write: `attempting` BEFORE the command
-runs (durable transition `approved-unconsumed → attempting`; the tool refuses
-to mark `attempting` twice), then `done` / `failed` / `unknown` after.
-`done` and `failed` consume the approval (never presented as executable
-again). `unknown` (lost response, timeout) and an `attempting` with no later
-report when the next dispatch starts both resolve to **verify-first**: the
-resume section presents the request as `attempted, outcome unknown` with the
-verification the skill prescribes (`gog gmail search` for the sent message,
-`gh issue view` for the comment) and forbids re-running until verified; the
-agent then reports `done` (already happened) or re-requests (a new
-generation) if it did not. A standing-grant execution follows the same two
-calls against its auto-approval record.
+`tools` maps every exposed tool to `{ class: 'read' | 'private' | 'external',
+action?: '<provider>.<verb>' }` or `{ byArg: '<arg>', cases: { <value>:
+{class, action} }, default: {class:'external', action} }`. A tool the server
+lists that the table lacks is exposed as `external` with action
+`<id>.other`. Contract-tested in Bits: every tool the pinned server lists
+(captured `tools/list` fixture) has a row; no `read` row on a tool whose
+annotations say it writes.
 
-Behaviour:
-1. **Caller rule:** the task must exist, be assigned to the calling agent, and
-   have a live run for this agent (ledger). No valid task ⇒
-   `fail({ code: 'no_task' , message: 'request_approval needs the task you are
-   dispatched for; in a chat use bakin_exec_ask_user.' })`. (Chat detection
-   via `chat.resolveActiveTurn` is NOT used — it answers null on ambiguity.)
-2. **Workflow tasks are refused** in this PR (`workflow_task`): blocking
-   cancels the workflow instance (`blockTaskWithEffects` →
-   `workflows.cancelInstance`). Workflow steps keep their own gates.
-3. **Request identity:** `requestHash = sha256(action, command, contentAssetId
-   + its current version hash, details)`. The gate record for a task is
-   `~/.bakin/tasks/…` sidecar-free: the tasks plugin keeps `approvalGen` and
-   the current pending `{ approvalId, requestHash }` in plugin storage keyed by
-   task (Projects' generation pattern); same hash while pending ⇒ return the
-   same approval (retry-safe); different hash ⇒ new generation.
-4. **Standing grant** (`approvedActions` includes `action`) ⇒ task log entry
-   `approval: auto-approved <action> by standing grant — <summary>` with
-   `{ command, requestHash }` in `data`, audit `task.approval.standing`,
-   return `{ approved: true, by: 'standing-grant' }`.
-5. Otherwise `ctx.approvals.request` id `tasks:<taskId>:action:<gen>`,
-   gateKind `action`, entityId `<action>`, title `${agent} wants to ${summary}`,
-   body: command + details as plain text (escaped; asset link when given),
-   options `approve` ("Approve this one", primary), `approve-all` ("Approve
-   all <action> for this task", primary), `reject` (destructive, reason per
-   settings); block the task with reason `AWAITING_APPROVAL_REASON` (a
-   constant the schedule fire engine exempts from failure counting, like
-   `MISSED_WINDOW_REASON`); log `approval: requested <action> — <summary>`;
-   return `{ approved: false, approvalId, status: 'pending' }` with the
-   instruction to end the turn. Content must be durable before asking: a
-   draft in the run worktree dies at settle, so the skill saves it as an asset
-   and passes `contentAssetId`.
+**google-workspace 2.0.0** — `gog` 0.48.0 pins as rev 5 (table kept in the
+pack README); login leg `gog auth list --check --json --no-input --client
+bakin` with the `"valid": true` expect, `setup` = the Connect button (PR4;
+until PR4 ships the terminal command). Class table:
 
-**Gate handler** (`registerPluginGate('tasks','action', …)` at activation):
-- `ownerState`: `live` while the task is blocked with this approval pending in
-  plugin storage; `orphaned` when the task is done/archived/deleted or a newer
-  generation exists; `unknown` on read errors.
-- `onResolve` runs BEFORE the record's compare-and-set
-  (`src/core/approvals/service.ts` awaits the handler, then CAS), so it
-  **validates only**: the task still exists, is blocked on exactly this
-  approval id/generation, and the option is one of the three — otherwise it
-  throws `ApprovalResolveError(…, 409)` and the record stays pending. It
-  writes nothing.
-- **Apply after commit.** ONE pure function `applyCommittedApproval(record)`
-  derives everything from the committed record and is idempotent. Entry
-  guard from plugin state `pending`: `record.status ∈ {approved, rejected}`
-  (NOT `cancelled` — `cancelApproval` publishes the same `approval.resolved`
-  event), the id equals the task's current pending `{ approvalId,
-  generation }`, and the task is still blocked with
-  `AWAITING_APPROVAL_REASON`. Entry from plugin state `applying` (a replay
-  after a partial application) re-checks ONLY the record status and the
-  generation — the task may already be in todo from step (d) — and re-runs
-  the remaining steps.
-  Then, as a replayable sequence: (a) plugin state ← `applying` with the
-  committed status (idempotent); (b) task log entry keyed by approvalId
-  (skipped if present); (c) for `approve-all`, add the class (set
-  semantics); (d) move blocked → todo (no-op if already todo); (e) plugin
-  state ← `approved-unconsumed` | `rejected` and `triggerDispatch`. Called
-  from the `approval.resolved` subscriber and from boot reconciliation over
-  every `tasks:` record whose plugin state is `pending` OR `applying` (a
-  resolve that committed, or an application that crashed midway, while the
-  server was down); every step is idempotent so a partial application
-  replays to the same end state.
-  Reject also returns the task to todo (the agent reads the reason and
-  decides; Projects' signoff precedent).
-- Manual moves/deletion/reassignment while pending: a move out of blocked by a
-  human cancels the pending approval (`ctx.approvals.cancel`, reason `task
-  moved`) and marks the plugin state `cancelled`; delete/archive ⇒ orphaned
-  at rehydration. A cancelled or superseded generation never resumes.
+| tool | class | action |
+|---|---|---|
+| gmail_search, gmail_get_message, gmail_get_thread, gmail_list_drafts, gmail_get_draft, gmail_list_labels, calendar_events, drive_search, drive_get, docs_get, sheets_read_range | read | — |
+| gmail_create_draft, gmail_update_draft, gmail_create_label, gmail_mark_read, gmail_mark_unread, gmail_archive_messages | private | — |
+| gmail_modify_messages, gmail_modify_thread | byArg on added labels: `TRASH`/`SPAM` → external `gmail.delete`; otherwise private | — |
+| gmail_send_message, gmail_send_draft | external | `gmail.send` |
+| gmail_trash_messages, gmail_restore_messages | external | `gmail.delete` |
+| docs_write | external | `docs.write` |
+| sheets_update_range | external | `sheets.write` |
 
-**Dispatch resume section:** `buildDispatchMessage` does NOT carry the task
-log, and the main/triage branches return early. PR2 adds an `approvals`
-section to every dispatch branch: the standing grants; the ONE actionable
-request (`approved-unconsumed`, or `pending` ⇒ stop) with its FULL recorded
-command (bounded by the tool's own 4 000-char cap — never truncated; the
-section's budget is the cap + 2 KB of framing), its approvalId, requestHash,
-who decided and the reject reason if any; older decisions as one-line
-summaries up to 1 KB with a visible omission marker; and the rule: "a pending
-approval means stop; execute an approved request exactly as recorded, then
-report with `approval_outcome`; a standing grant covers that class for this
-task; everything else asks again". Pinned by the dispatch-prompt byte
+**github 2.0.0** — new bin `github-mcp-server` v2.1.0 (tar.gz, member
+`github-mcp-server`, pins committed in the plan), args `['stdio',
+'--toolsets=default']`, `readonlyArgs` add `--read-only`; `token` from `gh
+auth token` (the existing login leg captures the active account; the relay
+spawns with `GH_HOST`/account consistent with that probe). Class table:
+the 27 read-annotated default tools `read`; `create_branch`,
+`create_pull_request` (draft or not), `update_pull_request`,
+`update_pull_request_branch` → `github.pr`; `merge_pull_request` →
+`github.merge`; `add_issue_comment`, `update_issue_comment`,
+`add_reply_to_pull_request_comment`, `add_comment_to_pending_review` →
+`github.comment`; `issue_write`, `sub_issue_write` → `github.issue`;
+`pull_request_review_write` → `github.review`; `create_or_update_file`,
+`push_files`, `delete_file` → `github.push`; `create_repository`,
+`fork_repository` → `github.repo`; `assign_copilot_to_issue`,
+`request_copilot_review` → `github.copilot`. All external.
+
+**Skills** — ONE skill per pack, rewritten for the relayed tools: which tool
+for which job; read discipline (opaque ids, all-day vs timed events, Sheets
+overwrite semantics, Docs batch semantics); "a refused write returns
+`needs_approval` — end your turn and say what you asked for"; "a write whose
+result was lost is verified with a read before anything else"; never fall
+back to the CLI. Context cost measured before/after (`bakin agents context`).
+
+### 4.3 Provider relay + approval gate (bakin PR2)
+
+**Lifecycle** (`src/core/integrations/relay.ts`): one supervisor per
+installed, ready pack server. Started at boot (after capability readiness)
+and on pack install/sync; stopped on remove. Spawn = the pinned bin with
+`args` (or `readonlyArgs` when the pack's scope profile is read-only), the
+account flag from the login receipt, the token env from `token.command` run
+fresh per spawn (stdout never logged, never in receipts or errors). MCP over
+stdio with a 30 s request deadline; crash → backoff restart (1 s → 60 s);
+`tools/list` on every (re)connect re-registers the exec tools (removed tools
+unregister). Failure states are distinct and surface in capability readiness:
+`token-unavailable`, `auth-rejected` (401/403 from the server), `start-failed`.
+A failed spawn never marks the login leg missing.
+
+**Exec tools:** `bakin_exec_<serverId>_<tool>` registered through the
+exec-tool registry with the server's JSON schema passed through unchanged
+and the class shown in the description. The handler resolves the caller from
+the exec-tool invocation context: a task run (task id + run id from the
+ledger) or a chat turn (chat id + turn id); a call with neither is refused
+`no_caller`.
+
+**Gate** (`src/core/integrations/gate.ts`), per call:
+1. Classify from the table (with `byArg`). `read` → forward. `private` →
+   forward unless `settings.integrations.privateNeedsApproval` is true.
+2. `external`: `argsHash = sha256(canonicalJSON(args))`. Look for an
+   **approved-unconsumed** approval with the same anchor (task or chat),
+   server, account, tool and `argsHash`, not expired. Found → compare-and-set
+   it to `consumed` (durable) BEFORE forwarding, then forward. Task standing
+   grant for `action` → auto-approval record (audited
+   `integration.approval.standing`), consumed the same way.
+3. Otherwise create — or return the existing pending one for the same key —
+   an approval with owner `{ kind: 'integration-action', anchor: { kind:
+   'task', taskId } | { kind: 'chat', chatId, turnId }, serverId, account,
+   tool, action, argsHash }`; title `${agent} wants to ${action}`; body = the
+   arguments rendered as escaped plain text (recipients, subject, body, repo,
+   number); options `approve`, `approve-all` (tasks only), `reject`. Return
+   `{ status: 'needs_approval', approvalId, instruction: 'End your turn.' }`.
+   Tasks block with `AWAITING_APPROVAL_REASON` (schedule fire engine exempt,
+   as rev 5).
+4. Forward result: success → record outcome `done`; MCP `isError` → `failed`;
+   transport loss or deadline after the request was written → `unknown`.
+   Never retried automatically. The next turn's resume section presents
+   `unknown` as "verify with a read before anything else".
+
+**Expiry:** an approved-unconsumed approval expires 24 h after the decision
+or when its anchor ends (task done/archived/deleted; chat deleted). Expired
+or superseded → a fresh card.
+
+**Apply after commit** (rev 5 machinery, re-homed from the tasks plugin to
+core): `onResolve` validates only (anchor live, still pending); ONE idempotent
+`applyCommittedApproval(record)` runs from the `approval.resolved`
+subscriber and boot reconciliation, with plugin-state replaced by a core
+sidecar per approval (`pending → applying → approved-unconsumed | rejected →
+consumed | expired`). Task anchor: log entry, `approve-all` adds the class to
+`approvedActions`, blocked → todo, `triggerDispatch`. Chat anchor: enqueue
+ONE follow-up turn in that chat (dedupe key = approvalId) through the chat
+queue with a system-authored message "Approved: <action> — <summary>. Make
+that exact call now." (reject: "Rejected: <reason>. Do not make that call.").
+
+**Standing grants** keep rev 5's field (`approvedActions` on tasks and
+task-target schedule jobs), provenance policy (`assertOperatorDecision` on
+every human entry path; exec tools never expose it), audit and lifecycle.
+
+**Dispatch resume section** (tasks): standing grants; the actionable
+approval (approved-unconsumed → "make exactly this call again"; pending →
+stop; unknown outcome → verify first) with its tool and arguments; older
+decisions as one-liners within a 1 KB budget. Pinned by dispatch-prompt
 fixtures.
 
-**UI:** ApprovalPanel's plugin-gate renderer already draws custom options;
-`approve-all` gets a distinct visual (secondary + a one-line "grants this
-class for the rest of the task" caption) so one-shot and standing are not
-confused. Standing grants render in the task detail editor as a removable
-token list composed from `@makinbakin/sdk/ui` (the pattern the UI conformance
-skill approves for free-form string lists; chosen in the plan, not assumed),
-same composition on the schedule job form. CLI: `bakin tasks create …
---allow=<class,…>`, `bakin tasks allow|disallow <id> <class>`.
+**UI:** the ApprovalPanel renders `integration-action` with the argument
+preview; `approve-all` keeps its distinct caption. Chat renders the same
+card inline under the turn that asked (conversation kit, no hand-rolled
+rendering). Standing grants: the token list from rev 5.
 
 ### 4.4 Schedule chat target (bakin PR3)
+
+Unchanged from rev 5 except: an external call inside a scheduled chat turn uses the chat card (§4.3), and its follow-up turn rides the same chat.
 
 **Job shape:** `BakinJobMeta.target?: 'task' | 'chat'` (default `'task'`).
 **Binding:** `BakinJobMeta.chat?: { chatId }` is the ACTIVE binding
@@ -473,12 +428,46 @@ turn (queue is not used).
 **Out of scope:** cursor storage; deleting the job deletes nothing in chat
 (the chat stays, unbound); switching a job's target resets `chat`.
 
-### 4.5 Deliberately not built
+### 4.5 Bakin-owned Google client + Connect (bakin PR4)
 
-No connection inventory UI, vault, cursor store, provider wrappers, Pi MCP
-bridge, Linux validation (pins declared, untested stays untested), per-agent
-grants, gog safety-profile binary (stock gog; the gate is the policy), shipped
-schedule jobs, redaction.
+**Client.** One Google Cloud project owned by Mark ("Bakin"), consent screen
+**External**, a **Desktop** OAuth client (loopback + PKCE). Its id and secret
+ship in Bakin (`packages/core/src/integrations/google-client.ts`; a desktop
+client secret is not confidential by Google's own definition). On pack
+install/sync Bakin registers it into gog as client `bakin` (idempotent;
+compared by client id). Until verification: the "unverified app" warning and a
+100-user cap — stated in the Connect dialog.
+
+**Verification** (Mark, outside the code): homepage + privacy policy on a
+domain Mark controls, scope justification, demo video; Gmail scopes are
+restricted, so verification includes the annual third-party security
+assessment. Scopes requested = what the relayed tools need, no more (the plan
+pins the exact gog `--services`/`--gmail-scope`/`--drive-scope` values).
+
+**Connect flow** (Explore's installed card and the runtime hub's
+Capabilities tab, one ConfirmDialog-hosted flow):
+1. The dialog explains, BEFORE opening Google: "Google's last page will fail
+   to load — that is expected. Copy its full address and paste it here." Access
+   choice: **Full** (default) or **Read-only** (sets the pack's scope profile →
+   `readonlyArgs` + gog's read-only scopes).
+2. `POST /api/integrations/google/connect` runs `gog auth add --client bakin
+   --remote --step 1 …` and returns the consent URL; the attempt is bound to
+   the requesting session and expires in 10 min.
+3. Browser opens the URL in a new tab; the user consents; the redirect to
+   127.0.0.1 fails; the user pastes the address.
+4. `POST /api/integrations/google/connect/:attemptId` runs step 2 with the
+   pasted URL (never logged), then the login check; the leg turns ready and
+   the relay (re)spawns.
+The terminal command stays in the card as the fallback. Plan verifies gog's
+step-1/step-2 state handling on the pinned build before relying on it.
+
+### 4.6 Deliberately not built
+
+Runtime-native MCP config or per-runtime hooks (D15), Pi's built-in MCP or
+codemode extensions, a native-plugin install lane, connection inventory UI,
+vault, token broker, provider wrappers, a shell-command classifier, per-agent
+grants, chat standing grants, Linux validation (pins declared, untested stays
+untested), redaction, shipped schedule jobs.
 
 ## 5. Commands
 
@@ -495,113 +484,102 @@ bakin check capabilities
 ## 6. Files (by PR)
 
 ```
-PR1  packages/core/src/agent-packages/manifest.ts              login schema + bin/prereq binding
-     src/core/agent-packages/login-verify.ts                   NEW engine + receipts
-     src/core/agent-packages/{capability-readiness,requirements-installer}.ts
-     packages/host/src/api/packages/*                           POST login-check
-     plugins/health/lib/system-checks/capabilities.ts          not-ready-login
-     plugins/explore/components/{catalog-entry,install-dialog}.tsx
-     src/core/onboarding/components/capabilities.ts, src/cli/commands/packages.ts
-     packages/sdk public-api schema; tests/core/agent-packages/login-verify.test.ts (+ readiness, health, explore)
-PR2  packages/sdk/src/types/services.ts; packages/core/src/tasks/{store,public-task}.ts
-     plugins/tasks/lib/{exec-tools,approval-gate(NEW),routes}.ts; plugins/tasks/components/{task-detail-modes,approval-panel}.tsx
-     plugins/schedule/{types.ts,lib/fire-engine.ts,lib/job-service.ts,lib/routes/*,components/job-form.tsx}  (approvedActions + exempt reason)
-     src/core/dispatch-prompts.ts (+ fixtures); src/cli/commands/tasks.ts
-     tests/plugins/test-helpers.ts (+ memory approvals backend); tests/plugins/tasks/*, tests/core/dispatch-prompts*
-PR3  packages/core/src/execution/ledger.ts (+ migration test); plugins/schedule/{types.ts,lib/fire-engine.ts,lib/runs-reader.ts,lib/routes/*,components/{job-form,job-row,run-history}.tsx}
-     plugins/chat/{index.ts,lib/stream-bridge.ts}; tests/plugins/{schedule,chat}/*; tests/core/execution/*
-Docs .claude/knowledge/{capability-packs,approvals,tasks-plugin,bakin-owned-scheduler,chat-plugin,agent-packages}.md
-     .claude/knowledge/provider-integrations.md (NEW); CLAUDE.md pointers; README (capabilities list if present)
-     docs/src/content/docs/extending/agents/packages.md (login leg)
-Bits packs/{google-workspace,github}/**, packs/pack-contract.test.ts, scripts/vendor-gog-skills.ts
+PR1   as built (#1087): login schema, login-verify engine + receipts, readiness leg, login-check API/CLI, consent + CLI screens
+Fix   src/core/skill-hub/* (paste-a-link refuses Pi/OpenClaw plugin bundles presented as skills) + tests
+PR2   packages/core/src/agent-packages/manifest.ts (mcpServers schema, official-source rule)
+      packages/core/src/approvals/{types,schema}.ts (integration-action owner)
+      src/core/integrations/{relay,gate,classify,apply,resume}.ts (NEW); src/core/exec-tools/registry.ts (dynamic register/unregister)
+      src/core/agent-packages/capability-readiness.ts (server states)
+      packages/sdk/src/types/services.ts + packages/core/src/tasks/{store,public-task}.ts (approvedActions)
+      plugins/tasks/components/{task-detail-modes,approval-panel}.tsx; plugins/chat/{lib/stream-bridge.ts,components/*} (inline card, follow-up turn)
+      plugins/schedule/{types.ts,lib/fire-engine.ts,lib/job-service.ts,lib/routes/*,components/job-form.tsx} (grants + exempt reason)
+      src/core/dispatch-prompts.ts (+ fixtures); src/cli/commands/tasks.ts
+      tests/core/integrations/* (fake MCP server fixture), tests/plugins/{tasks,chat,schedule}/*, tests/core/dispatch-prompts*
+PR3   ledger + schedule chat target as rev 5 §4.4
+PR4   packages/core/src/integrations/google-client.ts; packages/host/src/api/integrations/google/*; plugins/explore + runtime hub Connect dialog
+Docs  .claude/knowledge/{capability-packs,approvals,tasks-plugin,bakin-owned-scheduler,chat-plugin,agent-packages}.md
+      .claude/knowledge/provider-integrations.md (NEW: relay, classes, gate, Google client); CLAUDE.md pointer; README if it lists capabilities
+      docs/src/content/docs/extending/agents/packages.md (mcpServers)
+Bits  packs/{google-workspace,github}/** (mcpServers, class tables, new skills), packs/pack-contract.test.ts (+ tools/list fixtures)
 ```
 
 ## 7. Code style
 
 ```ts
-// plugins/tasks/lib/approval-gate.ts — one gate, typed refusals, no message parsing
-export const ACTION_CLASS_RE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/
+// src/core/integrations/gate.ts — one gate, typed refusals, no message parsing
+export type CallClass = 'read' | 'private' | 'external'
 export const AWAITING_APPROVAL_REASON = 'Awaiting approval'
 
-export function approvalIdFor(taskId: string, generation: number): string {
-  return `tasks:${taskId}:action:${generation}`
-}
-
-export function requestHash(input: { action: string; command: string; contentHash?: string; details?: string }): string {
-  return new Bun.CryptoHasher('sha256').update(JSON.stringify(input)).digest('hex')
+export function argsHash(args: Record<string, unknown>): string {
+  return new Bun.CryptoHasher('sha256').update(canonicalJson(args)).digest('hex')
 }
 ```
 
-`createLogger('tasks-approval-gate')`; zod at tool boundaries; typed errors;
+`createLogger('integrations-relay')`; zod at boundaries; typed errors;
 identifiers never display names; `const` over `let`; kebab-case files.
 
 ## 8. Testing strategy
 
-- **Unit** — login-verify: fake probe scripts (exit 0 / 1 / sleep / missing
-  binary) → ok/missing/unknown, kill on timeout, receipt shape, in-flight
-  dedupe, binding refusal, readiness reads receipts only (no spawn: a probe
-  that writes a marker file must not fire on GET). Gate: caller rule, workflow
-  refusal, standing auto-approve + log, request hash reuse vs new generation,
-  pending path blocks with the exempt reason, resolve matrix (approve /
-  approve-all / reject → log, grants, move after `approval.resolved`),
-  ownerState matrix, boot reconciliation, manual move cancels, provenance
-  refusals on every grant path (REST task + schedule, CLI identity). Dispatch
-  prompt: the approvals section in every branch, byte budget. Schedule chat
-  target: typed binding (no externalKey), admission via `preDispatchGate`,
-  overlap/busy skip, hook payload, attach + healer idempotency, run readers;
-  the inbound bridge never sees a schedule chat.
-- **Harness** — `tests/plugins/test-helpers.ts` gains the in-memory approvals
-  backend so plugin tests decide gates as the operator; SDK harness tests for
-  the public types.
+- **Unit** — classify: every table row, `byArg` cases, unknown tool →
+  external. Gate: read/private forward, private tightened by settings,
+  external refused with one card per key (retry returns the same approval),
+  approve → one matching call passes and a second is refused, changed args
+  refused, expiry, standing grant, consume-before-forward under a concurrent
+  double call, outcome `unknown` on transport loss, no automatic retry.
+  Apply: task (log, grant, move, dispatch) and chat (one follow-up turn,
+  deduped across replays) anchors; boot reconciliation over `pending` and
+  `applying`. Relay: spawn args by profile, token env present only in the
+  child and absent from logs, crash restart, tool re-registration, distinct
+  failure states.
+- **Integration** — a fake stdio MCP server fixture (one read, one private,
+  one external tool, every call logged) behind the real relay; `verify` boot
+  (Pi pinned, dispatch paused) drives `bakin_exec_*` through the exec-tool
+  path for both runtimes' surfaces (Pi bridge, Bakin MCP server).
 - **Architecture/contract** — public-api schema; dispatch-prompt fixtures;
-  Bits `pack-contract.test.ts`.
-- **UI** — RTL for the grants token list, the approve-all option rendering,
-  the job-form target switch; `ui:conformance --quick` per PR, full on PR3.
-- **Integration** — `verify` skill boot (Pi pinned): install the pack from the
-  local Bits checkout; the install trigger runs the probe once, so with a
-  verified binary and no login the leg reads `missing` with the setup
-  command; `unknown` is exercised separately (stale receipt after a pin
-  change, unverifiable binary); `bakin check capabilities` exit code.
-- **Live acceptance (Mark, 3737)** — W1 after Bits+PR1, W2+W3 after PR2, W4
-  after PR3.
+  Bits pack contract incl. `tools/list` fixtures for the pinned servers.
+- **UI** — RTL for the integration card (task panel + inline chat), grants
+  token list, Connect dialog; `ui:conformance --quick` per PR, full on PR4.
+- **Runtime check** — OpenClaw receives relayed tools through Bakin's MCP
+  server on the dockerized rig (`bun run instance up --runtime openclaw`).
+- **Live acceptance (Mark, 3737)** — W1 after Bits+PR1 and again on PR2;
+  W2–W4 after PR2; W5 after PR3; W6 after PR4.
 
 ## 9. Boundaries
 
 - **Always:** mock both content-dir resolvers + OpenClaw home; lint +
   typecheck + touched tests before each commit; `ui:conformance --quick` for
   UI; knowledge docs in the same PR; Bits pack versions bumped in the same PR;
-  provider semantics in skills, never core; every grant mutation through
-  `assertOperatorDecision`.
-- **Ask first:** new dependency; changes to approvals core types or the
-  ledger schema beyond §4.4; a different gog pin; any merge, release, or
-  anything on margo.
+  provider semantics in pack tables and skills, never core; every grant
+  mutation through `assertOperatorDecision`; tokens only in a child's env.
+- **Ask first:** new dependency; ledger schema changes beyond §4.4; a
+  different gog or github-mcp-server pin; any merge, release, or anything on
+  margo.
 - **Never:** self-merge or release; edit the live `~/.openclaw`/`~/.bakin` by
-  hand; spawn anything from readiness but the manifest's bound `login` probe
-  on an explicit trigger; let a detected agent context set grants; put tokens
-  or OAuth JSON in the repo, assets, logs or chat.
+  hand; retry a write automatically; trust server annotations for gating;
+  accept `mcpServers` from a non-official source; put tokens, OAuth JSON or
+  pasted redirect URLs in the repo, assets, logs or chat.
 
 ## 10. Follow-ups recorded, not built
 
-- **Microsoft 365 pack** — Softeria is MCP-only and Pi has no bridge; a CLI
-  lane (PnP `m365`) when Mark has a test tenant. Classes follow §4.2.
-- **Jira Cloud pack** — ACLI, login probe `acli jira auth status`, terms review
-  first; DC only against a named instance.
+- **gog MCP gaps** — calendar create/update/respond, Drive upload, Docs
+  create: contribute upstream (gog is MIT), then add table rows.
+- **Google verification** — Mark's track (§4.5); the unverified cap holds
+  until it lands.
+- **Microsoft 365 pack** — Softeria's MCP server now fits the relay; needs a
+  test tenant.
+- **Jira Cloud pack** — Atlassian's MCP server or ACLI; terms review first.
+- **Hermes runtime** — gets relayed tools through the exec-tool path with no
+  integration work; nothing to build here.
 - **gh as a pinned bin** — needs zip support in the bin installer.
-- **Per-agent grants** — declined (D6); revisit if per-task grants are tedious.
-- **Workflow-task approvals** — refused in PR2; a workflow-aware gate later.
-- **Chat queue for scheduled turns** — `busy ⇒ skip` now; queueing with
-  occurrence identity later if skips prove common.
-- **Scheduler bookkeeping after attach (pre-existing)** — the task path
-  attaches the claim, then writes `lastTaskId` / one-shot `completedAt` in a
-  separate write (`fire-engine.ts`), and the healer only revisits `pending`
-  rows; a crash between the two leaves a `created` row with stale job
-  bookkeeping. The chat path inherits the same window by design (same order).
-  Fixing it is a scheduler change for both targets, filed separately.
-- **Orphan chat on create-then-crash** — one unbound chat titled by the job
-  (§4.4); a sweep is not worth its code today.
+- **Per-agent grants, chat standing grants** — declined for now (D6).
+- **Workflow-task approvals** — a workflow-anchored card later.
+- **Chat queue for scheduled turns**, **scheduler bookkeeping after attach**,
+  **orphan chat on create-then-crash** — as rev 5.
 
 ## 11. Open questions
 
-None blocking. Plan-stage choices: the exact SDK composition for the grants
-token list (conformance skill decides), and whether `{fireAt}` joins the
-existing `{date}` template vars or replaces it.
+None blocking. Plan-stage choices: exact gog scopes for verification; the
+github-mcp-server pins; the SDK composition for the inline chat card and the
+grants token list (conformance skill decides); whether `{fireAt}` joins or
+replaces `{date}`.
+
