@@ -67,7 +67,7 @@ determined agent.
 | D12 | **Accounts.** Google: a **Bakin-owned OAuth desktop client** registered into gog as client `bakin`, signed in through a Connect button with paste-back, full access by default, taken through Google verification including Gmail's restricted scopes. GitHub: the token comes from `gh auth token` at each server spawn, handed only to the child, never stored. | §4.5 (Google), §4.2 (GitHub). |
 | D13 | **Digest = chat reply from a schedule job with a chat target** (PR3, §4.4). Writes inside a scheduled chat use the chat card. | — |
 | D14 | **Delivery:** PR1 as built; a standalone paste-a-link fix; PR2 relay + gate (tasks and chats); PR3 schedule chat target; PR4 Google client + Connect; Bits #143 reworked and held until PR2 is live-tested. ≥2 Codex rounds per PR; Mark live-tests before any merge; nothing self-merged or released. | §6, plan. |
-| D15 | **Relay, not runtime-native MCP** (interview Q1, Codex agreed). Bakin spawns each pack-declared MCP server, lists its tools, and registers one exec tool per tool; every runtime already reaches exec tools. Never retry a write automatically. | §4.3. Pi's built-in MCP extension stays unused. |
+| D15 | **Relay, not runtime-native MCP** (interview Q1, Codex agreed). Bakin spawns each pack-declared MCP server, lists its tools, and registers one exec tool per tool; every runtime already reaches exec tools. Bakin never retries a write automatically (retries inside a provider server are a stated risk, §4.3). | §4.3. Pi's built-in MCP extension stays unused. |
 | D16 | **gog MCP coverage gaps ship as gaps.** Calendar writes, Drive upload and Docs create are absent from `gog mcp` v0.48.0; they are contributed upstream, never filled with a shell path. | §10. |
 
 ## 3. Tech stack and constraints
@@ -286,8 +286,8 @@ description. PR2 extends the exec-tool contract in three ways:
   through zod (`src/core/exec-tools/provider.ts`). A relayed tool instead
   registers the server's JSON Schema as-is; both transports (Pi's
   `tool-bridge.ts`, `src/core/mcp-server.ts`) declare it verbatim; Bakin only
-  requires a JSON object and the provider server validates (its errors come
-  back as `failed`). Additional properties are preserved.
+  requires a JSON object and the provider server validates (its errors follow
+  the outcome rule below: `unknown` for external calls, `failed` otherwise). Additional properties are preserved.
 - **Live registry.** The registry emits add/remove events. `mcp-server.ts`
   stops snapshotting: live sessions get tools added/removed and
   `notifications/tools/list_changed`; Pi reads descriptors per turn already.
@@ -588,7 +588,10 @@ identifiers never display names; `const` over `let`; kebab-case files.
   external refused with one card per key (retry returns the same approval),
   approve → one matching call passes and a second is refused, changed args
   refused, expiry, standing grant, consume-before-forward under a concurrent
-  double call, outcome `unknown` on transport loss, no automatic retry.
+  double call, outcome `unknown` on transport loss and on an external
+  `isError` after a simulated committed effect, no automatic retry. Connect
+  (PR4): with two stored accounts the persisted selection wins, survives a
+  restart, and invalidates the receipt when it changes.
   Apply: task (log, grant, move, dispatch) and chat (one follow-up turn,
   deduped across replays and a crashed drain) anchors; boot reconciliation
   over `pending`, `applying` and outcome-less `attempting` (crash injected
@@ -621,12 +624,14 @@ identifiers never display names; `const` over `let`; kebab-case files.
   different gog or github-mcp-server pin; any merge, release, or anything on
   margo.
 - **Never:** self-merge or release; edit the live `~/.openclaw`/`~/.bakin` by
-  hand; retry a write automatically; trust server annotations for gating;
+  hand; retry a write automatically from Bakin; trust server annotations for gating;
   accept `mcpServers` from a non-official source; put tokens, OAuth JSON or
   pasted redirect URLs in the repo, assets, logs or chat.
 
 ## 10. Follow-ups recorded, not built
 
+- **gog send retries** — upstream no-retry for non-idempotent methods, then
+  repin (§4.3 stated risk).
 - **gog MCP gaps** — calendar create/update/respond, Drive upload, Docs
   create: contribute upstream (gog is MIT), then add table rows.
 - **Google verification** — Mark's track (§4.5); the unverified cap holds
