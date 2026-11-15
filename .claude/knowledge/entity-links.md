@@ -128,3 +128,13 @@ happened.
   no icon and no link: a plain card named after the kind, never a dead link.
 - `TurnOutputView` (single-turn embeds) shows no cards; the tool chips stand
   for the work.
+
+## Links in prose
+
+An agent may also write an ordinary markdown link to something
+(`[the project](/projects/p-1)`). `MarkdownContent`
+(`packages/sdk/src/content/markdown-content.tsx`) renders a link to an app
+route as a client-routed `PluginLink` by default, on every surface that
+renders markdown, so it never reloads the shell. Server endpoints (`/api/…`)
+and in-page anchors stay ordinary links; external URLs open in a new tab.
+`renderInternalLink` remains as an override.

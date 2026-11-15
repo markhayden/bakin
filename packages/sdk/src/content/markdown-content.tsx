@@ -18,6 +18,7 @@ import {
 } from '@bakin/ui'
 // Deep subpath: the patterns barrel is most of the SDK patterns bundle.
 import { CopyButton } from '@bakin/ui/patterns/copy-button'
+import { PluginLink } from '../navigation/plugin-link'
 import { remarkManagedSections } from './markdown-document'
 import { remarkComparison } from './markdown-comparison'
 
@@ -37,7 +38,10 @@ export interface MarkdownContentProps {
   /** Previous full document; adds semantic change/deletion annotations. */
   compareTo?: string
   className?: string
-  /** Use the established host/plugin link for internal SPA navigation. */
+  /**
+   * Override how a link to an app route renders. By default it is a
+   * client-routed `PluginLink`, so it never reloads the shell.
+   */
   renderInternalLink?: (props: MarkdownInternalLinkProps) => ReactNode
 }
 
@@ -146,6 +150,10 @@ function SafeAnchor({
   const external = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(href)
   if (external) return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
   if (renderInternalLink) return renderInternalLink({ href, children })
+  // An app route navigates in-app: a plain anchor would reload the whole
+  // shell. Server endpoints (`/api/…` — a file, a download) and in-page
+  // anchors are not client routes and stay ordinary links.
+  if (href.startsWith('/') && !href.startsWith('/api/')) return <PluginLink to={href}>{children}</PluginLink>
   return <a href={href}>{children}</a>
 }
 
