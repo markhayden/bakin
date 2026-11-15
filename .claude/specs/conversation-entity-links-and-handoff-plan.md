@@ -298,25 +298,25 @@ As built (PR 5):
 
 ### Phase 6 — Bits (`bakin-bits-official`) → PRs 6–8
 
-- [ ] **T18: Raise the SDK ref.** Bump `BAKIN_SDK_REF` to the merged PR 5 commit; update the
+- [x] **T18: Raise the SDK ref.** Bump `BAKIN_SDK_REF` to the merged PR 5 commit; update the
   `test-sdk` stub and types; raise `bakinRange` on Projects and Messaging. Size: S.
-- [ ] **T19: Projects — declare and report.** `project` (`handoff: true`); `reports` on
+- [x] **T19: Projects — declare and report.** `project` (`handoff: true`); `reports` on
   creating/mutating tools. Size: S.
-- [ ] **T20: Projects — proper draft on tool create** (brief skeleton). Size: S.
-- [ ] **T21: Projects — accept hand-off and prime.** Atomic batch writer; normaliser keeps
+- [x] **T20: Projects — proper draft on tool create** (brief skeleton). Size: S.
+- [x] **T21: Projects — accept hand-off and prime.** Atomic batch writer; normaliser keeps
   `handoff` and `done` rows; ask route prepends the preamble; divider in the Conversation
   tab. Verify: round trip write → read → render; >300-row chat; a write after hand-off
   keeps carried rows intact. Size: M.
-- [ ] **T22: Messaging — lossless row persistence.** Carried rows stored verbatim (no
+- [x] **T22: Messaging — lossless row persistence.** Carried rows stored verbatim (no
   fenced-JSON splitting, original timestamps and authorship); the read mapper keeps tool
   `metadata` and `turnId` so cards survive a reload. Verify: round-trip tests per row kind
   incl. `done`. Size: M.
-- [ ] **T23: Messaging — declare and report** (`session` with `handoff: true`, `plan`,
+- [x] **T23: Messaging — declare and report** (`session` with `handoff: true`, `plan`,
   `deliverable`). Size: S.
-- [ ] **T24: Messaging — accept hand-off.** Batch writer; `appended` event; missing session
+- [x] **T24: Messaging — accept hand-off.** Batch writer; `appended` event; missing session
   throws (today's writer silently returns). Size: M.
-- [ ] **T25: Messaging — prime the first session turn.** Size: S.
-- [ ] **T26: Bits link migration and architecture test** — navigation, notifications,
+- [x] **T25: Messaging — prime the first session turn.** Size: S.
+- [x] **T26: Bits link migration and architecture test** — navigation, notifications,
   badge providers and search surfaces in Projects and Messaging. Size: M.
 - Each client-bearing plugin: `bun run test:ui`, inspect `test-results/bakin-ui/index.html`.
   Projects and Messaging READMEs updated in their PRs.
@@ -325,15 +325,26 @@ As built (PR 5):
 
 ### Phase 7 — Guard, integration, reconciliation → PR 9
 
-- [ ] **T27: Release guard.** `check-plugin-contract.ts` validates manifest entities and
+End-to-end, 2026-11-14, isolated Pi rig, real model, Bits plugins linked from Bits main:
+- Chat → project: card in the reply, the open chat redirected without a reload, the chat
+  kept a "Continued here" card and did not redirect when reopened, the project page shows
+  the history under "Carried over from the chat …" with a link back.
+- Chat → brainstorm session: same, and the session's agent answered with a code word
+  stated only in the chat (the session has no body, so that is the priming).
+- Found and fixed on the way: the Projects page's response check did not accept the
+  hand-off marker row and refused to load a handed-off project (Bits #146).
+- Not exercised: OpenClaw with a real model (the rig has no provider key).
+
+
+- [x] **T27: Release guard.** `check-plugin-contract.ts` validates manifest entities and
   that every tool's `reports` resolves to an own or dependency-owned kind. Bits publishing
   additionally runs an activation check on the harness (catches executable/manifest
   mismatch). Verify: failing fixtures for both. Size: M.
-- [ ] **T28: Pin bump and end-to-end.** Bits ref in `design-system/compatibility.json`,
+- [x] **T28: Pin bump and end-to-end.** Bits ref in `design-system/compatibility.json`,
   with the canonical stylesheet update in the same PR. `/verify` in an isolated home, both
   adopters: card, `out` row, populated target transcript, redirect, and the target's agent
   recalling a chat-only fact. Criteria 3–8, 11. Size: S.
-- [ ] **T29: Documentation reconciliation.** `CLAUDE.md` (Conversation Kit, URL State, the
+- [x] **T29: Documentation reconciliation.** `CLAUDE.md` (Conversation Kit, URL State, the
   stale description of how Bits brainstorms reach the engine), plugin-author docs under
   `docs/src/content/docs/extending/plugins/`, `README.md` in either repo only if its
   plugin-authoring section is affected, `home.md` if touched. Verify: docs build; no

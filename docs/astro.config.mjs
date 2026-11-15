@@ -135,6 +135,7 @@ export default defineConfig({
                 { label: 'Server Contracts', slug: 'extending/plugins/server-contracts' },
                 { label: 'Realtime Events', slug: 'extending/plugins/realtime' },
                 { label: 'Search', slug: 'extending/plugins/search' },
+                { label: 'Entity Links & Hand-off', slug: 'extending/plugins/entity-links' },
                 { label: 'Distribute', slug: 'extending/plugins/distribute' },
               ],
             },

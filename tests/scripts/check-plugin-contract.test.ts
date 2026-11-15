@@ -141,6 +141,39 @@ describe('checkPublishedManifests: what this release would install must pass its
     expect(() => reportContractGuard({ ...family, manifests: result })).toThrow(/would refuse the official plugin releases it installs:\n {2}- projects 1\.0\.0: .*args is required/)
   })
 
+  it('refuses a published plugin whose tools report a kind it neither declares nor depends on', async () => {
+    const withEntities = (id: string, reports: string[], extra: Record<string, unknown> = {}) => JSON.stringify({
+      ...JSON.parse(manifest(id)),
+      ...extra,
+      contributes: {
+        entities: [{ kind: 'project', label: 'Project', icon: 'FolderKanban', href: '/projects/{id}', handoff: true }],
+        execTools: [{ name: `bakin_exec_${id}_create`, summary: 'Create', reports }],
+      },
+    })
+    const judge = (first: string) => {
+      let fetched = 0
+      return checkPublishedManifests({ ...HOST, plugins: PLUGINS, fetchIndex: index, fetchManifest: async () => (fetched++ === 0 ? first : manifest('terminal')) })
+    }
+
+    // Its own declared kind, and a dependency's: accepted.
+    expect((await judge(withEntities('projects', ['projects:project']))).ok).toBe(true)
+    expect((await judge(withEntities('projects', ['projects:project', 'tasks:task'], { dependencies: ['tasks'] }))).ok).toBe(true)
+
+    // An own kind the manifest never declares.
+    expect(await judge(withEntities('projects', ['projects:milestone']))).toEqual({
+      ok: false, rejected: [{ id: 'projects', version: '1.0.0', detail: expect.stringContaining('not declared in contributes.entities') }],
+    })
+    // Another plugin's kind without depending on it.
+    expect(await judge(withEntities('projects', ['tasks:task']))).toEqual({
+      ok: false, rejected: [{ id: 'projects', version: '1.0.0', detail: expect.stringContaining('"tasks" is not listed in dependencies') }],
+    })
+    // A kind whose href is not an in-app path.
+    const offsite = JSON.stringify({ ...JSON.parse(manifest('projects')), contributes: { entities: [{ kind: 'project', label: 'Project', icon: 'Box', href: 'https://example.com/{id}' }] } })
+    expect(await judge(offsite)).toEqual({
+      ok: false, rejected: [{ id: 'projects', version: '1.0.0', detail: expect.stringContaining('contributes.entities[0].href') }],
+    })
+  })
+
   it('judges the newest release the host can RUN, not the newest published', async () => {
     const two = async (): Promise<ArtifactsIndex> => ({
       version: 1,

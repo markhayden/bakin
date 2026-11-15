@@ -133,7 +133,8 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 | --- | --- |
 | `apiRoutes[]` | `method`, plugin-relative `path`, `summary` |
 | `clientRoutes[]` | app `path`, `summary` |
-| `execTools[]` | `name`, `summary` |
+| `execTools[]` | `name`, `summary` (plus `reports`: the entity kinds the tool may report) |
+| `entities[]` | `kind`, `label`, `icon`, `href` (plus `handoff`) — see [Entity Links, Cards and Hand-off](/docs/extending/plugins/entity-links/) |
 | `cliCommands[]` | `name`, `usage`, `summary`, `dispatch`, `args` (required with `dispatch`) |
 | `settings[]` | `key`, `summary` |
 | `docs` | `slug` |

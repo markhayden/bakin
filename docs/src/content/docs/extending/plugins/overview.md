@@ -75,4 +75,5 @@ The host provides `react`, `react-dom`, `@tanstack/react-router`, every `@makinb
 - [Server Contracts](/docs/extending/plugins/server-contracts/): routes, tools, hooks, storage, health checks, skills, workflows, and cleanup
 - [Realtime Events](/docs/extending/plugins/realtime/): live UI updates over the shared SSE stream
 - [Search](/docs/extending/plugins/search/): making plugin content searchable
+- [Entity Links, Cards and Hand-off](/docs/extending/plugins/entity-links/): linking to what your plugin owns, cards in agent replies, and carrying a chat into it
 - [Ingredients](/docs/extending/ingredients/): glossary of plugin and agent kit parts
