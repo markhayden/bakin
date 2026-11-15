@@ -10,8 +10,8 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 323,
-    "typeExports": 439
+    "valueExports": 324,
+    "typeExports": 441
   },
   "entrypoints": [
     {
@@ -727,6 +727,7 @@
         "ConversationPanel",
         "ConversationReplyToast",
         "dayKey",
+        "EntityCard",
         "foldConversation",
         "foldTurnChunks",
         "formatAbsoluteTime",
@@ -773,6 +774,7 @@
         "ConversationChunk",
         "ConversationDonePayload",
         "ConversationEmptyStateProps",
+        "ConversationEntityRef",
         "ConversationHeaderProps",
         "ConversationMessage",
         "ConversationMode",
@@ -790,6 +792,7 @@
         "ConversationTurn",
         "ConversationTurnUsage",
         "DisplayAttachment",
+        "EntityCardProps",
         "FoldedTurnOutput",
         "FoldOptions",
         "QuestionAnswer",

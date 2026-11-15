@@ -102,6 +102,11 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   conversation turn (dispatch runs) nothing redeems the receipt → an ordinary
   tool row, never a broken card. A turn that ENDS on a question previews
   `Asked: <question>` on its done event (attention toasts/OS).
+- **Entity cards ride the same receipt.** A tool that reports `entities` on
+  its result gets them attached to its row as `metadata.bakinEntities`, and
+  the fold turns them into cards linking to what the reply created or
+  changed. Declaration, the reporting rule and rendering:
+  `.claude/knowledge/entity-links.md`.
 - **Fold.** A tool row/chunk whose `metadata.bakinQuestion` passes the
   structural guard (every rendered field type-checked against
   `QUESTION_RENDER_LIMITS`, compile-pinned to core `QUESTION_LIMITS`) becomes a `{ type: 'question' }` turn item (live: the

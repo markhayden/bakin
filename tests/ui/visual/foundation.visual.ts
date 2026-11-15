@@ -735,6 +735,18 @@ test('public conversation attachment tray visual baseline', async ({ page }) => 
   })
 })
 
+test('public conversation entity card visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-conversation-entity-card--states-in-a-reply&viewMode=story')
+  await expect(page.getByRole('link', { name: 'Open project: Spring launch plan' })).toBeVisible()
+  await expect(page.getByText('Campaign · Updated')).toBeVisible()
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-entity-card.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public embedded conversation panel visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()

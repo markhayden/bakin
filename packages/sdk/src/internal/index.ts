@@ -100,3 +100,9 @@ export { toggleNotifications } from './browser-notify'
 export { setEntityDeclarations } from '../navigation/entities'
 /** A declared entity kind with its owner and public identity. */
 export type { EntityDeclaration } from '../navigation/entities'
+/** The declaration for a public kind id, if its plugin is loaded. */
+export { getEntityDeclaration, getEntityDeclarationsVersion, subscribeEntityDeclarations } from '../navigation/entities'
+/** How conversation entity cards learn a kind's label, icon and link; the host provides it once. */
+export { EntityKindResolverContext } from '@bakin/ui/conversation'
+/** The resolver contract the host implements for entity cards. */
+export type { EntityKindResolver } from '@bakin/ui/conversation'

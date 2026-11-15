@@ -54,6 +54,7 @@ import { Banner, Button, Spinner, SystemState, Text } from '@makinbakin/sdk/ui'
 import { assertReactInstance } from '../lib/react-identity'
 import { findShadowingHostPaths } from '../lib/route-shadow'
 import { checkPluginDrift } from './drift-check'
+import { EntityCardsProvider } from './entity-cards-provider'
 import {
   installVersionMismatchDetector,
   VERSION_MISMATCH_EVENT,
@@ -753,7 +754,7 @@ export function PluginHost({ children }: { children: ReactNode }) {
   // to keep registry state live without a visible UI surface.
   return (
     <>
-      {children}
+      <EntityCardsProvider>{children}</EntityCardsProvider>
       <ApprovalsAttentionProvider />
       <OperationsAttentionProvider />
       <Slot name="nav-badge-providers" />

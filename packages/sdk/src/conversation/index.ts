@@ -12,6 +12,7 @@ export type {
   QuestionAnswer,
   QuestionState,
   ConversationChunk,
+  ConversationEntityRef,
   ConversationTextFormat,
   ConversationToolActivity,
   ConversationToolCall,
@@ -22,6 +23,11 @@ export type {
 } from '@bakin/ui/conversation'
 /** The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). */
 export type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
+
+/** A link card for something an agent created or changed, shown in its reply. */
+export { EntityCard } from '@bakin/ui/conversation'
+/** Props for one entity card: a resolved kind plus the reference's snapshot. */
+export type { EntityCardProps } from '@bakin/ui/conversation'
 
 /** Compact single-turn output for task and workflow embeds. */
 export { TurnOutputView, TurnToolChip, foldTurnChunks } from '@bakin/ui/conversation'

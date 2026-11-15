@@ -92,3 +92,39 @@ return { ok: true, id, entities: [{ kind: 'projects:project', id, title, action:
 - **Testing.** `@makinbakin/sdk/testing` takes `{ manifest }` on
   `activatePlugin` / `createTestContext`, validates it as install does, and
   `callTool` throws when a tool reports a kind its entry does not list.
+
+## Cards in a conversation
+
+What a tool reports becomes a card in the agent's reply, at the point it
+happened.
+
+- **Fold** (`packages/ui/src/conversation/fold.ts`). A tool row's
+  `metadata.bakinEntities` becomes a `{ type: 'entities', refs }` turn item.
+  The tool call stays in its activity group; the cards collect directly after
+  the group, and a trailing `entities` item does not end the group, so
+  consecutive tool calls remain one collapsed group. Text between calls
+  starts a new group and a new card item.
+- **One card per thing per reply.** Identity is `kind` + `id`. `created`
+  beats `updated` (the card is a snapshot of the creation, whatever changed
+  after). The same thing in a later reply gets its own card.
+- **Inline images.** An `assets:asset` reference whose id the reply's text
+  already shows (`/api/assets/<id>…`) gets no card.
+- **Reads get none.** Only what a tool reports renders; malformed references
+  are ignored by the fold's structural guard (`isEntityRef`).
+- **`EntityCard`** (`packages/ui/src/conversation/entity-card.tsx`, public on
+  `@makinbakin/sdk/conversation`; story `Components/Conversation/Entity card`)
+  composes the row `Card`: icon tile, title on one line (full text in
+  `title`), and "Kind · Created|Updated". The whole card is one link through
+  the Card's overlay contract; the accessible name is
+  "Open <kind>: <title>".
+- **Resolution stays out of the UI package.** `EntityCards` reads
+  `EntityKindResolverContext`. The host mounts ONE provider
+  (`packages/host/src/plugin-host/entity-cards-provider.tsx`, around the
+  shell in `PluginHost`) that resolves a reference through the browser entity
+  registry to its label, icon (the sidebar's `NavIcon` map) and a
+  `PluginLink`. Every conversation surface — chat, brands, the Bits
+  brainstorms — gets linked cards with no wiring of its own.
+- **Unknown kind.** No declaration (the plugin was removed or disabled) means
+  no icon and no link: a plain card named after the kind, never a dead link.
+- `TurnOutputView` (single-turn embeds) shows no cards; the tool chips stand
+  for the work.

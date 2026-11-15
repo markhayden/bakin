@@ -87,7 +87,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
  * The ONE place a nav icon is looked up and rendered: a direct map read of a
  * module-level lucide component (never a component created during render).
  */
-function NavIcon({ name, className }: { name: string | undefined; className: string }) {
+export function NavIcon({ name, className }: { name: string | undefined; className?: string }) {
   const Icon = (name && ICONS[name]) || Puzzle
   return <Icon className={className} />
 }

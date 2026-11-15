@@ -4,6 +4,7 @@ export type {
   QuestionAnswer,
   QuestionState,
   ConversationChunk,
+  ConversationEntityRef,
   ConversationMessage,
   ConversationTextFormat,
   ConversationToolActivity,
@@ -14,6 +15,9 @@ export type {
   TurnItem,
   TurnStatus,
 } from './fold'
+
+export { EntityCard, EntityCards, EntityKindResolverContext } from './entity-card'
+export type { EntityCardProps, EntityKindResolver, ResolvedEntityKind } from './entity-card'
 
 export {
   dayKey,

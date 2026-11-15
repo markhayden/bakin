@@ -219,8 +219,8 @@ not survive a real runtime, stop and revisit A1.
   workflow, brand, brand doc, chat, agent declared in their manifests; `PluginHost` seeds
   and replaces the browser registry. Size: M.
 - [x] **T5: `entityHref`** in `@makinbakin/sdk/navigation` plus the core twin. (`EntityLink`
-  moved to T7: a public kit component needs a public story and visual baseline, and its
-  first use is the card and divider stories there.) Verify: segment escaping, query links, compound params, unknown kind. Size: S.
+  moved to T14: a public kit component needs a public story and visual baseline, and its
+  first use is the "Carried over" divider there.) Verify: segment escaping, query links, compound params, unknown kind. Size: S.
 - [x] **T6: `EntityRef`, `ExecToolResult.entities`, `reports` validation.** Own-or-dependency
   rule; activation assertion for core and user plugins; runtime drop + audit; the
   `@makinbakin/sdk/testing` harness enforces the same so external authors fail in their own
@@ -231,7 +231,11 @@ not survive a real runtime, stop and revisit A1.
 
 ### Phase 3 — Cards → PR 3
 
-- [ ] **T7: Fold `entities` items; `EntityCard`; `EntityLink`; SDK wrapper.** Stories per A7.
+- [x] **T7: Fold `entities` items; `EntityCard`; host resolver provider.** Stories per A7.
+  - As built: instead of an SDK wrapper around each conversation component, `packages/ui`
+    reads an `EntityKindResolverContext` and the host mounts one provider in `PluginHost`
+    (registry + sidebar icon map + `PluginLink`). Every surface gets linked cards with no
+    wiring. `EntityLink` moves to T14, its first consumer (the "Carried over" divider).
   - Verify: fold unit tests; RTL (with `rtl-settle`); `bun run ui:test:stories`;
     story interaction + visual evidence. Size: M.
 - [ ] **T8a: Tasks and Schedule report.** Size: S.
