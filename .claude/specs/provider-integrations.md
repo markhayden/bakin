@@ -201,9 +201,10 @@ prerelease-aware via `Bun.semver`.
 ### 4.2 Packs (Bits PR #143, reworked)
 
 **Manifest addition — `mcpServers[]`** (core schema in
-`packages/core/src/agent-packages/manifest.ts`; accepted ONLY from official
-Bits sources in this release — hub skills and third-party packs are refused
-with a typed error at install):
+`packages/core/src/agent-packages/manifest.ts`; refused from hub-skill
+synthesis and third-party remote refs with a typed error at install; accepted
+from the official Bits refs and from a local path the operator names, which
+is an operator action under D1):
 
 ```ts
 mcpServers: [{

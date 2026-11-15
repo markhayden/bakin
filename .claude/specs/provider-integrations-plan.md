@@ -56,9 +56,9 @@ D15 relay, not runtime-native MCP · D16 gog MCP gaps ship as gaps.
 |---|---|---|---|
 | PR1 | ignores receipts and `login` | none | — |
 | Fix | nothing persisted | none | — |
-| PR2 | `integration-action` approvals become an unknown kind (503 on resolve, skipped at rehydration); relay sidecars ignored; `approvedActions` kept as unknown JSON; Bits 2.0 packs fail the manifest check (`mcpServers` unknown → install refused, installed copies stay) | decide or cancel every pending `integration-action` approval; no `attempting` sidecar left; move awaiting-approval tasks to todo; pause grant-carrying schedules; re-install the Bits packs at their pre-relay version | downgrade test: the previous build boots on a PR2 data dir with pending/consumed sidecars without error |
-| PR3 | as rev 3 (chat-target jobs run as tasks; `starting` rows) | as rev 3 | rev 3's downgrade test |
-| PR4 | the `bakin` gog client stays registered and harmless; the persisted account selection is ignored (falls back to `GOG_ACCOUNT`) | none | — |
+| PR2 | `integration-action` records fail the old discriminated schema and are **skipped with a warning** (`packages/core/src/approvals/store.ts`) — invisible, never decidable; relay sidecars ignored; `approvedActions` kept as unknown JSON; old manifest schemas **strip** `mcpServers`, so a Bits 2.0 pack would install as a plain skill pack whose skill names tools that do not exist — Bits 2.0 therefore carries a `bakin` floor = the PR2 rc and is refused by older hosts | decide or cancel every pending `integration-action` approval; no `attempting` sidecar left; move awaiting-approval tasks to todo; pause grant-carrying schedules; re-install the Bits packs at their pre-relay version | downgrade test: the previous build boots on a PR2 data dir (decided approvals + sidecars) without error and lists no ghost approvals |
+| PR3 | old scheduler runs a `target: 'chat'` job as a TASK; old retention deletes `starting` rows; old run readers label `starting` as success; old chat parsing drops schedule-only row fields | pause every chat-target job; wait until no `starting` row remains and every `created` chat run's turn has a terminal row; only then revert | downgrade test (3.2): a db with a settled PR3 history opens under the previous migration set |
+| PR4 | the `bakin` gog client stays registered and harmless; the persisted account selection and scope profile are ignored | set `GOG_ACCOUNT` to the selected account (or clear the selection) so the old login check verifies the same account | — |
 
 Reverse dependency order: PR4/PR3 → PR2 (+ Bits) → Fix/PR1.
 
@@ -70,11 +70,11 @@ PR2  2.1 invocation type+Pi path → 2.2 MCP-side caller resolution
      2.3 raw-schema exec tools → 2.4 live registry (mcp-server add/remove/list_changed)
      2.5 manifest mcpServers + classify (pure) → 2.6 relay supervisor (needs 2.3, 2.4, 2.5)
      2.7a approvals owner kind (core) → 2.7b approval consumers (store/tasks hook/attention/Discord/OpenClaw)
-     2.8 approvedActions field+REST+CLI → 2.9 schedule grants+inheritance+exempt reason
+     2.8a–c approvedActions field, REST, CLI → 2.9a–c schedule grants, inheritance+exempt reason, CLI
      2.10 gate state machine (pure) → 2.11 gate wiring in the relay (needs 2.1, 2.2, 2.6, 2.7a, 2.8)
-     2.12 apply-after-commit: task anchor + boot reconciliation → 2.13 chat anchor (enqueueFollowUp + admission key)
+     2.12 apply-after-commit: task anchor + boot reconciliation → 2.13 chat anchor (enqueueFollowUp + admission key schema) → 2.13b boot the relay
      2.14 dispatch resume section → 2.15 UI (card in panel + inline chat, approve-all, grants editor, job form)
-     2.16 settings.integrations.privateNeedsApproval → 2.17 OpenClaw rig check → 2.18 gog no-retry draft → 2.19 docs → GATE → W1/W2/W3/W4
+     2.16 settings.integrations.privateNeedsApproval → 2.17 OpenClaw rig check → 2.18 gog no-retry draft → 2.18b verify boot → 2.19 docs → GATE → W1/W2/W3/W4
 Bits B1 google 2.0 (needs 2.5 schema) → B2 github 2.0 → B3 tools/list fixtures + contract → B4 skills → B5 READMEs
 PR3  rev 3 tasks 3.2 … 3.6 (unchanged order) → GATE → W5
 PR4  4.1 client constants + gog registration → 4.2 persisted account selection → 4.3 Connect API → 4.4 Connect dialog → 4.5 Bits setup=Connect → 4.6 docs → GATE → W6
@@ -163,11 +163,13 @@ The paste-a-link drawer renders the refusal through the existing error state
 
 ### 2.1 — invocation context: type + Pi path
 `PluginToolContext.invocation` becomes `{ agentId, turn?: { kind: 'task',
-taskId, runId } | { kind: 'chat', chatId, turnId } }` (additive). `MessageArgs`
-gains `invocationTurn` set by dispatch (`threadId task:<id>:d<seq>`) and by the
+taskId, runId } | { kind: 'chat', chatId, turnId } }` (additive). `RuntimeExecToolProvider.invoke`
+(`packages/core/src/adapters/shared.ts`) gains the turn argument and
+`src/core/exec-tools/provider.ts` passes it into the context it builds.
+`MessageArgs` gains `invocationTurn` set by dispatch (`threadId task:<id>:d<seq>`) and by the
 conversation turn engine; Pi's `tool-bridge.ts` passes it to every handler.
-**Verify:** `bun test tests/adapter-pi/tool-bridge.test.ts tests/core/dispatch*.test.ts tests/core/conversation-turns.test.ts --isolate`.
-**Files:** `packages/core/src/plugin-types.ts`, `packages/core/src/adapters/runtime/concepts.ts`, `packages/adapter-pi/src/{tool-bridge,messaging}.ts`, `src/core/dispatch*.ts`, `packages/core/src/conversation/turns.ts`, tests. **Size:** M.
+**Verify:** `bun test tests/adapter-pi/tool-bridge.test.ts tests/core/exec-tool-provider.test.ts tests/core/dispatch*.test.ts tests/core/conversation-turns.test.ts --isolate` — a task turn and a chat turn each reach a real handler with their context.
+**Files:** `packages/core/src/plugin-types.ts`, `packages/core/src/adapters/shared.ts`, `src/core/exec-tools/provider.ts`, `packages/core/src/adapters/runtime/concepts.ts`, `packages/adapter-pi/src/{tool-bridge,messaging}.ts`, `src/core/dispatch*.ts`, `packages/core/src/conversation/turns.ts`, tests. **Size:** M.
 
 ### 2.2 — MCP-side caller resolution
 `src/core/integrations/caller.ts`: for MCP calls (no turn on the transport),
@@ -179,8 +181,11 @@ conversation engine; exactly one → that turn; none → `no_caller`; several �
 `ExecToolDefinition` gains a variant `{ inputSchema: JSONSchema, parameters?:
 never }`; `src/core/exec-tools/provider.ts` and `src/core/mcp-server.ts`
 declare it verbatim, validate only "is a JSON object", preserve unknown
-properties. Zod tools unchanged (arch test: every core/plugin tool still zod).
-**Verify:** `bun test tests/core/exec-tools/*.test.ts tests/core/mcp-server*.test.ts --isolate`. **Size:** M.
+properties. Zod tools unchanged (arch test: every core/plugin tool still zod). The HTTP
+exec endpoint (`packages/host/src/api/exec-tools/[toolName].ts`, zod-parses
+unconditionally) refuses raw-schema tools with `relay_tool_not_http` — HTTP
+callers carry no turn.
+**Verify:** `bun test tests/core/exec-tool-provider.test.ts tests/core/exec-tools/*.test.ts tests/core/mcp-server*.test.ts tests/host/exec-tools-route.test.ts --isolate`. **Size:** M.
 
 ### 2.4 — live registry
 Registry emits `added`/`removed`; `mcp-server.ts` keeps live sessions in sync
@@ -191,43 +196,65 @@ connected MCP client test sees a tool appear and disappear. **Size:** M.
 ### 2.5 — manifest `mcpServers` + classify (pure)
 Zod schema per spec §4.2 (bin must be the pack's own; `token.prereq` declared;
 `tools` rows incl. `byArg`, `refuseUnless`, `expose: false`); install refuses
-`mcpServers` from non-official sources (typed). `src/core/integrations/classify.ts`:
+`mcpServers` from hub-skill synthesis and third-party remote refs (typed);
+the official Bits refs and a local path the operator names are accepted (a
+local install is an operator action under D1 — this is how the Bits branch and
+the 2.18b fixture install). `src/core/integrations/classify.ts`:
 `classify(table, tool, args) → { class, action } | { refused: 'inexact_send' } | hidden`.
 **Verify:** `bun test tests/agent-packages/manifest.test.ts tests/core/integrations/classify.test.ts --isolate`. **Size:** M.
 
 ### 2.6 — relay supervisor
 `src/core/integrations/relay.ts` with `@modelcontextprotocol/sdk` `Client` +
 `StdioClientTransport`: spawn the pinned bin with args/readonlyArgs, account
-flag from the login receipt, token from `token.command` per spawn (stdout
-never logged); 30 s request deadline; backoff 1 s → 60 s; `tools/list` on
+flag from the login receipt, token from `token.command` per spawn with
+`{host}`/`{account}` substituted from that receipt (stdout never logged; a
+receipt change — new account, new host — respawns); 30 s request deadline; backoff 1 s → 60 s; `tools/list` on
 connect → register/unregister `bakin_exec_<id>_<tool>` (raw schema, class in
 the description, hidden rows skipped); states `token-unavailable` /
-`auth-rejected` / `start-failed` into capability readiness. Booted from
-`server.ts` after readiness, restarted on pack install/sync/remove — never in
-`createAppServices()`. **Verify:** `bun test tests/core/integrations/relay.test.ts --isolate` against a fake stdio MCP server fixture (`tests/fixtures/fake-mcp-server.ts`: read/private/external tools, call log, crash-on-demand). **Size:** L → split if it exceeds one session (supervisor / registration).
+`auth-rejected` / `start-failed` into capability readiness. **Not booted yet:** this
+task delivers the supervisor and registration under test only; boot wiring is
+task 2.13b, after the gate and both anchors exist, so no intermediate commit
+exposes an ungated external tool. **Verify:** `bun test tests/core/integrations/relay.test.ts --isolate` against a fake stdio MCP server fixture (`tests/fixtures/fake-mcp-server.ts`: read/private/external tools, call log, crash-on-demand). **Size:** L → split if it exceeds one session (supervisor / registration).
 
 ### 2.7a — approvals: `integration-action` owner (core)
 `ApprovalOwner` union + zod schema + store list filter `chatIds`; the kind's
-`ownerState` (anchor live) and validate-only `onResolve`; rehydration skips
-nothing new. **Verify:** `bun test tests/core/approvals/*.test.ts --isolate`. **Size:** M.
+`ownerState` (anchor live) and validate-only `onResolve`; **every consumer
+that reads `owner.taskId` narrows in this same commit** (`use-task-approvals.ts`,
+`TaskApproval`, the attention provider's task path) so the commit typechecks;
+chat surfaces come in 2.7b. **Verify:** `bun test tests/core/approvals/*.test.ts --isolate`. **Size:** M.
 
 ### 2.7b — approval consumers
-`plugins/tasks/hooks/use-task-approvals.ts`, `approvals-attention-provider.tsx`
-(chat-anchored events announce, link `/chat/$chatId`), Discord card links,
+`approvals-attention-provider.tsx` (chat-anchored events announce, link
+`/chat/$chatId`), Discord card links,
 OpenClaw two-option card + "Approve all is on the board". **Verify:** the
 touched tests + a new attention-provider chat case. **Size:** M.
 
-### 2.8 — `approvedActions` field + REST + CLI
-Rev 3 tasks 2.1a–2.1c, unchanged in substance: field on Task/inputs/store
-(null clears), creation funnel, `ctx.tasks` refuses it, REST asserts operator
-provenance + audit, exec-tool schemas exclude it, `bakin tasks create
---allow` / `allow|disallow`. Action-class regex `<provider>.<verb>`.
-**Verify:** rev 3's test files. **Size:** M (three commits).
+### 2.8a — `approvedActions` field + creation funnel
+`Task`/`TaskCreateInput`/`TaskUpdateInput` (null clears), store schema,
+`public-task` patch, `createTaskWithEffects` input + forwarding; `ctx.tasks`
+refuses the field (plugins carry no request provenance). Class regex
+`^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$`.
+**Verify:** `bun test tests/core/task-service.test.ts tests/plugins/tasks/integration.test.ts --isolate`. **Files:** `packages/sdk/src/types/services.ts`, `packages/core/src/tasks/{store,public-task}.ts`, `src/core/task-service.ts`, `src/lib/plugin-context-services.ts`. **Size:** M.
 
-### 2.9 — schedule grants + inheritance + exempt reason
-Rev 3 tasks 2.2a–2.2c (job `grants` with provenance, copied onto created tasks
-with `inheritedFrom`, `AWAITING_APPROVAL_REASON` exempt, schedule CLI).
-**Verify:** rev 3's test files. **Size:** M (three commits).
+### 2.8b — REST provenance + audit
+Task create/update routes: field present → `assertOperatorDecision(approvalProvenanceFromRequest(req))` → 403 `{ code }`; audit `task.grant.added|removed` (provenance, source); tasks exec-tool schemas exclude the field (test).
+**Verify:** `bun test tests/plugins/tasks/routes-rest.test.ts tests/plugins/tasks/exec-tools.test.ts --isolate`. **Size:** S.
+
+### 2.8c — tasks CLI
+`bakin tasks create … --allow=<class,…>`, `bakin tasks allow|disallow <id> <class>` (operator header; agent context refused).
+**Verify:** `bun test tests/cli/tasks-grants.test.ts --isolate`. **Files:** `src/cli/commands/tasks.ts`, `src/cli/help.ts`. **Size:** S.
+
+### 2.9a — schedule job grants + routes
+`BakinJobMeta.grants?: { actions, setBy, revision }`; job routes assert operator provenance when present; `bakin_exec_schedule_*` schemas exclude it.
+**Verify:** `bun test tests/plugins/schedule/routes-jobs.test.ts tests/plugins/schedule/exec-tools.test.ts --isolate`. **Size:** S.
+
+### 2.9b — inheritance + exempt block reason
+Fire engine copies `grants.actions` onto created tasks with `inheritedFrom { jobId, revision, setBy }` (audit `schedule-inherit`); `AWAITING_APPROVAL_REASON` joins the triage-exempt reasons; job edits affect future tasks only.
+**Verify:** `bun test tests/plugins/schedule/blocked-fire-routing.test.ts tests/plugins/schedule/scheduler.test.ts --isolate`. **Size:** S.
+
+### 2.9c — schedule CLI
+`bakin schedule create … --allow=<class,…>`, `bakin schedule allow|disallow <jobId> <class>` with `--as human`.
+**Verify:** `bun test tests/cli/schedule-grants.test.ts --isolate`. **Size:** S.
 
 ### 2.10 — gate state machine (pure)
 `src/core/integrations/gate-state.ts`: sidecar per approval
@@ -249,10 +276,19 @@ grant, blocked → todo, `triggerDispatch`; human move out of blocked cancels.
 **Verify:** `bun test tests/core/integrations/apply.test.ts --isolate` with crash injection before/after the provider call. **Size:** M.
 
 ### 2.13 — chat anchor: follow-up turn
-Chat hook `chat.enqueueFollowUp({ chatId, admissionKey, message })`; the
-conversation queue persists `admissionKey` (second enqueue = no-op) and the
-transcript user row records it so a crashed drain cannot run it twice.
+Chat hook `chat.enqueueFollowUp({ chatId, admissionKey, message })`. The
+admission-key persistence lands HERE, not in PR3: `plugins/chat/lib/store.ts`
+strips unknown fields from transcript and queue rows today, so the queue-row
+and user-row schemas gain `admissionKey` in this task (second enqueue = no-op;
+a crashed drain finds the key on the transcript and skips). Restart test:
+enqueue, crash before drain, restart, exactly one turn.
 **Verify:** `bun test tests/core/conversation-turns.test.ts tests/plugins/chat/follow-up.test.ts --isolate`. **Size:** M.
+
+### 2.13b — boot the relay
+`server.ts` starts the supervisor after capability readiness; pack
+install/sync/remove restart it — never in `createAppServices()`. Test: a boot
+with an installed fixture pack registers its tools; removing the pack
+unregisters them. **Size:** S.
 
 ### 2.14 — dispatch resume section
 `approvals` section in every dispatch branch (grants; approved → "make exactly
@@ -280,6 +316,15 @@ Patch for gogcli's retry transport (no retry for non-idempotent methods) +
 test, kept in the scratchpad; opened upstream only on Mark's go. Also check
 github-mcp-server's retry behaviour; record findings in the pack README.
 
+### 2.18b — isolated verify boot (recorded)
+The `verify` recipe (Pi pinned, `dispatch.paused`, `PI_HOME`/`OPENCLAW_HOME`
+under the throwaway home): install a fixture pack from a local path whose
+`mcpServers` points at the fake MCP server; drive a relayed read, a private
+and an external call through BOTH surfaces — the Pi exec-tool provider and
+Bakin's MCP endpoint — and confirm the card, the one matching pass and the
+refusal of a second; `grep -l 3799 ~/.openclaw/openclaw.json` prints nothing
+afterwards. Evidence in the PR.
+
 ### 2.19 — docs
 New `.claude/knowledge/provider-integrations.md` (relay, classes, gate,
 states, risks); `approvals.md` (owner kind, chat anchor), `capability-packs.md`
@@ -296,14 +341,19 @@ CLAUDE.md pointer; `docs/…/packages.md` (`mcpServers`). **Size:** M (two commi
 ## Phase B — Bits #143 rework
 
 ### B1 — google-workspace 2.0.0
-`mcpServers[google]` per spec §4.2 with the class table; login leg adds
-`--client bakin` (setup stays the terminal command until PR4); drop the
+`mcpServers[google]` per spec §4.2 with the class table, but **without
+`--client bakin`** — PR2's live test runs on the operator's existing gog
+client (Mark's, from W1); PR4 task 4.5 adds `--client bakin` to the args and
+the login probe once the client exists. `bakin` floor = the PR2 rc. Drop the
 vendored CLI references + `scripts/vendor-gog-skills.ts`. **Size:** M.
 
 ### B2 — github 2.0.0
 `github-mcp-server` v2.1.0 pinned bin (four platforms, tarball + member sha256
 from the release checksums), `mcpServers[github]` with the class table and
-`token` from `gh auth token`. **Size:** M.
+`token: { command: ['gh','auth','token','--hostname','{host}','--user','{account}'] }`
+— `{host}`/`{account}` filled from the github login receipt (the probe
+captures the active account; host defaults to github.com), so the token always
+belongs to the verified identity. `bakin` floor = the PR2 rc. **Size:** M.
 
 ### B3 — tools/list fixtures + contract test
 Captured `tools/list` JSON for both pinned servers; contract: every listed
@@ -320,7 +370,7 @@ GitHub: `gh auth login`, account note. **Size:** S.
 
 ---
 
-## Phase 3 — PR3: schedule chat target (rev 3 tasks, unchanged; acceptance is now W5, and a scheduled chat's external calls use the chat card from PR2)
+## Phase 3 — PR3: schedule chat target (rev 3 tasks; acceptance is now W5; a scheduled chat's external calls use the chat card from PR2; `admissionKey` on chat rows already exists from PR2 task 2.13, so 3.1a adds only the schedule-specific fields)
 
 ### 3.2 — ledger: target, chat columns, `starting`, retention
 Migration vN as a **transactional table rebuild** (the `disposition` CHECK excludes new values): create `cron_fires_v2` with `target TEXT NOT NULL DEFAULT 'task'`, `chat_id`, `turn_id`, CHECK including `'starting'`; copy rows (incl. `skip_reason`); drop; rename; re-create indexes. `pruneCronFires` deletes only `disposition NOT IN ('pending','starting')`. Verbs: `claimCronFire(…, target)`, `markCronFireStarting`, `attachCronChatTurn`; `findHealableCronClaims` returns `pending` and `starting`; `CronFireRow` typed.
@@ -386,32 +436,46 @@ screen, Desktop OAuth client, test users added while unverified. Tasks 4.1–4.4
 build against a placeholder client id until the real one exists.
 
 ### 4.1 — client constants + gog registration
-`packages/core/src/integrations/google-client.ts` (id + secret + the pinned
-scope flags); idempotent `gog auth credentials` registration as client `bakin`
-at pack install/sync (compared by client id). Verify the exact gog command on
-the pinned build first. **Size:** S.
+`packages/core/src/integrations/google-client.ts`: id + secret and the two
+pinned scope profiles — **full** `--services gmail,calendar,drive,docs,sheets
+--gmail-scope full --drive-scope full` and **read-only** `--readonly` plus the
+same services (exact flag values confirmed against `gog auth add --help` on the
+pinned build, and against the relayed tool list so no scope is requested that
+no tool uses). Idempotent `gog auth credentials` registration as client
+`bakin` at pack install/sync (compared by client id). **Verify:** registration
+test against a fake gog; scope-profile snapshot test. **Size:** S.
 
 ### 4.2 — persisted account selection
-Pack state `accountSelection`; `login-verify.ts` prefers it over
-`process.env[accountEnv]` and includes it in the receipt invalidation key;
-the relay spawns on it. **Verify:** two stored accounts, selection wins,
+Pack state `{ accountSelection, scopeProfile }`; `login-verify.ts` prefers
+the selection over `process.env[accountEnv]` and includes it in the receipt
+invalidation key; the relay spawns on it with `args` or `readonlyArgs` by
+`scopeProfile`. **Verify:** two stored accounts, selection wins,
 survives restart, change invalidates. **Size:** S.
 
 ### 4.3 — Connect API
 `POST /api/integrations/google/connect { email, access }` (declared operator,
-agent contexts refused) → step 1 with frozen flags, returns URL + `attemptId`,
-records gog's `state` and expiry, one attempt at a time; `POST
-…/connect/:attemptId { url }` → state check → step 2 `--auth-url` → selection
-→ login check → relay respawn. Pasted URLs never logged. **Size:** M.
+agent contexts refused) → step 1 with the profile's frozen flags, returns URL + `attemptId` +
+`expiresAt` (gog's own state expiry); one attempt at a time (a new one cancels
+the old); `POST …/connect/:attemptId { url }` → state check → step 2
+`--auth-url` → persist selection + profile → login check for that account →
+relay respawn; the attempt is consumed (a second POST → 410). Pasted URLs
+never logged. **Verify:** `bun test tests/host/api/google-connect.test.ts
+--isolate` (single use, expiry, state mismatch, cancel-by-new-attempt, agent
+context refused, URL absent from logs). **Size:** M.
 
 ### 4.4 — Connect dialog
 ConfirmDialog-hosted flow in Explore's installed card and the runtime hub
 Capabilities tab: email, access (Full default / Read-only), the "last page
-will fail to load" explanation, open-in-new-tab, paste field, outcome.
-Conformance skill first. **Size:** M.
+will fail to load" explanation, the unverified-app warning and 100-user cap
+while unverified, the attempt's expiry, open-in-new-tab, paste field,
+outcome. Conformance skill first. **Verify:** `bun test
+tests/plugins/explore/google-connect-dialog.test.tsx --isolate`;
+`ui:conformance --quick`. **Size:** M.
 
 ### 4.5 — Bits: setup = Connect
-google-workspace login `setup` points at the Connect action; README. **Size:** XS.
+google-workspace: `--client bakin` added to `args`, `readonlyArgs` and the
+login probe; login `setup` points at the Connect action; README; `bakin`
+floor = the PR4 rc. **Size:** S.
 
 ### 4.6 — docs
 `provider-integrations.md` (client, verification track), `capability-packs.md`. **Size:** S.
@@ -439,7 +503,7 @@ skill, 2.15); the gog credentials command (4.1).
 ## Todo
 - [x] Bits B1–B6 (rev 3, CLI packs) · [x] 1.1–1.6 · [x] PR1 gate · [x] Codex ×2 · [ ] W1 (Mark)
 - [ ] F1 · [ ] F2 · [ ] F3 · [ ] Fix gate · [ ] Codex ×2 · [ ] Mark check
-- [ ] 2.1 · [ ] 2.2 · [ ] 2.3 · [ ] 2.4 · [ ] 2.5 · [ ] 2.6 · [ ] 2.7a · [ ] 2.7b · [ ] 2.8 · [ ] 2.9 · [ ] 2.10 · [ ] 2.11 · [ ] 2.12 · [ ] 2.13 · [ ] 2.14 · [ ] 2.15 · [ ] 2.16 · [ ] 2.17 · [ ] 2.18 · [ ] 2.19 · [ ] PR2 gate · [ ] Codex ×2 · [ ] W1/W2/W3/W4 (Mark)
+- [ ] 2.1 · [ ] 2.2 · [ ] 2.3 · [ ] 2.4 · [ ] 2.5 · [ ] 2.6 · [ ] 2.7a · [ ] 2.7b · [ ] 2.8a · [ ] 2.8b · [ ] 2.8c · [ ] 2.9a · [ ] 2.9b · [ ] 2.9c · [ ] 2.10 · [ ] 2.11 · [ ] 2.12 · [ ] 2.13 · [ ] 2.13b · [ ] 2.14 · [ ] 2.15 · [ ] 2.16 · [ ] 2.17 · [ ] 2.18 · [ ] 2.18b · [ ] 2.19 · [ ] PR2 gate · [ ] Codex ×2 · [ ] W1/W2/W3/W4 (Mark)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (rev 4 rework)
 - [ ] 3.2 · [ ] 3.1a · [ ] 3.1b · [ ] 3.1c · [ ] 3.3a · [ ] 3.3b · [ ] 3.4a · [ ] 3.4b · [ ] 3.4c · [ ] 3.4d · [ ] 3.4e · [ ] 3.5 · [ ] 3.6 · [ ] PR3 gate · [ ] Codex ×2 · [ ] W5 (Mark)
 - [ ] Mark: Google Cloud project · [ ] 4.1 · [ ] 4.2 · [ ] 4.3 · [ ] 4.4 · [ ] 4.5 · [ ] 4.6 · [ ] PR4 gate · [ ] Codex ×2 · [ ] W6 (Mark)
