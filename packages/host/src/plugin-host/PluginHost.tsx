@@ -40,8 +40,10 @@ import { type PluginContributions } from '@makinbakin/sdk'
 import {
   configureLazyPlugins,
   getPluginLoadState,
+  setEntityDeclarations,
   setLazyPluginLoader,
   setManifestNav,
+  type EntityDeclaration,
   setPluginLoadState,
   unregisterPlugin,
 } from '@makinbakin/sdk/internal'
@@ -297,6 +299,7 @@ function applyManifestMetadata(manifest: Manifest): void {
   const slotOwners = new Map<string, string[]>()
   const routeOwners: Array<{ pattern: string; pluginId: string }> = []
   const presentIds = new Set<string>()
+  const entities: EntityDeclaration[] = []
 
   for (const plugin of manifest.plugins) {
     presentIds.add(plugin.id)
@@ -304,6 +307,9 @@ function applyManifestMetadata(manifest: Manifest): void {
     setManifestNav(plugin.id, loadable ? plugin.contributes?.nav ?? null : null)
     if (loadable && plugin.contributes?.nav?.length) seededManifestNavIds.add(plugin.id)
     if (!loadable) continue
+    for (const entity of plugin.contributes?.entities ?? []) {
+      entities.push({ ...entity, pluginId: plugin.id, id: `${plugin.id}:${entity.kind}` })
+    }
     for (const slot of plugin.contributes?.slots ?? []) {
       const owners = slotOwners.get(slot) ?? []
       owners.push(plugin.id)
@@ -321,6 +327,10 @@ function applyManifestMetadata(manifest: Manifest): void {
       routeOwners.push({ pattern: route.path, pluginId: plugin.id })
     }
   }
+
+  // Replaced whole: a kind whose plugin left the manifest (or stopped being
+  // loadable) is gone, and links to it stop resolving.
+  setEntityDeclarations(entities)
 
   for (const id of seededManifestNavIds) {
     if (presentIds.has(id)) continue

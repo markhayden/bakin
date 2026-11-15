@@ -16,6 +16,14 @@
     "runtime.messaging"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "asset",
+        "label": "Asset",
+        "icon": "FolderOpen",
+        "href": "/assets/{id}"
+      }
+    ],
     "apiRoutes": [
       { "path": "/import/summary", "method": "GET", "summary": "Current unmanaged asset count" },
       {

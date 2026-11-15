@@ -17,6 +17,20 @@
     "search.write"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "brand",
+        "label": "Brand",
+        "icon": "Paintbrush",
+        "href": "/brands/{id}"
+      },
+      {
+        "kind": "doc",
+        "label": "Brand document",
+        "icon": "FileText",
+        "href": "/brands/{brandId}/docs/{kind}/{name}"
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",

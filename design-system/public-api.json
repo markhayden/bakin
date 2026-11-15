@@ -10,7 +10,7 @@
     "entrypoints": 7,
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
-    "valueExports": 322,
+    "valueExports": 323,
     "typeExports": 439
   },
   "entrypoints": [
@@ -838,6 +838,7 @@
       "status": "supported-prerelease",
       "newConsumerPolicy": "supported",
       "values": [
+        "entityHref",
         "PluginLink",
         "toNavigationOptions",
         "useHistoryBack",

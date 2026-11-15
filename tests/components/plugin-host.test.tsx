@@ -71,6 +71,7 @@ import {
   unregisterPlugin,
 } from '@makinbakin/sdk/internal'
 import { Slot } from '@makinbakin/sdk/slots'
+import { getEntityDeclaration } from '../../packages/sdk/src/navigation/entities'
 
 function SlotPage() {
   return <span data-testid="slot-content">rendered-from-x</span>
@@ -838,6 +839,55 @@ describe('PluginHost — lazy boot from declarative manifests', () => {
     } finally {
       consoleDebug.mockRestore()
       rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('PluginHost — entity declarations', () => {
+  const thing = { kind: 'thing', label: 'Thing', icon: 'Box', href: '/things/{id}' }
+  const plugin = (id: string, contributes: Record<string, unknown>, status = 'active') => ({
+    id, name: id, version: '1.0.0', clientEntry: `/missing/${id}.js`, clientVersion: '1', status,
+    // A declared slot keeps the client lazy: nothing is imported in these tests.
+    contributes: { slots: [`page:/${id}`], ...contributes },
+  })
+  function stubManifest(plugins: unknown[]) {
+    vi.stubGlobal('fetch', mock(async (url: string) => (url === '/api/plugins/manifest'
+      ? new Response(JSON.stringify({ plugins }), { status: 200, headers: { 'content-type': 'application/json' } })
+      : new Response('not found', { status: 404 }))))
+  }
+
+  it('seeds the browser registry from loadable plugins only', async () => {
+    stubManifest([
+      plugin('x', { entities: [thing] }),
+      plugin('broken', { entities: [thing] }, 'failed'),
+    ])
+    render(<PluginHost><div /></PluginHost>)
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+    expect(getEntityDeclaration('x:thing')).toEqual({ ...thing, pluginId: 'x', id: 'x:thing' })
+    expect(getEntityDeclaration('broken:thing')).toBeUndefined()
+  })
+
+  it('a refreshed manifest replaces the registry, removals included', async () => {
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
+    injectDevScriptTag()
+    try {
+      stubManifest([plugin('x', { entities: [thing, { ...thing, kind: 'gadget' }] }), plugin('y', { entities: [thing] })])
+      render(<PluginHost><div /></PluginHost>)
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+      expect(getEntityDeclaration('x:gadget')).toBeDefined()
+      expect(getEntityDeclaration('y:thing')).toBeDefined()
+
+      // x drops a kind and renames the other; y is uninstalled.
+      stubManifest([plugin('x', { entities: [{ ...thing, label: 'Widget' }] })])
+      const handle = (window as unknown as { __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void> }).__bakinHotSwapPlugin
+      await act(async () => { await handle!('x', '/missing/x.js', '1') })
+
+      expect(getEntityDeclaration('x:thing')?.label).toBe('Widget')
+      expect(getEntityDeclaration('x:gadget')).toBeUndefined()
+      expect(getEntityDeclaration('y:thing')).toBeUndefined()
+    } finally {
+      consoleDebug.mockRestore()
     }
   })
 })

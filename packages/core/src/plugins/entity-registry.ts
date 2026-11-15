@@ -8,6 +8,7 @@
  * so a failed, disabled or removed plugin never leaves a kind behind.
  */
 import type { EntityContribution } from '@makinbakin/sdk/types'
+import { fillEntityHref } from './entity-href'
 
 export interface EntityDeclaration extends EntityContribution {
   /** The owning plugin. */
@@ -49,4 +50,20 @@ const g = globalThis as { __bakinEntityRegistry?: EntityRegistry }
 /** The process-wide registry (globalThis-backed: survives module re-evaluation). */
 export function getEntityRegistry(): EntityRegistry {
   return (g.__bakinEntityRegistry ??= createEntityRegistry())
+}
+
+/**
+ * Server-side link to an entity: the href its declared kind resolves to, or
+ * `null` when the kind is not declared by a loaded plugin (or a placeholder
+ * has no value). The browser twin is `entityHref` in
+ * `@makinbakin/sdk/navigation`.
+ */
+export function entityHref(
+  kind: string,
+  id: string,
+  params?: Readonly<Record<string, string>>,
+  registry: EntityRegistry = getEntityRegistry(),
+): string | null {
+  const declaration = registry.get(kind)
+  return declaration ? fillEntityHref(declaration.href, id, params) : null
 }

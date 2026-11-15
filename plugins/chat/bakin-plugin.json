@@ -18,6 +18,14 @@
     "search.write"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "chat",
+        "label": "Chat",
+        "icon": "MessageSquare",
+        "href": "/chat/{id}"
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",
