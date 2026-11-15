@@ -626,6 +626,7 @@ const teamPlugin: BakinPlugin = definePlugin({
           workspace: result.workspace,
           runtimeRestarted,
           instructions: `Agent created. You can now assign tasks to ${id} via bakin_exec_tasks_create. Consider writing a detailed SOUL.md to define their personality.`,
+          entities: [{ kind: 'team:agent', id, title: name, action: 'created' as const }],
         }
       },
     })
@@ -662,7 +663,12 @@ const teamPlugin: BakinPlugin = definePlugin({
         resetSettingsCache()
         ctx.events.emit('team.agent_changed', { agentId })
 
-        return { ok: true, id: agentId, updated }
+        return {
+          ok: true,
+          id: agentId,
+          updated,
+          entities: [{ kind: 'team:agent', id: agentId, title: (params.name as string | undefined) ?? agentId, action: 'updated' as const }],
+        }
       },
     })
 

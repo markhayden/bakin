@@ -284,6 +284,14 @@ describe('schedule exec tools', () => {
       expect(getJob(result.jobId as string)!.schedule).toEqual({ kind: 'at', expr: future })
     })
 
+    it('reports the scheduled job it created', async () => {
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
+      const result = await callTool(tool, {
+        name: 'Weekly digest', schedule: '2099-03-01T17:30:00.000Z', agentId: 'pixel', taskPrompt: 'Send it',
+      })
+      expect(result.entities).toEqual([{ kind: 'schedule:job', id: result.jobId, title: 'Weekly digest', action: 'created' }])
+    })
+
     it('rejects a past one-shot instant with a clear error', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_create')!
       const result = await callTool(tool, {
@@ -366,6 +374,8 @@ describe('schedule exec tools', () => {
 
       expect(result.ok).toBe(true)
       expect(mockCronUpdate).not.toHaveBeenCalled()
+
+      expect(result.entities).toEqual([{ kind: 'schedule:job', id: 'job-upd', title: 'Renamed', action: 'updated' }])
 
       const meta = getJob('job-upd')
       expect(meta!.displayName).toBe('Renamed')

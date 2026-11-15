@@ -188,6 +188,7 @@ export function registerTaskExecTools(ctx: PluginContext): void {
             workflowId: result.workflowId,
             suggestedWorkflow: result.suggestedWorkflow,
             notice,
+            entities: [{ kind: 'tasks:task', id: result.id, title, action: 'created' as const }],
           }
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -360,7 +361,14 @@ export function registerTaskExecTools(ctx: PluginContext): void {
           const result = await updateTask(taskId, updates)
           ctx.activity.audit('updated', agent, { taskId })
           indexTask(ctx, taskId).catch(() => {})
-          return { ok: true, result }
+          // The card shows the task's title as it now stands; no title, no card.
+          const current = title === undefined ? (await getTaskDetails(taskId))?.task.title : undefined
+          const cardTitle = title ?? (typeof current === 'string' ? current : undefined)
+          return {
+            ok: true,
+            result,
+            ...(cardTitle ? { entities: [{ kind: 'tasks:task', id: taskId, title: cardTitle, action: 'updated' as const }] } : {}),
+          }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
         }

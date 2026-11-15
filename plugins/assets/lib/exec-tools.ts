@@ -9,6 +9,7 @@
  * Tool names, parameter schemas, and result shapes are agent-facing
  * contracts — bodies moved verbatim.
  */
+import { basename } from 'path'
 import { z } from 'zod'
 
 import { translateAgentPath } from '@bakin/core/agent-path-map'
@@ -182,7 +183,21 @@ export function registerAssetsExecTools(ctx: PluginContext): void {
           }
         }
         ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
-        return { ok: true, assetId: r.assetId, version: r.version, changed: r.changed }
+        return {
+          ok: true,
+          assetId: r.assetId,
+          version: r.version,
+          changed: r.changed,
+          // A card for what this save did; an unchanged re-save did nothing.
+          ...(r.changed ? {
+            entities: [{
+              kind: 'assets:asset',
+              id: r.assetId,
+              title: basename(filePath),
+              action: r.version === 1 ? 'created' as const : 'updated' as const,
+            }],
+          } : {}),
+        }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }

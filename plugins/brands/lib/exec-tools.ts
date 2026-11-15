@@ -11,6 +11,11 @@ import { getBrand, listBrands, listDocs, readDoc, writeDoc, updateBrand, addLess
 import { computeBrandFingerprint } from './fingerprint'
 import { paletteEntrySchema, terminologyEntrySchema } from './schemas'
 
+/** The card for a brand document: a compound route, so the reference carries its params. */
+function docRef(brandId: string, kind: 'guidelines' | 'lessons', name: string, title: string, action: 'created' | 'updated') {
+  return { kind: 'brands:doc', id: `${brandId}/${kind}/${name}`, title, action, params: { brandId, kind, name } }
+}
+
 /** Draft gate (§9.1): agents NEVER mutate published brand identity. */
 function requireDraftBrand(brandId: string): { ok: true } | { ok: false; error: string } {
   const read = getBrand(brandId)
@@ -96,9 +101,16 @@ export function registerBrandExecTools(ctx: PluginContext): void {
       const gate = requireDraftBrand(brandId)
       if (!gate.ok) return { ok: false, error: gate.error }
       const kind = params.kind === 'lessons' ? 'lessons' as const : 'guidelines' as const
+      const name = String(params.name ?? '')
       try {
-        writeDoc(brandId, kind, String(params.name ?? ''), String(params.content ?? ''))
-        return { ok: true, brandId, doc: `${kind}/${params.name}` }
+        const existed = readDoc(brandId, kind, name) !== null
+        writeDoc(brandId, kind, name, String(params.content ?? ''))
+        return {
+          ok: true,
+          brandId,
+          doc: `${kind}/${name}`,
+          entities: [docRef(brandId, kind, name, name, existed ? 'updated' : 'created')],
+        }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
@@ -131,7 +143,7 @@ export function registerBrandExecTools(ctx: PluginContext): void {
           ...(params.terminology !== undefined ? { terminology: params.terminology as never } : {}),
           ...(params.cardDocs !== undefined ? { cardDocs: params.cardDocs as never } : {}),
         }))
-        return { ok: true, brand }
+        return { ok: true, brand, entities: [{ kind: 'brands:brand', id: brandId, title: brand.name, action: 'updated' as const }] }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
@@ -166,7 +178,7 @@ export function registerBrandExecTools(ctx: PluginContext): void {
         ctx.activity.audit('brand.lesson_added', agent, { brandId, lesson: name, title })
         ctx.events.emit('brand.changed', { brandId })
       } catch { /* activity surface unavailable (tests) */ }
-      return { ok: true, brandId, lesson: name }
+      return { ok: true, brandId, lesson: name, entities: [docRef(brandId, 'lessons', name, title, 'created')] }
     },
   })
 

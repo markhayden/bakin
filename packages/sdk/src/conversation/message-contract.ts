@@ -8,8 +8,10 @@
 import type { BakinQuestion, ConversationMessage, DisplayAttachment } from '../types/conversation'
 import type { BakinQuestion as CoreBakinQuestion, QUESTION_LIMITS } from '@bakin/core/conversation/questions'
 import type { QUESTION_RENDER_LIMITS } from '@bakin/ui/conversation/fold'
+import type { EntityRef } from '../types/registration'
 import type {
   BakinQuestion as UiBakinQuestion,
+  ConversationEntityRef as UiEntityRef,
   ConversationMessage as UiConversationMessage,
   DisplayAttachment as UiDisplayAttachment,
 } from '@bakin/ui/conversation'
@@ -25,5 +27,8 @@ void bakinQuestionCoreContract
 /** The ui render guard enforces exactly the server schema's field limits. */
 const questionLimitsContract: Mutual<typeof QUESTION_RENDER_LIMITS, Omit<typeof QUESTION_LIMITS, 'serializedBytes'>> = true
 void questionLimitsContract
+/** The ui card model is exactly what a tool reports. */
+const entityRefContract: Mutual<UiEntityRef, EntityRef> = true
+void entityRefContract
 void conversationMessageContract
 void displayAttachmentContract

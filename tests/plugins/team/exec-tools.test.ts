@@ -252,6 +252,7 @@ describe('bakin_exec_team_create_agent', () => {
     expect(result.ok).toBe(true)
     expect(result.id).toBe('jessica')
     expect(result.instructions).toBeDefined()
+    expect(result.entities).toEqual([{ kind: 'team:agent', id: 'jessica', title: 'Jessica', action: 'created' }])
     expect(runtimeMocks.create).toHaveBeenCalledWith(expect.objectContaining({
       id: 'jessica',
       name: 'Jessica',
@@ -328,6 +329,7 @@ describe('bakin_exec_team_update_identity', () => {
     })
     expect(result.ok).toBe(true)
     expect(result.updated).toEqual(['name', 'role'])
+    expect(result.entities).toEqual([{ kind: 'team:agent', id: 'chef', title: 'Chef v2', action: 'updated' }])
     expect(runtimeMocks.update).toHaveBeenCalledWith('chef', expect.objectContaining({
       name: 'Chef v2',
       role: 'Head Chef',

@@ -95,6 +95,21 @@ export interface BakinQuestion {
   allowOther: boolean
 }
 
+/**
+ * Something a tool call created or changed, carried on its tool row as
+ * `metadata.bakinEntities`. Structural copy of the SDK types entry's
+ * `EntityRef`, pinned by the SDK's private message-contract module.
+ */
+export interface ConversationEntityRef {
+  /** Public kind id, `<pluginId>:<kind>`. */
+  kind: string
+  id: string
+  /** Title at the time of the call. */
+  title: string
+  action: 'created' | 'updated'
+  params?: Record<string, string>
+}
+
 /** Where a question card stands — derived from the transcript, never stored. */
 export type QuestionState = 'open' | 'answered' | 'skipped'
 
@@ -103,6 +118,8 @@ export type TurnItem =
   | { type: 'text'; format: ConversationTextFormat; content: string }
   | { type: 'activity'; calls: ConversationToolCall[] }
   | { type: 'error'; message: string; errorKind?: string }
+  /** Cards for what the preceding tool calls created or changed; one per thing per turn. */
+  | { type: 'entities'; refs: ConversationEntityRef[] }
   | {
       type: 'question'
       question: BakinQuestion
@@ -172,6 +189,18 @@ function isBakinQuestion(value: unknown): value is BakinQuestion {
       || (typeof recommended === 'number' && Number.isInteger(recommended) && recommended >= 0 && recommended < options.length))
 }
 
+function isEntityRef(value: unknown): value is ConversationEntityRef {
+  if (!value || typeof value !== 'object') return false
+  const ref = value as Record<string, unknown>
+  const params = ref.params
+  return typeof ref.kind === 'string' && /^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(ref.kind)
+    && typeof ref.id === 'string' && ref.id.length > 0
+    && typeof ref.title === 'string' && ref.title.trim().length > 0
+    && (ref.action === 'created' || ref.action === 'updated')
+    && (params === undefined
+      || (!!params && typeof params === 'object' && Object.values(params).every((v) => typeof v === 'string')))
+}
+
 /** Lifecycle state for an agent turn. */
 export type TurnStatus = 'streaming' | 'complete' | 'error' | 'aborted'
 
@@ -220,16 +249,61 @@ interface AgentTurnBuilder {
   ts?: string
   agentId?: string
   byCallId: Map<string, ConversationToolCall>
+  /** Entity cards already in this turn, by `kind` + id: one card per thing. */
+  entities: Map<string, ConversationEntityRef>
   keyCounter: number
 }
 
 function newBuilder(): AgentTurnBuilder {
-  return { items: [], status: 'complete', byCallId: new Map(), keyCounter: 0 }
+  return { items: [], status: 'complete', byCallId: new Map(), entities: new Map(), keyCounter: 0 }
 }
 
+/**
+ * The activity group a new tool call joins. Cards sit after the group they
+ * came from, so a trailing `entities` item does not end it: consecutive tool
+ * calls stay one collapsed group with their cards collected behind it.
+ */
 function lastActivity(builder: AgentTurnBuilder): Extract<TurnItem, { type: 'activity' }> | null {
-  const last = builder.items[builder.items.length - 1]
-  return last && last.type === 'activity' ? last : null
+  const { items } = builder
+  const last = items[items.length - 1]
+  const candidate = last?.type === 'entities' ? items[items.length - 2] : last
+  return candidate && candidate.type === 'activity' ? candidate : null
+}
+
+/** Add cards for what a tool result reports: one per thing per turn, `created` beating `updated`. */
+function addEntities(builder: AgentTurnBuilder, reported: unknown): void {
+  if (!Array.isArray(reported)) return
+  for (const ref of reported) {
+    if (!isEntityRef(ref)) continue
+    const identity = `${ref.kind}\u0000${ref.id}`
+    const shown = builder.entities.get(identity)
+    if (shown) {
+      // The card is a snapshot of the creation, whatever was changed after.
+      if (shown.action === 'updated' && ref.action === 'created') Object.assign(shown, ref)
+      continue
+    }
+    const card = { ...ref }
+    builder.entities.set(identity, card)
+    const last = builder.items[builder.items.length - 1]
+    if (last?.type === 'entities') last.refs.push(card)
+    else builder.items.push({ type: 'entities', refs: [card] })
+  }
+}
+
+/**
+ * An asset the reply already shows inline as an image needs no card beside
+ * it. Runs once the turn's text is complete.
+ */
+function dropInlineAssetCards(builder: AgentTurnBuilder): void {
+  if (builder.entities.size === 0) return
+  const text = builder.items.map((item) => (item.type === 'text' ? item.content : '')).join('\n')
+  const inline = (ref: ConversationEntityRef) =>
+    ref.kind === 'assets:asset' && new RegExp(`/api/assets/${ref.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-])`).test(text)
+  builder.items = builder.items.flatMap((item): TurnItem[] => {
+    if (item.type !== 'entities') return [item]
+    const refs = item.refs.filter((ref) => !inline(ref))
+    return refs.length > 0 ? [{ type: 'entities', refs }] : []
+  })
 }
 
 function settledStatus(status: string | undefined): 'completed' | 'failed' {
@@ -286,6 +360,7 @@ function addToolActivity(builder: AgentTurnBuilder, data: ConversationToolActivi
     if (data.outputPreview) existing.outputPreview = data.outputPreview
     if (data.durationMs !== undefined) existing.durationMs = data.durationMs
     if (data.metadata) existing.metadata = { ...existing.metadata, ...data.metadata }
+    if (data.phase === 'result') addEntities(builder, data.metadata?.bakinEntities)
     return
   }
 
@@ -305,6 +380,7 @@ function addToolActivity(builder: AgentTurnBuilder, data: ConversationToolActivi
   const group = lastActivity(builder)
   if (group) group.calls.push(call)
   else builder.items.push({ type: 'activity', calls: [call] })
+  if (data.phase === 'result') addEntities(builder, data.metadata?.bakinEntities)
 }
 
 function addText(builder: AgentTurnBuilder, content: string, format: ConversationTextFormat): void {
@@ -352,6 +428,7 @@ function finishAgentTurn(
   key: string,
   turnId?: string,
 ): ConversationTurn {
+  dropInlineAssetCards(builder)
   return {
     kind: 'agent',
     key,

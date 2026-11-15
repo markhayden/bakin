@@ -17,6 +17,35 @@
     "search.write"
   ],
   "contributes": {
+    "execTools": [
+      {
+        "name": "bakin_exec_brands_list",
+        "summary": "List brands"
+      },
+      {
+        "name": "bakin_exec_brands_get",
+        "summary": "Get a brand"
+      },
+      {
+        "name": "bakin_exec_brands_write_doc",
+        "reports": ["brands:doc"],
+        "summary": "Write a draft-brand guideline or lesson doc"
+      },
+      {
+        "name": "bakin_exec_brands_update_manifest",
+        "reports": ["brands:brand"],
+        "summary": "Update a draft-brand manifest"
+      },
+      {
+        "name": "bakin_exec_brands_add_lesson",
+        "reports": ["brands:doc"],
+        "summary": "Bank a brand lesson"
+      },
+      {
+        "name": "bakin_exec_brands_read_doc",
+        "summary": "Read a brand doc"
+      }
+    ],
     "entities": [
       {
         "kind": "brand",

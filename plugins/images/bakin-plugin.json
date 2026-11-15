@@ -55,16 +55,19 @@
       },
       {
         "name": "bakin_exec_images_generate",
+        "reports": ["assets:asset"],
         "summary": "Generate an image through a configured runtime or native provider adapter",
         "description": "Generate an image through a configured runtime image provider or native image provider adapter, save it as a managed asset, and return the assetId."
       },
       {
         "name": "bakin_exec_images_edit",
+        "reports": ["assets:asset"],
         "summary": "Edit an existing image through the runtime provider and save the result into Assets",
         "description": "Edit an existing managed image asset through the configured runtime image provider, append a version, and return the assetId."
       },
       {
         "name": "bakin_exec_images_import",
+        "reports": ["assets:asset"],
         "summary": "Import an existing local image file into Assets",
         "description": "Import an existing local image file into the Assets pipeline and return the assetId."
       },

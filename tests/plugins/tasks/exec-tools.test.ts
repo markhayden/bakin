@@ -356,6 +356,34 @@ describe('bakin_exec_tasks_create', () => {
     )
   })
 
+  it('bakin_exec_tasks_create reports the task it created', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'new-card', workflowId: 'wf-1' })
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, { title: 'Write the brief', workflowId: 'wf-1' }, 'main')
+    expect(result.entities).toEqual([{ kind: 'tasks:task', id: 'new-card', title: 'Write the brief', action: 'created' }])
+  })
+
+  it('bakin_exec_tasks_update reports the task under its new title', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+    const result = await callTool(tool, { taskId: 'task-1', title: 'Renamed' }, 'main')
+    expect(result.entities).toEqual([{ kind: 'tasks:task', id: 'task-1', title: 'Renamed', action: 'updated' }])
+  })
+
+  it('bakin_exec_tasks_update looks the title up when it is not being changed, and reports nothing without one', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!
+
+    mockGetTaskDetails.mockResolvedValue({ task: { id: 'task-1', title: 'Existing title' }, column: 'todo' })
+    const kept = await callTool(tool, { taskId: 'task-1', description: 'More detail' }, 'main')
+    expect(kept.entities).toEqual([{ kind: 'tasks:task', id: 'task-1', title: 'Existing title', action: 'updated' }])
+
+    mockGetTaskDetails.mockResolvedValue(null)
+    const unknown = await callTool(tool, { taskId: 'task-1', description: 'More detail' }, 'main')
+    expect(unknown.ok).toBe(true)
+    expect(unknown.entities).toBeUndefined()
+  })
+
   it('bakin_exec_tasks_update re-assigns to a team (#189)', async () => {
     mockUpdateTask.mockResolvedValue(undefined)
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_update')!

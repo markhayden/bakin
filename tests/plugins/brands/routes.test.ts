@@ -753,6 +753,14 @@ describe('activity feed (#419 Overview)', () => {
       brandId: 'wip', kind: 'guidelines', name: 'voice.md', content: 'Drafted voice.',
     })
     expect(draftWrite.ok).toBe(true)
+    expect(draftWrite.entities).toEqual([{
+      kind: 'brands:doc', id: 'wip/guidelines/voice.md', title: 'voice.md', action: 'created',
+      params: { brandId: 'wip', kind: 'guidelines', name: 'voice.md' },
+    }])
+    const rewrite = await callTool(tool('bakin_exec_brands_write_doc'), {
+      brandId: 'wip', kind: 'guidelines', name: 'voice.md', content: 'Second pass.',
+    })
+    expect((rewrite.entities as Array<{ action: string }>)[0]!.action).toBe('updated')
 
     const draftManifest = await callTool(tool('bakin_exec_brands_update_manifest'), {
       brandId: 'wip',
@@ -761,6 +769,9 @@ describe('activity feed (#419 Overview)', () => {
     })
     expect(draftManifest.ok).toBe(true)
     expect((draftManifest.brand as { rules: string[] }).rules).toEqual(['Never shout'])
+    expect(draftManifest.entities).toEqual([
+      { kind: 'brands:brand', id: 'wip', title: (draftManifest.brand as { name: string }).name, action: 'updated' },
+    ])
 
     const publishedWrite = await callTool(tool('bakin_exec_brands_write_doc'), {
       brandId: 'acme', kind: 'guidelines', name: 'voice.md', content: 'hijack',
@@ -899,6 +910,10 @@ describe('exec tools', () => {
     })
     expect(first.ok).toBe(true)
     expect(first.lesson).toBe('never-use-threads.md')
+    expect(first.entities).toEqual([{
+      kind: 'brands:doc', id: 'acme/lessons/never-use-threads.md', title: 'Never use threads', action: 'created',
+      params: { brandId: 'acme', kind: 'lessons', name: 'never-use-threads.md' },
+    }])
 
     const doc = await callTool(tool('bakin_exec_brands_read_doc'), {
       brandId: 'acme', kind: 'lessons', name: 'never-use-threads.md',

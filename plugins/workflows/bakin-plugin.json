@@ -156,6 +156,7 @@
       },
       {
         "name": "bakin_exec_workflows_start",
+        "reports": ["tasks:task"],
         "summary": "Start a workflow instance for a task",
         "description": "Start a workflow instance for a task. The task must exist on the board. Returns the created instance."
       }

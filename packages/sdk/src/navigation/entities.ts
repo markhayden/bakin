@@ -18,17 +18,24 @@ export interface EntityDeclaration extends EntityContribution {
 }
 
 let declarations = new Map<string, EntityDeclaration>()
+let version = 0
 const listeners = new Set<() => void>()
 
 /** Replace every declaration. Host-only: called when manifest metadata is applied. */
 export function setEntityDeclarations(next: readonly EntityDeclaration[]): void {
   declarations = new Map(next.map((entity) => [entity.id, entity]))
+  version += 1
   for (const listener of listeners) listener()
 }
 
 /** The declaration for a public kind id (`projects:project`), if its plugin is loaded. */
 export function getEntityDeclaration(id: string): EntityDeclaration | undefined {
   return declarations.get(id)
+}
+
+/** Changes whenever the registry is replaced: the `useSyncExternalStore` snapshot. */
+export function getEntityDeclarationsVersion(): number {
+  return version
 }
 
 /** Subscribe to registry replacement (`useSyncExternalStore`-shaped). */

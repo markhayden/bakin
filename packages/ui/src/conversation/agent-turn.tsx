@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '../primitives/alert'
 import { Button } from '../primitives/button'
 import { cn } from '../utils'
 import { ActivityGroup } from './activity-group'
+import { EntityCards } from './entity-card'
 import { QuestionCard } from './question-card'
 import type {
   ConversationTextFormat,
@@ -195,6 +196,9 @@ export function AgentTurn({
                 formatSummary={formatToolSummary}
               />
             )
+          }
+          if (item.type === 'entities') {
+            return <EntityCards key={index} refs={item.refs} />
           }
           if (item.type === 'question') {
             return (
