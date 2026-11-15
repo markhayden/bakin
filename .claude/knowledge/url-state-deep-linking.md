@@ -9,6 +9,8 @@ Internal navigation ALWAYS goes through the SPA router; a hard navigation re-boo
 - **Outside React (OS notification clicks):** `navigateToUrl()` in `packages/sdk/src/internal/browser-notify.ts` (`@makinbakin/sdk/internal`) routes through the `globalThis.__bakinNavigate` bridge the host registers at boot (`packages/host/src/main.tsx`); falls back to a hard load only when the shell isn't booted. Plugins reach only `sendBrowserNotification` (`@makinbakin/sdk/hooks`).
 - **Toast click-throughs** navigate via `useRouter().push` and dismiss themselves with the id `toast()` returns (see chat's `ReplyToast` / workflows' `GateToast`).
 
+- **Links to a thing (a task, an asset, an agent, a project…):** `entityHref(kind, id, { params?, query? })` — `@makinbakin/sdk/navigation` in the browser, `@bakin/core/plugins/entity-registry` on the server. The route is written ONCE, in the owning plugin's manifest (`contributes.entities[].href`); `query` appends page state such as `{ tab: 'diagnostics' }` or `{ recover: '1' }`. It returns `null` for a kind no loaded plugin declares, so callers fall back to the list page (`?? '/tasks'`) or render no link. Never write `/tasks?taskId=${id}` by hand: `tests/architecture/no-literal-entity-href.test.ts` derives the banned prefixes from the manifests and fails on a template or concatenation that appends an id to one (a route that continues past the id, such as `/workflows/${id}/edit`, is a different route and is allowed); a mirrored `no-restricted-syntax` selector gives in-editor feedback. Tests see the core kinds because the preload `tests/setup-entities.ts` seeds both registries. Deep reference: `.claude/knowledge/entity-links.md`.
+
 `@makinbakin/sdk/navigation` is the focused browser boundary. It owns
 `PluginLink`, router hooks, URL-backed state, history-aware back behavior, and
 the complete dirty-exit guard. `@makinbakin/sdk/routing` remains the separate
@@ -181,7 +183,7 @@ Pattern: client-side filtering runs immediately (instant feedback), search fires
 | Schedule | ✅ Done | `view`, `q`, `agent`, `jobId` (deep link), `mode` (create/edit/duplicate) |
 | Health | ✅ Done | `tab` (overview/activity/agents/system); Agents tab: `agents_window` + `agents_metric` (`tokens` default, `cost`); Activity tab: `activity_window`, `activity_kind`; System tab: `system_plugin` |
 | Memory | ✅ Done | `q` (search query), `tier` (multi-select), `agent` (single-select — shared avatar-strip `AgentFilter`), `kind` (multi-select, durable-only), `recordId` (deep link — detail drawer, ⌘K target). Landing page is the search surface — no sub-routes. |
-| Projects | ✅ Done | `status`, `q` on list; path-based `/projects/[id]` and `/projects/[id]/edit` for detail |
+| Projects | ✅ Done | `status`, `q` on list; `/projects/new` to create; path-based `/projects/[id]` for detail |
 | Models | ✅ Done | `tab` (agents/available/aliases/routing/spend) |
 | Settings (host) | ✅ Done | `tab` (`system` default / `integrations` / `<pluginId>`; unknown → `system` via replace, only after schemas load), `field` (one-shot field highlight). Producers: health `delivery-discord` ×4, `channel-aliases`, images `providers-unavailable`, runtime Capabilities tab. Spec `.claude/specs/settings-url-state.md`. |
 | Team | ✅ Done | Agent page: `tab`, `skill` (Skills), `file` (Memory), `activity_window` + `activityPage` (Diagnostics), `lessonId` (Lessons); `/team/teams/$teamId`: `mode` (`preview`). Tab change clears `skill`/`file`. Spec `.claude/specs/settings-url-state.md` Phase 2. |

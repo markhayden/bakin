@@ -307,6 +307,15 @@ const eslintConfig = defineConfig([
           selector: "AssignmentExpression[left.property.name='href'][left.object.name='location']",
           message: "`location.href =` full-reloads the shell — use useRouter().push / PluginLink.",
         },
+        // No hand-built entity links. Authoritative enforcement is
+        // tests/architecture/no-literal-entity-href.test.ts (it derives the
+        // prefixes from the plugin manifests); this mirrors the core kinds. A
+        // route that continues past the id (`/workflows/${id}/edit`) is a
+        // different route and is allowed.
+        {
+          selector: "TemplateLiteral:has(> TemplateElement:first-child[value.raw=/^\\u002F(tasks\\?taskId=|schedule\\?jobId=|assets\\u002F|workflows\\u002F|brands\\u002F|chat\\u002F|team\\u002F)$/]):not(:has(> TemplateElement:nth-child(2)[value.raw=/^\\u002F[a-z]/]))",
+          message: "Build entity links with entityHref(kind, id) — the owning plugin's manifest declares the route (see tests/architecture/no-literal-entity-href.test.ts).",
+        },
         {
           selector: "JSXOpeningElement[name.name='a'] JSXAttribute[name.name='href'] Literal[value=/^\\u002F(?!api\\u002F)/]",
           message: "Raw internal <a href=\"/…\"> anchors full-reload the shell — use PluginLink (SDK) or TanStack Link.",
