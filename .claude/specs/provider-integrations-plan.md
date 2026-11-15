@@ -195,6 +195,8 @@ connected MCP client test sees a tool appear and disappear. **Size:** M.
 
 ### 2.5 — manifest `mcpServers` + classify (pure)
 Zod schema per spec §4.2 (bin must be the pack's own; `token.prereq` declared;
+`unsetEnv[]` on login entries and `token`, applied by `login-verify.ts` and
+the relay;
 `tools` rows incl. `byArg`, `refuseUnless`, `expose: false`); install refuses
 `mcpServers` from hub-skill synthesis and third-party remote refs (typed);
 the official Bits refs and a local path the operator names are accepted (a
@@ -354,6 +356,13 @@ from the release checksums), `mcpServers[github]` with the class table and
 --hostname github.com --active` (today's unrestricted probe checks every host)
 and `token: { command: ['gh','auth','token','--hostname','github.com','--user','{account}'] }`
 with `{account}` from that receipt, so probe and token name the same identity.
+**Stored login only:** both the probe and the token command run with
+`GH_TOKEN`, `GITHUB_TOKEN` and `GH_ENTERPRISE_TOKEN` removed from their
+environment (`unsetEnv` on the login entry and on `token`, added to the schema
+in 2.5 and honored by `login-verify.ts` and the relay), so an environment PAT
+can neither satisfy the probe nor be swapped for a stored token; the README's
+PAT-override note is removed. Tests: environment-only auth reads missing;
+same user with an env PAT and a stored token uses the stored one in both.
 Test: a second host with a different active account and the same username on
 both never changes what the relay uses. Enterprise hosts are a follow-up. `bakin` floor = the PR2 rc. **Size:** M.
 
@@ -368,7 +377,8 @@ context` before/after recorded. **Size:** S.
 
 ### B5 — READMEs
 Google: Connect (PR4) with the terminal fallback; the gog 5xx retry risk.
-GitHub: `gh auth login`, account note. **Size:** S.
+GitHub: `gh auth login` (stored login only — the PAT override note goes),
+github.com only. **Size:** S.
 
 ---
 

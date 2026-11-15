@@ -247,7 +247,7 @@ until PR4 ships the terminal command). Class table:
 '--toolsets=default']`, `readonlyArgs` add `--read-only`; `token` from `gh
 auth token` (the existing login leg captures the active account; github.com only in this
 release: the probe is `gh auth status --hostname github.com --active` and the
-token command `gh auth token --hostname github.com --user <receipt account>`). Class table:
+token command `gh auth token --hostname github.com --user <receipt account>`; stored login only — both run with `GH_TOKEN`/`GITHUB_TOKEN`/`GH_ENTERPRISE_TOKEN` unset, so an environment PAT is never used). Class table:
 the 27 read-annotated default tools `read`; `create_branch`,
 `create_pull_request` (draft or not), `update_pull_request`,
 `update_pull_request_branch` → `github.pr`; `merge_pull_request` →
