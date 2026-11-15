@@ -38,6 +38,8 @@ export type ConversationMessage =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  /** A hand-off marker: `out` = continued in its peers; `in` = carried over from its peer, followed by `carried` rows of history. */
+  | { kind: 'handoff'; ts: string; handoffId: string; direction: 'out' | 'in'; peers: { entity: string; id: string; title: string }[]; carried?: number }
 
 /**
  * One structured question an agent asks through `bakin_exec_ask_user`

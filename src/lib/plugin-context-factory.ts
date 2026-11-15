@@ -27,6 +27,7 @@ import { getContentDir } from '../core/content-dir'
 import { readPluginSettings, mergePluginSettings } from '@bakin/core/plugins/settings-store'
 import { appendAudit } from '../core/audit'
 import { buildSearchAPI } from '../core/search-registry'
+import { getHandoffRegistry, type HandoffAcceptor } from '@bakin/core/conversation/handoff'
 import { createConversationTurnService, type ConversationTurnServiceConfig } from '@bakin/core/conversation/turns'
 import { getOperationRegistry } from '../core/operations'
 import { toPluginOperationInput } from '@bakin/core/operations'
@@ -81,6 +82,12 @@ export interface BuildPluginContextOptions {
   /** Fired after updateSettings persists — the notification both paths now share. */
   onSettingsChange?: (merged: Record<string, unknown>) => void
   manifestPermissions: string[]
+  /**
+   * The short kinds this plugin's manifest declares with `handoff: true`.
+   * A getter, read at registration: the context outlives a hot reload, the
+   * manifest does not.
+   */
+  handoffKinds?: () => readonly string[]
 }
 
 export function buildPluginContext(opts: BuildPluginContextOptions): PluginContext {
@@ -214,6 +221,14 @@ export function buildPluginContext(opts: BuildPluginContextOptions): PluginConte
         return createConversationTurnService(config) as unknown as ReturnType<
           PluginContext['conversations']['createTurnService']
         >
+      },
+      acceptHandoff: (kind, acceptor) => {
+        if (!(opts.handoffKinds?.() ?? []).includes(kind)) {
+          throw new Error(
+            `Plugin "${pluginId}" cannot accept hand-offs for "${kind}": declare the kind in contributes.entities with "handoff": true`,
+          )
+        }
+        getHandoffRegistry().register(pluginId, `${pluginId}:${kind}`, acceptor as HandoffAcceptor)
       },
     },
     // Gates register into core's plugin-gate dispatcher (swept on deactivate

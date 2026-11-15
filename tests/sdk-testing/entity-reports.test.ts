@@ -66,3 +66,48 @@ describe('entity reporting in the SDK harness', () => {
       .rejects.toThrow(/not declared in contributes\.entities/)
   })
 })
+
+describe('hand-off acceptors in the SDK harness', () => {
+  const sessionManifest = (handoff: boolean) => ({
+    id: 'journal',
+    name: 'Journal',
+    version: '0.1.0',
+    bakin: '*',
+    description: 'Journal',
+    contributes: { entities: [{ kind: 'entry', label: 'Entry', icon: 'NotebookPen', href: '/journal/{id}', ...(handoff ? { handoff: true } : {}) }] },
+  })
+  const received: unknown[] = []
+  const journal = definePlugin({
+    id: 'journal',
+    name: 'Journal',
+    version: '0.1.0',
+    activate: (ctx: PluginContext) => {
+      ctx.conversations.acceptHandoff('entry', (request) => { received.push(request) })
+    },
+  })
+
+  it('delivers a chat history to the registered acceptor as one batch', async () => {
+    const harness = await activatePlugin(journal, { manifest: sessionManifest(true) })
+    await harness.handoffs.deliver({
+      handoffId: 'c-1:t-1:e-1',
+      target: { kind: 'journal:entry', id: 'e-1' },
+      source: { entity: 'chat:chat', id: 'c-1', title: 'Morning chat' },
+      carried: [{ kind: 'user', ts: '2026-11-14T09:00:00.000Z', content: 'start an entry about the launch' }],
+      ts: '2026-11-14T10:00:00.000Z',
+    })
+    expect(received).toEqual([{
+      handoffId: 'c-1:t-1:e-1',
+      target: { kind: 'journal:entry', id: 'e-1' },
+      rows: [
+        { kind: 'handoff', ts: '2026-11-14T10:00:00.000Z', handoffId: 'c-1:t-1:e-1', direction: 'in', peers: [{ entity: 'chat:chat', id: 'c-1', title: 'Morning chat' }], carried: 1 },
+        { kind: 'user', ts: '2026-11-14T09:00:00.000Z', content: 'start an entry about the launch' },
+      ],
+    }])
+    harness.dispose()
+  })
+
+  it('refuses a kind the manifest does not declare as accepting a hand-off', async () => {
+    await expect(activatePlugin(journal, { manifest: sessionManifest(false) })).rejects.toThrow(/cannot accept hand-offs for "entry"/)
+    await expect(activatePlugin(journal)).rejects.toThrow(/pass \{ manifest \}/)
+  })
+})

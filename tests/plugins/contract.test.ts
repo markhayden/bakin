@@ -160,6 +160,7 @@ function createMockContext(pluginId: string): {
     approvals: createPluginApprovalsAPI(pluginId, createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+      acceptHandoff: () => {},
     },
     assets: {
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),

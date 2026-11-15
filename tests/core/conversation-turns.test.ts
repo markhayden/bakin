@@ -330,7 +330,7 @@ describe('conversation turn service', () => {
     expect(errorEvent?.data).toMatchObject({ threadKey: 't6', agentId: 'main', message: 'session died', kind: 'session_lost' })
     expect(h.events.find((e) => e.event === 'test.done')).toBeUndefined()
     expect(metered).toHaveLength(0)
-    expect(outcomes).toEqual([{ aborted: false, errored: true }])
+    expect(outcomes).toMatchObject([{ aborted: false, errored: true }])
   })
 
   test('an empty completion is nudged once inside the same turn (2026-11-11 "you there?")', async () => {
@@ -1646,5 +1646,163 @@ describe('conversation turn service — out-of-turn appends (appendExternal)', (
     expect(await started).toBe('not_found')
     await queued.written
     expect(contents(h.rows.get('x9'))).toEqual(['assistant:check-in q', 'tool'])
+  })
+})
+
+describe('settlement snapshot', () => {
+  const project = { kind: 'projects:project', id: 'p-1', title: 'Launch plan', action: 'created' as const }
+  const task = { kind: 'tasks:task', id: 't-1', title: 'Write the brief', action: 'created' as const }
+  const toolResult = (toolName: string, entities: unknown[]): ChatChunk => ({
+    type: 'tool', content: '', data: { phase: 'result', toolName, status: 'completed', metadata: { bakinEntities: entities } },
+  }) as ChatChunk
+  const collect = (h: Harness, overrides?: Partial<ConversationTurnServiceConfig>) => {
+    const outcomes: TurnOutcome[] = []
+    const service = makeService(h, { ...overrides, hooks: { onSettled: ({ outcome }) => { outcomes.push(outcome) } } })
+    return { service, outcomes }
+  }
+
+  test('the outcome names its turn and what the turn created, in order', async () => {
+    const h = makeHarness()
+    const { service, outcomes } = collect(h)
+    h.setStream(async function* () {
+      yield toolResult('bakin_exec_projects_create', [project])
+      yield toolResult('bakin_exec_tasks_create', [task])
+      yield { type: 'text', content: 'Done.' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    await service.start(h.ctx, 's1', 'plan the launch')
+    await service.waitFor('s1')
+
+    expect(outcomes).toHaveLength(1)
+    expect(outcomes[0]!.entities).toEqual([project, task])
+    const rows = h.rows.get('s1') ?? []
+    expect(outcomes[0]!.turnId).toBe((rows.find((row) => row.kind === 'assistant') as { turnId?: string }).turnId!)
+  })
+
+  test('a queued follow-up is a different turn: its work never leaks into the first snapshot', async () => {
+    const h = makeHarness()
+    const { service, outcomes } = collect(h, { queue: {} })
+    let releaseFirst!: () => void
+    const gate = new Promise<void>((resolve) => { releaseFirst = resolve })
+    let call = 0
+    h.setStream(async function* () {
+      call += 1
+      if (call === 1) {
+        yield toolResult('bakin_exec_projects_create', [project])
+        await gate
+        yield { type: 'text', content: 'First.' } as ChatChunk
+      } else {
+        yield toolResult('bakin_exec_tasks_create', [task])
+        yield { type: 'text', content: 'Second.' } as ChatChunk
+      }
+      yield { type: 'done' } as ChatChunk
+    })
+
+    expect(await service.start(h.ctx, 's2', 'first')).toBe('accepted')
+    expect(await service.start(h.ctx, 's2', 'second', { queueIfBusy: true })).toMatchObject({ queued: true })
+    releaseFirst()
+    await waitUntil(() => outcomes.length === 2, { label: 'both turns settled' })
+
+    expect(outcomes[0]!.entities).toEqual([project])
+    expect(outcomes[1]!.entities).toEqual([task])
+    expect(outcomes[0]!.turnId).not.toBe(outcomes[1]!.turnId)
+  })
+
+  test('a turn that fails or is stopped still reports what it created before that', async () => {
+    const h = makeHarness()
+    const { service, outcomes } = collect(h)
+    h.setStream(async function* () {
+      yield toolResult('bakin_exec_projects_create', [project])
+      yield { type: 'error', content: 'session died', data: { kind: 'session_lost' } } as ChatChunk
+    })
+    await service.start(h.ctx, 's3', 'go')
+    await service.waitFor('s3')
+    expect(outcomes[0]).toMatchObject({ errored: true, entities: [project] })
+
+    let stop!: () => void
+    const reached = new Promise<void>((resolve) => { stop = resolve })
+    h.setStream(async function* () {
+      yield toolResult('bakin_exec_tasks_create', [task])
+      stop()
+      // A real runtime ends its stream when the turn's signal aborts.
+      const signal = h.seenArgs.at(-1)!.signal!
+      await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+      yield { type: 'done' } as ChatChunk
+    })
+    await service.start(h.ctx, 's4', 'go')
+    await reached
+    service.abort('s4')
+    await service.waitFor('s4')
+    expect(outcomes[1]).toMatchObject({ aborted: true, entities: [task] })
+  })
+
+  test('a turn that created nothing has an empty list', async () => {
+    const h = makeHarness()
+    const { service, outcomes } = collect(h)
+    await service.start(h.ctx, 's5', 'hello')
+    await service.waitFor('s5')
+    expect(outcomes[0]!.entities).toEqual([])
+  })
+})
+
+describe('batch append (appendRows)', () => {
+  const batch = (label: string): ConversationTurnRow[] => [
+    { kind: 'handoff', ts: '2026-11-14T10:00:00.000Z', handoffId: `h-${label}`, direction: 'in', peers: [{ entity: 'chat:chat', id: 'c-1', title: 'Launch chat' }], carried: 2 },
+    { kind: 'user', ts: '2026-11-14T09:00:00.000Z', content: `carried ${label} 1` },
+    { kind: 'assistant', ts: '2026-11-14T09:00:01.000Z', content: `carried ${label} 2` },
+  ]
+
+  test('a service with a batch writer gets the whole batch in ONE call', async () => {
+    const h = makeHarness()
+    const calls: ConversationTurnRow[][] = []
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', appended: 'test.appended' },
+      appendRows: (_key, rows) => { calls.push(rows) },
+    })
+    const result = await service.appendExternal(h.ctx, 'b1', batch('a'))
+    await result.written
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual(batch('a'))
+    // The row-by-row writer is not used for a batch.
+    expect(h.rows.get('b1')).toBeUndefined()
+    expect(h.events.filter((e) => e.event === 'test.appended')).toHaveLength(1)
+  })
+
+  test('a failed batch writes nothing, announces nothing and rejects', async () => {
+    const h = makeHarness()
+    const service = makeService(h, {
+      events: { chunk: 'test.chunk', done: 'test.done', error: 'test.error', appended: 'test.appended' },
+      appendRows: () => { throw new Error('disk full') },
+    })
+    await expect(service.appendExternal(h.ctx, 'b2', batch('a'))).rejects.toThrow('disk full')
+    expect(h.rows.get('b2')).toBeUndefined()
+    expect(h.events.find((e) => e.event === 'test.appended')).toBeUndefined()
+  })
+
+  test('with a turn in flight the batch waits, and `written` settles only once it is durable', async () => {
+    const h = makeHarness()
+    const calls: ConversationTurnRow[][] = []
+    const service = makeService(h, { appendRows: (_key, rows) => { calls.push(rows) } })
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    h.setStream(async function* () {
+      await gate
+      yield { type: 'text', content: 'ok' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    expect(await service.start(h.ctx, 'b3', 'go')).toBe('accepted')
+
+    const result = await service.appendExternal(h.ctx, 'b3', batch('q'))
+    expect(result.status).toBe('queued')
+    let durable = false
+    void result.written.then(() => { durable = true })
+    await settleFor(20, 'the batch must not be written while the turn holds the slot')
+    expect(durable).toBe(false)
+    expect(calls).toHaveLength(0)
+
+    release()
+    await result.written
+    expect(calls).toEqual([batch('q')])
   })
 })

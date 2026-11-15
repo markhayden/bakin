@@ -52,6 +52,7 @@ import { createLogger } from './logger'
 import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from './plugins/install-recovery'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { getEntityRegistry } from '@bakin/core/plugins/entity-registry'
+import { getHandoffRegistry } from '@bakin/core/conversation/handoff'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
@@ -408,6 +409,7 @@ class PluginRegistryImpl {
     // Entity kinds are published from the manifest after activation, so a
     // swept plugin (failed, disabled, reloading) must not keep them.
     getEntityRegistry().sweep(pluginId)
+    getHandoffRegistry().sweep(pluginId)
     const state = this.plugins.get(pluginId)
     if (state) this.clearStateArrays(state)
   }
@@ -492,6 +494,7 @@ class PluginRegistryImpl {
       log.warn('deactivate: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
     getEntityRegistry().sweep(pluginId)
+    getHandoffRegistry().sweep(pluginId)
     try {
       const ownedTables = [...getContentTypes().entries()]
         .filter(([, def]) => def.pluginId === pluginId)
@@ -811,6 +814,7 @@ class PluginRegistryImpl {
       log: createPluginScopedLogger(pluginId),
       onSettingsChange: (merged) => state.plugin.onSettingsChange?.(merged),
       manifestPermissions: state.manifest?.permissions ?? [],
+      handoffKinds: () => (state.manifest?.contributes?.entities ?? []).filter((entity) => entity.handoff).map((entity) => entity.kind),
     })
   }
 

@@ -11,6 +11,7 @@ import {
   type ConversationAvatarRenderer,
   type ConversationTextRenderer,
 } from './agent-turn'
+import { HandoffMarker } from './entity-card'
 import type { ConversationToolCall, ConversationTurn } from './fold'
 import { dayKey, formatAbsoluteTime, formatDayLabel } from './relative-time'
 import type { ConversationTurnUsage } from './turn-usage'
@@ -194,6 +195,8 @@ export function Conversation({
                   {separator}
                   {turn.kind === 'user' ? (
                     <UserMessage turn={turn} renderText={renderText} renderAttachment={renderAttachment} />
+                  ) : turn.kind === 'handoff' ? (
+                    <HandoffMarker direction={turn.direction} peers={turn.peers} />
                   ) : (
                     <AgentTurn
                       turn={turn}

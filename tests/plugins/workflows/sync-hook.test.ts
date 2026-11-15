@@ -114,6 +114,7 @@ function makeCtx(): CapturedCtx {
     approvals: createPluginApprovalsAPI('workflows', createMemoryApprovalsBackend()),
     conversations: {
       createTurnService: (config) => createConversationTurnService(config as unknown as Parameters<typeof createConversationTurnService>[0]) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+      acceptHandoff: () => {},
     },
     assets: {
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),

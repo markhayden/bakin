@@ -36,6 +36,7 @@ import { MarkdownStorageAdapter } from '@bakin/core/storage'
 import { createPluginSocket, dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '@bakin/core/conversation/turns'
 import { parsePluginManifest } from '@bakin/core/plugins/manifest'
+import { createHandoffRegistry, type HandoffRegistry } from '@bakin/core/conversation/handoff'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
@@ -95,6 +96,12 @@ export interface PluginTestContext {
   socketRoutes: SocketRoute[]
   /** Exec tools registered via `ctx.registerExecTool`. */
   execTools: ExecToolDefinition[]
+  /**
+   * Hand-off acceptors registered via `ctx.conversations.acceptHandoff`.
+   * `handoffs.deliver({ handoffId, target, source, carried })` hands a chat's
+   * history to the plugin exactly as Bakin does.
+   */
+  handoffs: HandoffRegistry
   /** Nav items registered via `ctx.registerNav`. */
   navItems: NavItem[]
   /** Slot registrations via `ctx.registerSlot`. */
@@ -182,6 +189,7 @@ export function createTestContext(
   const socketRoutes: SocketRoute[] = []
   const execTools: ExecToolDefinition[] = []
   const manifest = options.manifest === undefined ? undefined : parsePluginManifest(options.manifest)
+  const handoffs = createHandoffRegistry()
   const reportsFor = (toolName: string): readonly string[] | undefined =>
     manifest ? manifest.contributes?.execTools?.find((tool) => tool.name === toolName)?.reports ?? [] : undefined
   const navItems: NavItem[] = []
@@ -292,6 +300,18 @@ export function createTestContext(
         createConversationTurnService(
           config as unknown as Parameters<typeof createConversationTurnService>[0],
         ) as unknown as ReturnType<PluginContext['conversations']['createTurnService']>,
+      // Same rule as the host: only a kind the manifest declares with
+      // `handoff: true`. Deliver to it with `harness.handoffs.deliver(...)`.
+      acceptHandoff: (kind, acceptor) => {
+        const declared = (manifest?.contributes?.entities ?? []).some((entity) => entity.kind === kind && entity.handoff)
+        if (!declared) {
+          throw new Error(
+            `Plugin "${pluginId}" cannot accept hand-offs for "${kind}": declare the kind in contributes.entities with "handoff": true` +
+            (manifest ? '' : ' (pass { manifest } to activatePlugin/createTestContext)'),
+          )
+        }
+        handoffs.register(pluginId, `${pluginId}:${kind}`, acceptor as Parameters<typeof handoffs.register>[2])
+      },
     },
     assets: {
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),
@@ -406,6 +426,7 @@ export function createTestContext(
     routes,
     socketRoutes,
     execTools,
+    handoffs,
     navItems,
     slots,
     workflows,

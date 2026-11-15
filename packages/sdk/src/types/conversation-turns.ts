@@ -13,6 +13,7 @@
  */
 import type { RuntimeChatChunk, RuntimeMessageUsage, AgentRuntimeAdapter } from './runtime'
 import type { EventBus } from './events'
+import type { EntityRef } from './registration'
 
 export interface ConversationTurnAttachment {
   name: string
@@ -41,10 +42,20 @@ export type ConversationTurnRow =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  /** A hand-off marker: `out` = continued in its peers; `in` = carried over from its peer, followed by `carried` rows of history. */
+  | { kind: 'handoff'; ts: string; handoffId: string; direction: 'out' | 'in'; peers: { entity: string; id: string; title: string }[]; carried?: number }
 
 export interface ConversationTurnOutcome {
   aborted: boolean
   errored: boolean
+  /** The turn this outcome settles — the `turnId` on every row it wrote. */
+  turnId: string
+  /**
+   * What the turn's tool calls created or changed, in order. `onSettled` runs
+   * after the slot releases and queued sends drain, so the transcript may
+   * already hold a later turn; this is the settled turn's own record.
+   */
+  entities: EntityRef[]
 }
 
 export type ConversationStartTurnResult = 'accepted' | 'not_found' | 'busy' | ConversationQueuedStart
@@ -117,6 +128,13 @@ export interface ConversationTurnServiceConfig {
   resolveThread: (key: string) => { agentId: string } | null | Promise<{ agentId: string } | null>
   /** Append one durable transcript row. Failures are logged, never thrown into the turn. */
   appendRow: (key: string, row: ConversationTurnRow) => void | Promise<void>
+  /**
+   * Append a batch of out-of-turn rows as ONE durable write (`appendExternal`
+   * uses it when present): all of the rows land, or none. Required for a
+   * surface that accepts a chat hand-off, so carried history is never left
+   * half-written.
+   */
+  appendRows?: (key: string, rows: ConversationTurnRow[]) => void | Promise<void>
   /** Runtime session thread id; called once per turn (per-turn schemes are legitimate). */
   threadId: (key: string, agentId: string) => string
   /** Per-turn delivery framing appended to the runtime content; never persisted. */
@@ -239,7 +257,34 @@ export interface ConversationAppendNotice {
   preview: string
 }
 
+/** A chat hand-off for the acceptor to write into its target's conversation. */
+export interface ConversationHandoffRequest {
+  /** `<chatId>:<turnId>:<entityId>` — accept once; a repeat is a no-op. */
+  handoffId: string
+  /** The target, by public kind id and entity id. */
+  target: { kind: string; id: string }
+  /** The complete batch to write atomically: the `in` marker, then the carried rows. */
+  rows: ConversationTurnRow[]
+}
+
+/**
+ * Writes a hand-off into its target. Must: throw when the target does not
+ * exist; write `rows` as one atomic batch and resolve only once it is durable
+ * (also when the target has a turn in flight); accept a `handoffId` once.
+ * `writeHandoffBatch` from `@makinbakin/sdk/utils` does the write for a turn
+ * service whose config has `appendRows`.
+ */
+export type ConversationHandoffAcceptor = (request: ConversationHandoffRequest) => Promise<void> | void
+
 /** `ctx.conversations` — build turn services for this plugin's surfaces. */
 export interface ConversationTurnsAPI {
   createTurnService(config: ConversationTurnServiceConfig): ConversationTurnService
+  /**
+   * Accept chat hand-offs for one of this plugin's entity kinds: when a chat
+   * turn creates an entity of that kind, Bakin carries the chat's history
+   * into the entity's conversation through `acceptor`. `kind` is the short
+   * kind from this plugin's manifest (`'project'`), which must declare it
+   * with `handoff: true`. One acceptor per kind.
+   */
+  acceptHandoff(kind: string, acceptor: ConversationHandoffAcceptor): void
 }

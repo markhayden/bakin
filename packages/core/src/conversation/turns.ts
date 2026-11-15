@@ -41,6 +41,7 @@ import { isVisionRasterMime } from '../media/image-format'
 import { createTurnRecorder } from './turn-recorder'
 import type { BakinQuestion } from './questions'
 import { enrichReceiptChunk } from './receipts'
+import type { EntityRef } from '@makinbakin/sdk/types'
 import { createLogger } from '../logger'
 
 const log = createLogger('conversation-turns')
@@ -78,6 +79,31 @@ export function fileLaneNote(a: TurnAttachment, agentId: string, renderCall?: (t
   return `[file ${a.name} saved at ${a.path} — open it with your file tools]`
 }
 
+/** The other end of a hand-off: an entity by its declared kind. */
+export interface HandoffPeer {
+  /** Public kind id, `<pluginId>:<kind>` (`projects:project`, `chat:chat`). */
+  entity: string
+  id: string
+  /** Title at the time of the hand-off. */
+  title: string
+}
+
+/**
+ * A hand-off marker row, shared by both ends. `out` (in the source chat):
+ * "continued in" its peers. `in` (in the target): "carried over from" its
+ * peer, immediately followed by `carried` rows of the source's history.
+ */
+export interface HandoffRow {
+  kind: 'handoff'
+  ts: string
+  /** `<chatId>:<turnId>:<entityId>` — a target accepts one id once. */
+  handoffId: string
+  direction: 'out' | 'in'
+  peers: HandoffPeer[]
+  /** `in` only: how many rows directly after this one were carried over. */
+  carried?: number
+}
+
 /**
  * The durable transcript row shape (identical to chat's schema-v2 rows —
  * user attachments are path-addressed server-side; display URLs are a
@@ -103,10 +129,21 @@ export type ConversationTurnRow =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  | HandoffRow
 
 export interface TurnOutcome {
   aborted: boolean
   errored: boolean
+  /** The turn this outcome settles — the `turnId` on every row it wrote. */
+  turnId: string
+  /**
+   * What the turn's tool calls created or changed, in order, captured while
+   * the turn ran. `onSettled` runs after the slot releases and queued sends
+   * drain, so re-reading the transcript there can include a LATER turn; this
+   * is the settled turn's own record. Rows up to the last one carrying
+   * `turnId` are this turn's transcript.
+   */
+  entities: EntityRef[]
 }
 
 export type StartTurnResult = 'accepted' | 'not_found' | 'busy' | QueuedStart
@@ -183,6 +220,13 @@ export interface ConversationTurnServiceConfig {
   resolveThread: (key: string) => { agentId: string } | null | Promise<{ agentId: string } | null>
   /** Append one durable transcript row. Failures are logged, never thrown into the turn. */
   appendRow: (key: string, row: ConversationTurnRow) => void | Promise<void>
+  /**
+   * Append a batch of out-of-turn rows as ONE durable write (`appendExternal`
+   * uses it when present). All of the rows land or none do — a hand-off's
+   * carried history must never be left half-written. Without it, a batch is
+   * written row by row through `appendRow`.
+   */
+  appendRows?: (key: string, rows: ConversationTurnRow[]) => void | Promise<void>
   /**
    * Runtime session thread id (e.g. key => `chat:${key}`). Called once per
    * turn — per-turn thread schemes (brands' ephemeral randomUUID threads)
@@ -336,14 +380,13 @@ export function createConversationTurnService(config: ConversationTurnServiceCon
 
   /** Write one batch; announce it only when every row is durable. */
   const writeBatch = async (ctx: TurnContext, key: string, batch: ExternalBatch) => {
-    for (const row of batch.rows) {
-      try {
-        await config.appendRow(key, row)
-      } catch (err) {
-        log.error(`[${config.name}] external row append failed for ${key}`, err as Error)
-        batch.settle(err instanceof Error ? err : new Error(String(err)))
-        return
-      }
+    try {
+      if (config.appendRows) await config.appendRows(key, batch.rows)
+      else for (const row of batch.rows) await config.appendRow(key, row)
+    } catch (err) {
+      log.error(`[${config.name}] external row append failed for ${key}`, err as Error)
+      batch.settle(err instanceof Error ? err : new Error(String(err)))
+      return
     }
     if (config.events.appended) {
       try {
@@ -705,6 +748,8 @@ async function runTurn(
   runtimeContent?: string,
 ): Promise<TurnOutcome> {
   const recorder = createTurnRecorder({ turnId })
+  // What this turn's tool calls reported, for the settlement snapshot.
+  const entities: EntityRef[] = []
   let assistantText = ''
   let doneUsage: MessageUsage | undefined
   // Oversized images downscale to temp JPEGs (the shared 2 MB inline-cap
@@ -795,6 +840,9 @@ async function runTurn(
       if (bakinQuestionOf(chunk)) pendingQuestion = bakinQuestionOf(chunk)!.question
       else if (chunk.type === 'text' && chunk.content.trim()) pendingQuestion = undefined
       if (chunk.type === 'tool') sawTool = true
+      if (chunk.type === 'tool' && Array.isArray(chunk.data.metadata?.bakinEntities)) {
+        entities.push(...(chunk.data.metadata.bakinEntities as EntityRef[]))
+      }
       tap(chunk)
       // Only liveness chunks ride the chunk event — done/error have the
       // dedicated done/error events, and consumer wire contracts (chat's
@@ -876,7 +924,7 @@ async function runTurn(
         : assistantText ? { preview: firstLine(assistantText) } : {}),
       ...(aborted ? { aborted: true } : {}),
     })
-    return { aborted, errored: false }
+    return { aborted, errored: false, turnId, entities }
   } catch (err) {
     // Abort landed before the stream produced its clean done — e.g. during
     // a drained turn's async prefix (resolveThread/row appends/attachment
@@ -903,7 +951,7 @@ async function runTurn(
       } catch (emitErr) {
         log.error(`[${config.name}] done-event emit failed for ${key}`, emitErr as Error)
       }
-      return { aborted: true, errored: false }
+      return { aborted: true, errored: false, turnId, entities }
     }
     const message = err instanceof Error ? err.message : String(err)
     // The typed kind the adapter attached to its error chunk survives to
@@ -926,7 +974,7 @@ async function runTurn(
       // A consumer payload()/emit throw must not reject the turn promise.
       log.error(`[${config.name}] error-event emit failed for ${key}`, emitErr as Error)
     }
-    return { aborted: false, errored: true }
+    return { aborted: false, errored: true, turnId, entities }
   } finally {
     for (const p of prepared) cleanupPrepared?.(p)
   }
