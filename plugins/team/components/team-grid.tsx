@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter, entityHref } from '@makinbakin/sdk/navigation'
 import { RosterRecoverPanel } from './roster-recover-panel'
 import { Plus, Settings2, ScrollText } from 'lucide-react'
 import {
@@ -111,7 +111,7 @@ export function AgentCardNode({ data }: NodeProps) {
       className="w-52 gap-bakin-0"
       interactive={{
         label: `Open ${agent.name}`,
-        render: <PluginLink to={`/team/${encodeURIComponent(agent.id)}`} />,
+        render: <PluginLink to={entityHref('team:agent', agent.id) ?? '/team'} />,
       }}
     >
       <CardMedia className="flex aspect-square w-full items-center justify-center bg-bakin-canvas-default">
@@ -292,7 +292,7 @@ export function TeamGrid() {
       setPendingCreate(null)
       setShowCreate(false)
       await reload()
-      router.push(`/team/${data.id}`)
+      router.push(entityHref('team:agent', data.id) ?? '/team')
     } finally {
       setSubmitting(false)
     }
@@ -490,7 +490,7 @@ export function TeamGrid() {
                   setPendingCreate(null)
                   setShowCreate(false)
                   await reload()
-                  router.push(`/team/${data.id}`)
+                  router.push(entityHref('team:agent', data.id) ?? '/team')
                 } finally {
                   setSubmitting(false)
                 }

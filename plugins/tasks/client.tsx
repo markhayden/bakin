@@ -8,6 +8,7 @@
 import { registerPlugin } from '@makinbakin/sdk'
 import { KanbanBoard } from './components/kanban-board'
 import { TasksBadgeProvider } from './components/tasks-badge-provider'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   search: {
@@ -15,7 +16,7 @@ registerPlugin({
       tasks: (hit) => ({
         title: String(hit.fields.title ?? hit.id),
         subtitle: [hit.fields.status, hit.fields.agent].filter(Boolean).join(' · ') || 'task',
-        href: `/tasks?taskId=${encodeURIComponent(hit.id)}`,
+        href: entityHref('tasks:task', hit.id) ?? '/tasks',
         icon: 'check-square',
       }),
     },

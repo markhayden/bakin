@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { AgentUsage } from '@makinbakin/sdk/types'
 import { CompositionBar } from '@makinbakin/sdk/charts'
-import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, entityHref } from '@makinbakin/sdk/navigation'
 import { Grid } from '@makinbakin/sdk/layout'
 import { DataTable, KeyValue, StatusBadge, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import {
@@ -215,7 +215,7 @@ function LatestSessionDetails({ row, checking, unavailable }: {
       )}
       <Button variant="link" size="sm" className="mt-bakin-3"
         aria-label={`Open diagnostics for ${row.agent}`}
-        render={<PluginLink to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`} />}>
+        render={<PluginLink to={entityHref('team:agent', row.agent, { query: { tab: 'diagnostics' } }) ?? '/team'} />}>
         Open diagnostics <ArrowUpRight className="size-bakin-3" aria-hidden="true" />
       </Button>
     </DrawerSection>

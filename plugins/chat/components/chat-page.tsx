@@ -17,7 +17,7 @@ import { useRef, Suspense, useCallback, useEffect, useMemo } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { writeComposerDraft, type ComposerHandle } from '@makinbakin/sdk/conversation'
 import { toast, usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
-import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { useQueryState, useRouter, entityHref } from '@makinbakin/sdk/navigation'
 import {
   PageBody,
   PageHeader,
@@ -142,7 +142,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
 
   // push — conversations are places; back/forward walks between them.
   const openChat = useCallback(
-    (id: string) => router.push(withFilter(`/chat/${encodeURIComponent(id)}`)),
+    (id: string) => router.push(withFilter(entityHref('chat:chat', id) ?? '/chat')),
     [router, withFilter],
   )
 
@@ -261,7 +261,7 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
                   composerHandleRef={composerRef}
                   onCreated={(id) => {
                     // replace — the dead draft URL shouldn't survive in history.
-                    router.replace(`/chat/${encodeURIComponent(id)}`)
+                    router.replace(entityHref('chat:chat', id) ?? '/chat')
                     void refresh()
                   }}
                 />

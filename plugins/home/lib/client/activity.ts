@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 /** The fields Home reads from a task on the board. */
 export interface BoardTask {
@@ -89,12 +90,12 @@ export function summarizeActivity(input: ActivitySources, now: number): HomeActi
   const pickUp: PickUpItem[] = [
     ...recent.map(({ task, label }): PickUpItem => ({
       key: `task:${task.id}`, kind: 'task', title: task.title, detail: `Task · ${label}`,
-      href: `/tasks?taskId=${encodeURIComponent(task.id)}`, at: task.updatedAt ?? 0,
+      href: entityHref('tasks:task', task.id) ?? '/tasks', at: task.updatedAt ?? 0,
     })),
     ...chats.map((chat): PickUpItem => ({
       key: `chat:${chat.id}`, kind: 'chat', title: chat.title, detail: chat.lastMessagePreview ? `Chat · ${chat.lastMessagePreview}` : 'Chat',
       // The later of its last message and the last time the person opened it.
-      href: `/chat/${encodeURIComponent(chat.id)}`, at: Math.max(Date.parse(chat.updatedAt) || 0, Date.parse(chat.lastSeenAt ?? '') || 0),
+      href: entityHref('chat:chat', chat.id) ?? '/chat', at: Math.max(Date.parse(chat.updatedAt) || 0, Date.parse(chat.lastSeenAt ?? '') || 0),
     })),
   ].sort((a, b) => b.at - a.at).slice(0, PICK_UP_LIMIT)
 

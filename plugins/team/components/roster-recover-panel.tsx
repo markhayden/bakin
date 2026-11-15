@@ -30,7 +30,7 @@
  * the window regains focus or the tab becomes visible, then re-reads.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { PluginLink, useQueryState } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, entityHref } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, HandoffCard, ListRow, ListRowGroup, ListRows } from '@makinbakin/sdk/patterns'
 import { Banner, Button, Text, buttonVariants } from '@makinbakin/sdk/ui'
 import { armRosterReturn, useRosterReturn } from './roster-return'
@@ -366,7 +366,7 @@ export function RosterRecoverPanel({ onDismiss, onChanged }: { onDismiss: () => 
                 <span className="flex flex-wrap items-center gap-bakin-2">
                   {problem.kind === 'duplicate' ? (
                     <>
-                      <PluginLink to={`/team/${encodeURIComponent(problem.agentId)}`} className={buttonVariants({ size: 'sm', variant: 'outline' })}>Open {problem.agentId}</PluginLink>
+                      <PluginLink to={entityHref('team:agent', problem.agentId) ?? '/team'} className={buttonVariants({ size: 'sm', variant: 'outline' })}>Open {problem.agentId}</PluginLink>
                       {problem.removable ? (
                         <Button size="sm" variant="destructive" disabled={busy !== null} onClick={() => { setError(null); setPending(problem) }}>
                           Remove {problem.agentId} entirely

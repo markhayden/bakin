@@ -50,6 +50,7 @@ import {
 } from '@/core/agent-packages/operation-plans'
 import { findAgentPackage, readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { parseJsonBodyWeb } from '@/core/middleware'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 import { createLogger } from '@/core/logger'
 import { startOperationResponse } from '../operations'
 
@@ -100,7 +101,7 @@ export function agentSyncOperation(agentId: string, options: AgentSyncOptions, o
     owner: 'core',
     origin,
     title: `${check ? 'Check' : options.reinstall ? 'Reinstall' : 'Sync'} ${agentId}`,
-    href: `/team/${encodeURIComponent(agentId)}`,
+    href: entityHref('team:agent', agentId) ?? '/team',
     fingerprint: `agent-packages:sync:${agentId}|${check ? 'check' : ''}|${JSON.stringify(reclaim ?? null)}|${pin}|${options.reinstall ? 'reinstall' : ''}`,
     // A check is read-only: it holds nothing and never waits on an install.
     resources: check ? [] : ['install-state'],
@@ -240,7 +241,7 @@ async function handleRemove(req: Request, agentId: string): Promise<Response> {
     owner: 'core',
     origin: operationOriginFromRequest(req),
     title: `Remove ${packageId}`,
-    href: `/team/${encodeURIComponent(agentId)}`,
+    href: entityHref('team:agent', agentId) ?? '/team',
     fingerprint: `agent-packages:remove:${packageId}|${deleteAgent ? 'delete-agent' : ''}`,
     resources: ['install-state'],
     plan: PACKAGE_REMOVE_PLAN,

@@ -29,6 +29,7 @@ import { readManifest } from './manifest'
 import { inspectAssetReferences, referencesInUse, type AssetReferences, type AssetUsageContext } from './asset-recovery'
 import { resolveEnrichmentEngine } from './enrichment/engine'
 import type { EnrichmentSettings } from './enrichment/providers'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 
 /**
  * The usage fact behind rows 174/180–182 ("AR only while referenced by a
@@ -127,7 +128,7 @@ function assetIncident(input: {
       resolution: repair
         ? { key: 'repair-store', type: 'repair', label: 'Repair asset store', actionId: 'repair-store' }
         : input.assetId
-          ? { key: 'recover-asset', type: 'human', needs: 'decision', label: 'Recover this asset', href: `/assets/${encodeURIComponent(input.assetId)}?recover=1`, ...(input.choices ? { choices: input.choices } : {}) }
+          ? { key: 'recover-asset', type: 'human', needs: 'decision', label: 'Recover this asset', href: entityHref('assets:asset', input.assetId, { query: { recover: '1' } }) ?? '/assets', ...(input.choices ? { choices: input.choices } : {}) }
           : { key: 'review-assets', type: 'human', needs: 'decision', label: 'Review Assets', href: '/assets', ...(input.choices ? { choices: input.choices } : {}) },
     },
   })

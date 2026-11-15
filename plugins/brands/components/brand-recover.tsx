@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Stack } from '@makinbakin/sdk/layout'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, DangerZone, ListRow, ListRowGroup, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, SystemState, Text, buttonVariants } from '@makinbakin/sdk/ui'
 import { ArrowLeft } from 'lucide-react'
@@ -82,7 +82,7 @@ export function BrandRecoverPanel({ report, busy, error, onDetach, onRecreate, o
                       {tasks.map((task, index) => (
                         <span key={task.taskId}>
                           {index > 0 ? ', ' : ''}
-                          <PluginLink to={`/tasks?taskId=${encodeURIComponent(task.taskId)}`} className={buttonVariants({ size: 'xs', variant: 'link' })}>{task.title || task.taskId}</PluginLink>
+                          <PluginLink to={entityHref('tasks:task', task.taskId) ?? '/tasks'} className={buttonVariants({ size: 'xs', variant: 'link' })}>{task.title || task.taskId}</PluginLink>
                           {task.source === 'parent' ? ' (through its parent task)' : task.source === 'project' ? ' (through its project)' : ''}
                         </span>
                       ))}

@@ -2,7 +2,7 @@
 
 import { assignSeriesColors, CHART_MAX_SERIES, StackedColumnChart } from '@makinbakin/sdk/charts'
 import { formatRelativeTime } from '@makinbakin/sdk/conversation'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { ListRow, ListRows, StatGroup, StatTile, StatusBadge } from '@makinbakin/sdk/patterns'
 import { Badge, Button, Separator, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ArrowUpRight, Coins } from 'lucide-react'
@@ -184,7 +184,7 @@ export function OverviewAgentSpend({
                 return (
                   <ListRow key={row.agent} className="p-bakin-0">
                     <PluginLink
-                      to={`/team/${encodeURIComponent(row.agent)}?tab=diagnostics`}
+                      to={entityHref('team:agent', row.agent, { query: { tab: 'diagnostics' } }) ?? '/team'}
                       data-testid="agent-spend-row"
                       className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-bakin-3 rounded-bakin-control px-bakin-1 py-bakin-1 hover:bg-bakin-surface-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bakin-focus-ring"
                     >

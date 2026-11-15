@@ -10,7 +10,7 @@
  */
 import { useState } from 'react'
 import { useDebug, useJsonFetch, useKeyedState } from '@makinbakin/sdk/hooks'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { Inline, Panel } from '@makinbakin/sdk/layout'
 import { ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import {
@@ -95,7 +95,7 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
       title="Brand context"
       actions={(
         <PluginLink
-          to={`/brands/${encodeURIComponent(brand.brandId)}`}
+          to={entityHref('brands:brand', brand.brandId) ?? '/brands'}
           className={buttonVariants({ variant: 'link', size: 'xs' })}
         >
           Open brand
@@ -118,7 +118,7 @@ export function TaskBrandPanel({ taskId }: { taskId?: string }) {
             description="Dispatch is waiting until this brand is published and available."
             action={(
               <PluginLink
-                to={`/brands/${encodeURIComponent(brand.brandId)}`}
+                to={entityHref('brands:brand', brand.brandId) ?? '/brands'}
                 className={buttonVariants({ variant: 'outline', size: 'xs' })}
               >
                 Review brand

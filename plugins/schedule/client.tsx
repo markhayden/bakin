@@ -5,6 +5,7 @@
  */
 import { registerPlugin } from '@makinbakin/sdk'
 import { SchedulePage } from './components/schedule-page'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   id: 'schedule',
@@ -15,7 +16,7 @@ registerPlugin({
         subtitle: [hit.fields.schedule, hit.fields.agent].filter(Boolean).join(' · ') || 'cron job',
         // Hit id is the raw job id (no prefix strip); the page opens the
         // job drawer from ?jobId=.
-        href: `/schedule?jobId=${encodeURIComponent(hit.id)}`,
+        href: entityHref('schedule:job', hit.id) ?? '/schedule',
         icon: 'calendar',
       }),
     },

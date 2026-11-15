@@ -8,6 +8,7 @@ import { useAgentStore } from '@makinbakin/sdk/hooks'
 import { TeamGrid } from './components/team-grid'
 import { AgentDetail } from './components/agent-detail'
 import { TeamDetail } from './components/team-detail'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   search: {
@@ -17,7 +18,7 @@ registerPlugin({
       team: (hit) => ({
         title: String(hit.fields.name ?? hit.id),
         subtitle: String(hit.fields.role ?? 'agent'),
-        href: `/team/${encodeURIComponent(hit.id)}`,
+        href: entityHref('team:agent', hit.id) ?? '/team',
         // The roster's own address carries the avatar's version, so a changed face is never a stale thumbnail.
         thumbnailUrl: useAgentStore.getState().agentMap[hit.id]?.headshot || `/api/agents/avatar?id=${encodeURIComponent(hit.id)}`,
         icon: 'users',
@@ -27,7 +28,7 @@ registerPlugin({
         const agentId = typeof hit.fields.agent_id === 'string' ? hit.fields.agent_id : ''
         const lessonId = typeof hit.fields.lesson_id === 'string' ? hit.fields.lesson_id : ''
         const href = agentId
-          ? `/team/${encodeURIComponent(agentId)}?tab=lessons${lessonId ? `&lessonId=${encodeURIComponent(lessonId)}` : ''}`
+          ? entityHref('team:agent', agentId, { query: { tab: 'lessons', ...(lessonId ? { lessonId } : {}) } })
           : null
         return {
           title: String(hit.fields.title ?? hit.fields.summary ?? hit.id).slice(0, 120),

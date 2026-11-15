@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePluginEvent, useKeyedState } from '@makinbakin/sdk/hooks'
 import { Banner, Button, buttonVariants, DrawerSection, SystemState, Text } from '@makinbakin/sdk/ui'
 import { ListRow, ListRowActions, ListRows } from '@makinbakin/sdk/patterns'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { FolderOpen, Plus, X } from 'lucide-react'
 import { AssetThumb } from './versioned/atoms'
 import { VERSIONED_API } from './versioned/asset-urls'
@@ -116,7 +116,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
           <ListRow
             key={asset.assetId}
             className="flex min-w-0 items-center gap-bakin-2"
-            interactive={{ label: `Open ${asset.description || asset.assetId}`, render: <PluginLink to={`/assets/${encodeURIComponent(asset.assetId)}`} /> }}
+            interactive={{ label: `Open ${asset.description || asset.assetId}`, render: <PluginLink to={entityHref('assets:asset', asset.assetId) ?? '/assets'} /> }}
           >
               <span className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
                 <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />

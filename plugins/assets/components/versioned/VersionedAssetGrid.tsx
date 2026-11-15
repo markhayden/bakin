@@ -8,6 +8,7 @@ import {
   useQueryState,
   useRouter,
   useSearchParams,
+  entityHref,
 } from '@makinbakin/sdk/navigation'
 import { Grid, Inline } from '@makinbakin/sdk/layout'
 import {
@@ -696,7 +697,7 @@ export function VersionedAssetGrid() {
             label="Assets"
             rows={sortedList}
             rowKey={asset => asset.assetId}
-            onRowActivate={asset => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
+            onRowActivate={asset => router.push(entityHref('assets:asset', asset.assetId) ?? '/assets')}
             rowActivateLabel={asset => `Open ${asset.description || asset.assetId}`}
             rowProps={asset => ({ 'data-testid': `asset-row-${asset.assetId}` })}
             tableProps={{ className: 'min-w-max' }}
@@ -782,7 +783,7 @@ export function VersionedAssetGrid() {
               scoreInfo={scoreFor(asset.assetId)}
               selected={selected.has(asset.assetId)}
               onToggleSelect={() => toggleSelected(asset.assetId)}
-              onOpen={() => router.push(`/assets/${encodeURIComponent(asset.assetId)}`)}
+              onOpen={() => router.push(entityHref('assets:asset', asset.assetId) ?? '/assets')}
               onEdit={() => setEditing(asset)}
             />
           ))}

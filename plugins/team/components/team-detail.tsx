@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { Inline, Section } from '@makinbakin/sdk/layout'
-import { PluginLink, useHistoryBack, useQueryState } from '@makinbakin/sdk/navigation'
+import { PluginLink, useHistoryBack, useQueryState, entityHref } from '@makinbakin/sdk/navigation'
 import {
   AgentAvatar,
   Page,
@@ -338,7 +338,7 @@ export function TeamDetail({ teamId }: { teamId: string }) {
                       size="sm"
                       decorative
                     />
-                    <PluginLink to={`/team/${encodeURIComponent(member.id)}`} className="min-w-0 flex-1 truncate">
+                    <PluginLink to={entityHref('team:agent', member.id) ?? '/team'} className="min-w-0 flex-1 truncate">
                       {member.name}
                     </PluginLink>
                     {status ? (

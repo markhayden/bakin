@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useRouter, useQueryArrayState, useQueryState } from '@makinbakin/sdk/navigation'
+import { useRouter, useQueryArrayState, useQueryState, entityHref } from '@makinbakin/sdk/navigation'
 import { WorkflowRecoverView, stableKey } from './workflow-recover-banner'
 import { Stack } from "@makinbakin/sdk/layout"
 import {
@@ -364,7 +364,7 @@ export function WorkflowsPage() {
               sort={sort}
               onSortChange={handleSort}
               scoreMap={debug && normalizedSearch ? scoreMap : undefined}
-              onOpen={(filename) => router.push(`/workflows/${filename}`)}
+              onOpen={(filename) => router.push(entityHref('workflows:workflow', filename) ?? '/workflows')}
             />
             <Pagination
               ariaLabel="Workflows pagination"

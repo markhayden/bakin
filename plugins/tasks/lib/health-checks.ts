@@ -19,6 +19,7 @@ import {
 import { maybeGetAppServices } from '../../../src/core/app-services'
 import { clearDependency, readTaskboard, renumberColumn } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
@@ -125,7 +126,7 @@ export async function checkTaskConsistency(
             // Row 118: required while the task is open — it is in progress here.
             required: true,
             resources: [taskResource, { kind: 'agent', id: task.agent, label: task.agent }],
-            resolution: { key: 'reassign-task', type: 'human', needs: 'decision', label: 'Reassign the task', href: `/tasks?taskId=${encodeURIComponent(task.id)}&field=assignee`, field: 'task-assignee' },
+            resolution: { key: 'reassign-task', type: 'human', needs: 'decision', label: 'Reassign the task', href: entityHref('tasks:task', task.id, { query: { field: 'assignee' } }) ?? '/tasks', field: 'task-assignee' },
           },
         }))
       }

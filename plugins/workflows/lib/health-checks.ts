@@ -24,6 +24,7 @@ import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
 import { listDefinitionsTolerant } from './parser'
 import { workflowDefinitionSchema } from '@bakin/core/workflows/node-type-registry'
 import { getAgentPackageSkills } from '@bakin/core/workflows/agent-package-skill-registry'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 import { getPluginSkills } from '@bakin/core/skills/plugin-skill-registry'
 import { listInstances } from './runtime'
 import {
@@ -396,6 +397,9 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
     const knownWorkflowIds = new Set(definitions.map(entry => entry.name))
     // Rows 133–137: required while the workflow runs OR a schedule targets it (the schedule plugin's fact, via its hook).
     const inUseIds = await inUseWorkflowIds(contentDir)
+    /** The workflow's page opened on its recovery controls, at a step when one is named. */
+    const recoverHref = (name: string, stepId?: string): string =>
+      entityHref('workflows:workflow', name, { query: { recover: '1', ...(stepId ? { step: stepId } : {}) } }) ?? '/workflows'
     const decisionFor = (name: string) => {
       const inUse = inUseIds.has(name)
       return (href: string) => ({
@@ -414,7 +418,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
         summary: `Workflow ${broken.name} does not parse as YAML${broken.line ? ` (line ${broken.line})` : ''}: ${broken.message}`,
         impact: 'The workflow cannot load, match or run until the file parses.',
         evidence: { path: '', line: broken.line, parseError: bounded(broken.message, 500) },
-        ...decisionFor(broken.name)(`/workflows/${encodeURIComponent(broken.name)}?recover=1`),
+        ...decisionFor(broken.name)(recoverHref(broken.name)),
       }))
     }
     for (const { name, definition } of definitions) {
@@ -435,7 +439,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             summary: `Workflow ${name} has unknown YAML keys${at}: ${issue.message}`,
             impact: 'Unknown fields are ignored, so the workflow may not behave as its author intended.',
             evidence: { path },
-            ...decision(`/workflows/${encodeURIComponent(name)}?recover=1`),
+            ...decision(recoverHref(name)),
           }))
         })
       }
@@ -449,7 +453,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
             summary: `Workflow ${name} step ${typedStep.id} references missing skill ${typedStep.skill}.`,
             impact: 'The workflow cannot execute this step.',
             evidence: { path: `steps.${definition.steps.indexOf(step)}.skill` },
-            ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
+            ...decision(recoverHref(name, typedStep.id)),
           }))
         }
         if (typedStep.type === 'workflow' || typedStep.type === 'map_workflow') {
@@ -461,7 +465,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               summary: `Workflow ${name} step ${typedStep.id} references missing workflow ${childId}.`,
               impact: 'The nested workflow step cannot start.',
               evidence: { path: `steps.${definition.steps.indexOf(step)}.workflow_id` },
-              ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
+              ...decision(recoverHref(name, typedStep.id)),
             }))
           }
           if (typedStep.type === 'map_workflow' && childId) {
@@ -486,7 +490,7 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
               summary: `Workflow ${name} parallel step ${child.id} references missing skill ${child.skill}.`,
               impact: 'The parallel workflow branch cannot execute this step.',
               evidence: { path: `steps.${definition.steps.indexOf(step)}.steps.${(typedStep.steps ?? []).indexOf(child)}.skill` },
-              ...decision(`/workflows/${encodeURIComponent(name)}?recover=1&step=${encodeURIComponent(typedStep.id)}`),
+              ...decision(recoverHref(name, typedStep.id)),
             }))
           }
         }

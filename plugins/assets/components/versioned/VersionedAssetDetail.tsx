@@ -7,6 +7,7 @@ import {
   useParams,
   useQueryState,
   useRouter,
+  entityHref,
 } from '@makinbakin/sdk/navigation'
 import { usePluginEvent } from '@makinbakin/sdk/hooks'
 import {
@@ -393,7 +394,7 @@ export function VersionedAssetDetail() {
                 {previewVer.generation.references.map(ref => (
                   <ListRow
                     key={`${ref.assetId}@${ref.version}`}
-                    interactive={{ label: `${ref.assetId} v${ref.version}`, render: <PluginLink to={`/assets/${encodeURIComponent(ref.assetId)}`} /> }}
+                    interactive={{ label: `${ref.assetId} v${ref.version}`, render: <PluginLink to={entityHref('assets:asset', ref.assetId) ?? '/assets'} /> }}
                     className="flex min-w-0 items-center gap-bakin-2"
                   >
                     <span className="size-bakin-8 shrink-0 overflow-hidden rounded-bakin-control">
