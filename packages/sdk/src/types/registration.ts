@@ -7,6 +7,9 @@ import type { SchemaLike } from './primitives'
 import type { AgentRuntimeAdapter } from './runtime'
 import type { AssetsAPI, SearchAPI, TaskService } from './services'
 import type { ActivityClass } from './api-route'
+import type { EntityRef } from './entities'
+
+export type { EntityRef }
 
 /** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
  *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */
@@ -71,23 +74,6 @@ export interface ContentFile {
 // ---------------------------------------------------------------------------
 // Runtime-facing public types
 // ---------------------------------------------------------------------------
-
-/**
- * Something a tool call created or changed, reported on its result so the
- * conversation shows a card linking to it. `kind` must be one the tool's
- * manifest entry lists under `reports`.
- */
-export interface EntityRef {
-  /** Public kind id, `<pluginId>:<kind>` (`projects:project`). */
-  kind: string
-  /** The entity's id; fills `{id}` in the kind's href. */
-  id: string
-  /** Its title at the time of the call. Cards never look it up again. */
-  title: string
-  action: 'created' | 'updated'
-  /** Values for a compound route's other placeholders. */
-  params?: Record<string, string>
-}
 
 /** Result returned from an exec tool handler. */
 export interface ExecToolResult {

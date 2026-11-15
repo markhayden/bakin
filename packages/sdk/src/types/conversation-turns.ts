@@ -13,7 +13,7 @@
  */
 import type { RuntimeChatChunk, RuntimeMessageUsage, AgentRuntimeAdapter } from './runtime'
 import type { EventBus } from './events'
-import type { EntityRef } from './registration'
+import type { EntityRef } from './entities'
 
 export interface ConversationTurnAttachment {
   name: string
