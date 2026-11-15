@@ -139,6 +139,23 @@ describe('exec tool registration', () => {
 })
 
 describe('exec tool: bakin_exec_assets_list', () => {
+  it('assets_save reports the asset: created on the first save, updated on a new version, nothing when unchanged', async () => {
+    const save = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    const file = join(testDir, 'launch-brief.md')
+
+    writeFileSync(file, 'first draft')
+    const first = await callTool(save, { filePath: file, taskId: 'task-card', type: 'text', slug: 'launch-brief-card' }, 'margo')
+    expect(first.entities).toEqual([{ kind: 'assets:asset', id: first.assetId, title: 'launch-brief.md', action: 'created' }])
+
+    writeFileSync(file, 'second draft')
+    const second = await callTool(save, { filePath: file, taskId: 'task-card', type: 'text', slug: 'launch-brief-card' }, 'margo')
+    expect(second.entities).toEqual([{ kind: 'assets:asset', id: first.assetId, title: 'launch-brief.md', action: 'updated' }])
+
+    const again = await callTool(save, { filePath: file, taskId: 'task-card', type: 'text', slug: 'launch-brief-card' }, 'margo')
+    expect(again.changed).toBe(false)
+    expect(again.entities).toBeUndefined()
+  })
+
   it('filters assets by task id', async () => {
     const save = findTool(plugin.execTools, 'bakin_exec_assets_save')!
     const list = findTool(plugin.execTools, 'bakin_exec_assets_list')!

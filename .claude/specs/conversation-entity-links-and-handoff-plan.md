@@ -239,7 +239,7 @@ not survive a real runtime, stop and revisit A1.
   - Verify: fold unit tests; RTL (with `rtl-settle`); `bun run ui:test:stories`;
     story interaction + visual evidence. Size: M.
 - [x] **T8a: Tasks and Schedule report.** Size: S.
-- [ ] **T8b: Assets and Images report** (Images reports `assets:asset` via dependency).
+- [x] **T8b: Assets and Images report** (Images reports `assets:asset` via dependency).
   Size: S.
 - [ ] **T8c: Workflows, Brands, Team report** (Workflows reports `tasks:task`). Size: M.
 - [ ] **T8d: Prose links navigate in-app** — `renderInternalLink` on every conversation

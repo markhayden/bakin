@@ -1,6 +1,7 @@
 /**
  * Images plugin — provider-routed image generation primitives.
  */
+import { basename } from 'path'
 import { z } from 'zod'
 import type { ExecToolResult, HealthCheckRunInput, HealthIncidentDeclaration, PluginContext } from '@bakin/core/plugin-types'
 import { healthError, healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/utils'
@@ -10,6 +11,7 @@ import { loadDefaultWorkflowFiles } from '@bakin/core/workflows/load-defaults'
 import { pluginRootFromModuleUrl, shippedWorkflowFiles } from '../../src/core/plugin-resources'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
 import { getImageProfile, listImageProfiles, IMAGE_SURFACE_IDS } from './lib/platform-profiles'
+import { imageCardTitle, withAssetCard } from './lib/asset-card'
 import { editImage, exportImage, generateImage, importImage } from './lib/tools'
 import { recommendImageRoute } from './lib/routing'
 
@@ -271,21 +273,21 @@ const imagesPlugin = definePlugin({
       description: 'Generate an image through a configured runtime image provider, save it as a NEW managed asset (v1), and return its assetId. Pass referenceImages to create a new image conditioned on existing assets/files (e.g. "in the style of these"); to revise an existing asset in place use bakin_exec_images_edit instead. In an interactive chat: omit taskId and, after it returns, deliver the image by embedding ![desc](/api/assets/<assetId>) in your reply — text alone delivers nothing.',
       label: 'Generated an image',
       parameters: generateShape,
-      handler: async (params, agent) => generateImage(ctx, params as never, agent),
+      handler: async (params, agent) => withAssetCard(await generateImage(ctx, params as never, agent), imageCardTitle(params.prompt)),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_edit',
       description: 'Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a NEW VERSION to that same asset, and returns the assetId. Pass referenceImages to supply extra context images alongside the edited asset.',
       label: 'Edited an image',
       parameters: editShape,
-      handler: async (params, agent) => editImage(ctx, params as never, agent),
+      handler: async (params, agent) => withAssetCard(await editImage(ctx, params as never, agent), imageCardTitle(params.prompt)),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_import',
       description: 'Import an existing local image file as a new managed asset (v1) and return its assetId.',
       label: 'Imported an image',
       parameters: importShape,
-      handler: async (params, agent) => importImage(ctx, params as never, agent),
+      handler: async (params, agent) => withAssetCard(await importImage(ctx, params as never, agent), imageCardTitle(params.description, basename(params.filePath))),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_export',
