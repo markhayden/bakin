@@ -191,6 +191,7 @@
     "execTools": [
       {
         "name": "bakin_exec_team_create_agent",
+        "reports": ["team:agent"],
         "summary": "Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team",
         "description": "Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions."
       },
@@ -251,6 +252,7 @@
       },
       {
         "name": "bakin_exec_team_update_identity",
+        "reports": ["team:agent"],
         "summary": "Update an existing agent's identity fields (name, emoji, role, vibe, etc",
         "description": "Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)."
       }

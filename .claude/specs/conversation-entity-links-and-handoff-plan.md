@@ -241,7 +241,7 @@ not survive a real runtime, stop and revisit A1.
 - [x] **T8a: Tasks and Schedule report.** Size: S.
 - [x] **T8b: Assets and Images report** (Images reports `assets:asset` via dependency).
   Size: S.
-- [ ] **T8c: Workflows, Brands, Team report** (Workflows reports `tasks:task`). Size: M.
+- [x] **T8c: Workflows, Brands, Team report** (Workflows reports `tasks:task`). Size: M.
 - [ ] **T8d: Prose links navigate in-app** — `renderInternalLink` on every conversation
   surface's `MarkdownContent`. Size: S.
 - Knowledge docs for cards (`conversation-kit.md`, new `entity-links.md`) land in this PR.

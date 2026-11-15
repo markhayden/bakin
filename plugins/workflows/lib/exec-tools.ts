@@ -76,8 +76,11 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
 
       try {
         let assignee: string | undefined
+        let taskTitle: string | undefined
         try {
-          assignee = getTask(taskId)?.agent
+          const task = getTask(taskId)
+          assignee = task?.agent
+          taskTitle = task?.title
         } catch { /* best effort */ }
 
         const instance = await createValidatedInstance(ctx, taskId, workflowId, assignee)
@@ -89,7 +92,12 @@ export function registerWorkflowExecTools(ctx: PluginContext): void {
         ctx.activity.audit('started', agent, { taskId, workflowId })
         indexInstance(taskId).catch(() => {})
 
-        return { ok: true, instance }
+        return {
+          ok: true,
+          instance,
+          // Starting a workflow changes the task; Workflows depends on Tasks.
+          ...(taskTitle ? { entities: [{ kind: 'tasks:task', id: taskId, title: taskTitle, action: 'updated' as const }] } : {}),
+        }
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
