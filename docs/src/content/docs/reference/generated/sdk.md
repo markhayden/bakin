@@ -495,6 +495,7 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `QuestionAnswer` | — |
 | `QuestionState` | — |
 | `ConversationChunk` | — |
+| `ConversationEntityRef` | — |
 | `ConversationTextFormat` | — |
 | `ConversationToolActivity` | — |
 | `ConversationToolCall` | — |
@@ -505,6 +506,8 @@ Isolated conversation UI and models. Source: `packages/sdk/src/conversation/inde
 | `BakinQuestion` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
 | `ConversationMessage` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
 | `DisplayAttachment` | The canonical row types live in `@makinbakin/sdk/types`; ui keeps a pinned structural copy (message-contract.ts). |
+| `EntityCard` | A link card for something an agent created or changed, shown in its reply. |
+| `EntityCardProps` | Props for one entity card: a resolved kind plus the reference's snapshot. |
 | `TurnOutputView` | Compact single-turn output for task and workflow embeds. |
 | `TurnToolChip` | Compact single-turn output for task and workflow embeds. |
 | `foldTurnChunks` | Compact single-turn output for task and workflow embeds. |
@@ -738,6 +741,10 @@ Source: `packages/sdk/src/utils/index.ts`.
 | `parseBakinQuestion` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
 | `validateBakinQuestionInput` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
 | `QUESTION_LIMITS` | Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. |
+| `HANDOFF_PREAMBLE_BYTES` | Hand-off helpers for a surface that accepts a chat's history: the acceptor's atomic, idempotent write, and the one-time preamble for the receiving agent. |
+| `handoffPreamble` | Hand-off helpers for a surface that accepts a chat's history: the acceptor's atomic, idempotent write, and the one-time preamble for the receiving agent. |
+| `hasAcceptedHandoff` | Hand-off helpers for a surface that accepts a chat's history: the acceptor's atomic, idempotent write, and the one-time preamble for the receiving agent. |
+| `writeHandoffBatch` | Hand-off helpers for a surface that accepts a chat's history: the acceptor's atomic, idempotent write, and the one-time preamble for the receiving agent. |
 | `humanizeKey` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `formatStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
 | `summarizeStructured` | Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. |
@@ -789,6 +796,8 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | --- | --- |
 | `PluginLink` | Real-anchor SPA navigation for runtime-registered plugin routes. |
 | `PluginLinkProps` | Props for a runtime-route link with native anchor semantics. |
+| `entityHref` | The in-app href for an entity, resolved from its declared kind. |
+| `EntityHrefOptions` | Route parameters and extra query parameters for an entity link. |
 | `toNavigationOptions` | Browser router hooks and plain-string URL conversion. |
 | `useParams` | Browser router hooks and plain-string URL conversion. |
 | `usePathname` | Browser router hooks and plain-string URL conversion. |
@@ -806,5 +815,5 @@ Source: `packages/sdk/src/navigation/index.ts`.
 | `UnsavedChangesGuardResult` | Inputs and result contract for complete unsaved-change protection. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Nov 13, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Nov 14, 2026 · Bakin 0.0.0-dev</span>
 </aside>
