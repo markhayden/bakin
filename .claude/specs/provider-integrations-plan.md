@@ -1,107 +1,90 @@
 # Implementation Plan: Provider integrations (Google Workspace + GitHub)
 
-Spec: `provider-integrations.md` rev 5 (signed off 2026-11-13). Plan **rev 3**
-after two Codex reviews (rev 1: dependency order, task splits, test paths,
-ledger constraint + retention, rollback honesty, grant funnel, UI composition;
-rev 2: in-flight turn drain on rollback, grants-editor composition decided,
-placeholders removed, `StartTurnResult` kept stable — every finding verified
-against the source). Status marks are kept HERE.
+Spec: `provider-integrations.md` **rev 6** (signed off 2026-11-14 after four
+Codex rounds). Plan **rev 4** replaces rev 3's PR2 (tasks-plugin gate,
+agent-runs-a-CLI) with the provider relay, adds the paste-a-link fix and PR4
+(Bakin-owned Google client), and reworks the Bits PR. PR1 is built and
+unchanged; PR3's tasks carry over from rev 3. Status marks are kept HERE.
 
 ## Overview
 
-Four deliverables, each a reviewable checkpoint: **Bits PR** (packs),
-**bakin PR1** (login verification), **bakin PR2** (task approval gate +
-standing grants), **bakin PR3** (schedule chat target). PR2 stacks on PR1,
-PR3 on PR2. The Bits PR runs beside PR1 and stays open until PR2 is
-live-tested (its skills name PR2's tools). Mark live-tests W1 after Bits+PR1,
-W2+W3 after PR2, W4 after PR3; I merge nothing.
+Six deliverables, each a reviewable checkpoint:
 
-## Architecture decisions (spec, not re-litigated)
+| # | Deliverable | Branch (base) | Live test |
+|---|---|---|---|
+| 1 | **PR1** login verification (#1087, built) | `feat/pack-login-verification` (main) | W1 on the CLI packs |
+| 2 | **Fix** paste-a-link refuses runtime-plugin bundles | `fix/paste-a-link-runtime-plugins` (main) | paste pi-google-services → clear refusal |
+| 3 | **PR2** provider relay + approval gate (tasks + chats) | `feat/provider-relay` (PR1 branch) | W1 again via the relay, W2, W3, W4 |
+| 4 | **Bits #143** reworked: `mcpServers`, class tables, relay skills | `feat/google-github-packs-v2` (main) | rides PR2's live test |
+| 5 | **PR3** schedule chat target | `feat/schedule-chat-target` (PR2 branch) | W5 |
+| 6 | **PR4** Bakin Google client + Connect | `feat/google-connect` (PR2 branch) | W6 (needs Mark's Cloud project) |
 
-D1 cooperative approval policy · D3 agent executes after approval · D5
-visibility-only classes · D6 per-task standing grants · D7 gate in the tasks
-plugin · D9 explicit login verification with receipts · D10 gog pinned from
-upstream tar.gz · D11 one entry skill + vendored references · D13 chat target
-with ledger-held admission identity.
+The Bits PR stays open until PR2 passes Mark's live test. PR3 and PR4 are
+independent of each other; both stack on PR2. I merge nothing.
+
+## Architecture decisions (spec rev 6, not re-litigated)
+
+D1 cooperative · D3 refuse + exact-args card, one matching call, agent-bound,
+expiring · D4 one card for tasks and chats, chat approval → follow-up turn ·
+D5 three classes from reviewed tables · D6 standing grants per task per action
+class · D7 gate in core at the relay, `integration-action` owner · D10 gog +
+github-mcp-server pinned, gh for login/token · D11 one relay skill per pack ·
+D12 Bakin-owned Google client, Connect + paste-back, full access default ·
+D15 relay, not runtime-native MCP · D16 gog MCP gaps ship as gaps.
 
 ## Branch, commit, gate and rollback strategy
 
-| Repo | Branch | Base | Lands as |
+- Branches live in the main checkouts so 3737 serves them; server-side
+  changes need a 3737 restart to test (Mark's call).
+- **One task = one conventional commit**, each leaving lint, typecheck and the
+  task's test files green — a bisectable rollback checkpoint. Docs are their
+  own commits inside the PR. No AI attribution.
+- **No published-contract breaks:** `PluginToolContext.invocation` and
+  `ExecToolDefinition` change additively (a raw-schema variant beside the zod
+  shape); `StartTurnResult` stays as is; every persisted change is additive.
+- **Per-PR gate before "ready for review":** `bun run lint && bun run
+  typecheck && bun run check:cycles`; the PR's test files `--isolate`; `bun
+  run test` once (never beside `ui:conformance`); `ui:conformance --quick`
+  after each UI task and `--full` before ready; **≥2 Codex rounds** fixed
+  in-batch; then Mark's live test; then Mark merges.
+- **Upstream contributions** (the gog no-retry fix) are outward-facing: drafted
+  in PR2, opened only after Mark says so.
+
+**Rollback is a procedure, not a revert:**
+
+| PR | What old code does with the new state | Quiescence BEFORE reverting | Verified by |
 |---|---|---|---|
-| bakin | `feat/pack-login-verification` | `main` | PR1 |
-| bakin | `feat/task-approval-gate` | PR1 branch | PR2 (retarget to main after PR1 merges) |
-| bakin | `feat/schedule-chat-target` | PR2 branch | PR3 |
-| bakin-bits-official | `feat/google-github-packs-v2` | `main` | Bits PR |
+| PR1 | ignores receipts and `login` | none | — |
+| Fix | nothing persisted | none | — |
+| PR2 | `integration-action` approvals become an unknown kind (503 on resolve, skipped at rehydration); relay sidecars ignored; `approvedActions` kept as unknown JSON; Bits 2.0 packs fail the manifest check (`mcpServers` unknown → install refused, installed copies stay) | decide or cancel every pending `integration-action` approval; no `attempting` sidecar left; move awaiting-approval tasks to todo; pause grant-carrying schedules; re-install the Bits packs at their pre-relay version | downgrade test: the previous build boots on a PR2 data dir with pending/consumed sidecars without error |
+| PR3 | as rev 3 (chat-target jobs run as tasks; `starting` rows) | as rev 3 | rev 3's downgrade test |
+| PR4 | the `bakin` gog client stays registered and harmless; the persisted account selection is ignored (falls back to `GOG_ACCOUNT`) | none | — |
 
-- Branches live in the main checkouts so 3737 serves them; server-side changes need a 3737 restart to test.
-- **One task = one conventional commit**, each leaving lint, typecheck and the task's test files green — a bisectable checkpoint. Docs tasks are their own commits inside the PR.
-- **No published-contract breaks:** `StartTurnResult`/`ConversationStartTurnResult` stay as they are (Bits plugins compare `=== 'accepted'`); every persisted change is additive.
-- **Per-PR gate before "ready for review":** `bun run lint && bun run typecheck && bun run check:cycles`; the PR's test files `--isolate`; `bun run test` once; `bun run ui:conformance --quick` after each UI task and **`--full` before the PR is marked ready** (the conformance skill's merge-ready rule — every PR that touches UI, not only PR3); **≥2 Codex rounds** (`codex exec -s read-only`) fixed in-batch; then Mark's live test; then Mark merges/releases.
-- Bits pack versions bump in the same PR (google-workspace 2.0.0, github 1.1.0); `bakin` floor = the rc that ships PR1.
-
-**Rollback is a procedure, not a revert.** Reverting a merge commit restores code; it does not make state written by the feature safe for old code:
-
-| PR | What old code does with the new state | Required quiescence BEFORE reverting | Verified by |
-|---|---|---|---|
-| PR1 | ignores receipts and `login`; a pack with `requires.login` parses (field dropped) and reads ready | none | — |
-| PR2 | `approvedActions`/`grants` are preserved as unknown JSON; pending `tasks:` approvals become an unknown kind (503 on resolve, skipped at rehydration — never cancelled); installed skills still name `request_approval` | cancel or decide every pending `tasks:` approval; move blocked-awaiting tasks to todo; pause schedules carrying grants; re-install Bits packs at their previous version | `bakin approvals list --kind plugin-gate` empty; downgrade test: old gate-less build boots on a PR2 data dir without error |
-| PR3 | old scheduler runs a `target: 'chat'` job as a TASK; old retention deletes `starting` rows; old run readers label `starting` as success; old chat parsing drops `turnId`/`admissionKey` and its interrupted sweep stamps without `turnId` | pause every chat-target job; wait until no `starting` row remains and every `created` chat run's turn has a terminal row (abort in-flight scheduled turns from the chat or let them settle — `bakin schedule runs` lists both); only then revert | downgrade test (3.2): a db with a settled PR3 history opens under the previous migration set; `starting` absent and no in-flight turn ⇒ no behavioural change |
-
-Reverse dependency order always: PR3 → PR2 → PR1 → Bits.
+Reverse dependency order: PR4/PR3 → PR2 (+ Bits) → Fix/PR1.
 
 ## Dependency graph
 
 ```
-PR1  1.1 bakin range → 1.2 schema+type → 1.3 engine → 1.4a readiness leg → 1.4b install/sync trigger → 1.4c HTTP/secret/CLI triggers
-     → 1.5a Health → 1.5b Explore+hub → 1.5c CLI → 1.6 docs → GATE → W1 (needs Bits B1/B2 on disk)
-Bits B1 manifest (needs 1.2) → B2a vendor tooling → B2b entry skill → B3 github (needs 1.2) → B4 contract test → B5 READMEs
-PR2  2.3 harness → 2.4a gate state (constants) → 2.1a field+funnel → 2.1b REST+provenance → 2.1c CLI
-     → 2.2a job grants+routes → 2.2b inheritance+exempt reason → 2.2c schedule CLI → 2.4b handler (needs 2.1a) → 2.5 tools
-     → 2.6a prompt plumbing+main/triage → 2.6b specialist/workflow+fixtures → 2.7a approve-all + grants editor → 2.7b job-form grants
-     → 2.8a docs (approvals/tasks/dispatch) → 2.8b docs (scheduler/provider overview) → GATE → W2+W3
-PR3  3.2 ledger (rebuild+retention) → 3.1a chat row schema → 3.1b engine contract+callers → 3.1c sweep → 3.3a chat hooks → 3.3b badge
-     → 3.4a job types+validation (chat REFUSED) → 3.4b fire path → 3.4c healer/crash → 3.4d catch-up/failure/readers
-     → 3.4e routes accept chat + form + {fireAt} → 3.5 run history/job row → 3.6 docs → GATE (--full) → W4
+Fix  F1 detect+refuse → F2 Explore copy → F3 docs → GATE
+PR2  2.1 invocation type+Pi path → 2.2 MCP-side caller resolution
+     2.3 raw-schema exec tools → 2.4 live registry (mcp-server add/remove/list_changed)
+     2.5 manifest mcpServers + classify (pure) → 2.6 relay supervisor (needs 2.3, 2.4, 2.5)
+     2.7a approvals owner kind (core) → 2.7b approval consumers (store/tasks hook/attention/Discord/OpenClaw)
+     2.8 approvedActions field+REST+CLI → 2.9 schedule grants+inheritance+exempt reason
+     2.10 gate state machine (pure) → 2.11 gate wiring in the relay (needs 2.1, 2.2, 2.6, 2.7a, 2.8)
+     2.12 apply-after-commit: task anchor + boot reconciliation → 2.13 chat anchor (enqueueFollowUp + admission key)
+     2.14 dispatch resume section → 2.15 UI (card in panel + inline chat, approve-all, grants editor, job form)
+     2.16 settings.integrations.privateNeedsApproval → 2.17 OpenClaw rig check → 2.18 gog no-retry draft → 2.19 docs → GATE → W1/W2/W3/W4
+Bits B1 google 2.0 (needs 2.5 schema) → B2 github 2.0 → B3 tools/list fixtures + contract → B4 skills → B5 READMEs
+PR3  rev 3 tasks 3.2 … 3.6 (unchanged order) → GATE → W5
+PR4  4.1 client constants + gog registration → 4.2 persisted account selection → 4.3 Connect API → 4.4 Connect dialog → 4.5 Bits setup=Connect → 4.6 docs → GATE → W6
 ```
 
-Parallel-safe: the Bits PR beside PR1 (after 1.2); docs tasks beside the last code task of their PR. Everything else sequential.
+Parallel-safe: Fix beside PR2; Bits beside PR2 after 2.5; PR3 beside PR4.
 
 ---
 
-## Phase 0 — Bits PR (`bakin-bits-official`)
-
-### B1 — google-workspace 2.0.0 manifest
-Pinned `gog` bin (four platforms from the spec table; `archive.member: gog`, `extractedSha256`, `verifyArgs: ['--version']`), `requires.login` with `accountEnv: 'GOG_ACCOUNT'`, drop `prereqs.gog`, `bakin` floor, version 2.0.0.
-**Acceptance:** pins equal `checksums.txt` + the member hashes; the host schema (1.2) parses it — proven by a bakin test fixture that mirrors this manifest byte-for-byte (`tests/agent-packages/manifest.test.ts`, task 1.2) and by the live install (Checkpoint PR1).
-**Verify:** `cd ../bakin-bits-official && bun run test`. **Deps:** 1.2. **Files:** `packs/google-workspace/bakin-package.json`. **Size:** S.
-
-### B2a — vendor tooling
-`scripts/vendor-gog-skills.ts <tag>`: fetch the eight `SKILL.md`s at the tag into `skills/google-workspace/references/<name>.md`, keep LICENSE, drop `agents/`, write `references/VENDORED.json { tag, sha, files }`. Run it for `v0.48.0` (the mechanical import is the one size exception — generated content, one commit, reviewed by diff).
-**Acceptance:** re-running is idempotent; `VENDORED.json.tag` == `v` + `requires.bins[0].version`.
-**Verify:** Bits tests (B4 adds the stamp check). **Deps:** B1. **Files:** `scripts/vendor-gog-skills.ts`, `packs/google-workspace/skills/google-workspace/references/**`. **Size:** S + generated.
-
-### B2b — entry skill
-Rewrite `skills/google-workspace/SKILL.md` per spec §4.2: fast path, read discipline, explicit account, the class table, chat (`ask_user`) vs task (`request_approval` → `approval_outcome attempting` → run → `approval_outcome done|failed|unknown`), assets discipline, honest failure, provider cautions, which reference to open when.
-**Acceptance:** ≤ 6 KB; every reference it names exists; names every class in the spec table.
-**Verify:** Bits tests; `bakin agents context` before/after recorded in the PR. **Deps:** B2a. **Files:** one. **Size:** S.
-
-### B3 — github 1.1.0
-`requires.login` (`gh auth status`), gh floor in prereq help, Rules section rewritten with classes + the two-call contract, Projects v2 cautions, GH_TOKEN identity note, version + floor.
-**Deps:** 1.2. **Files:** `packs/github/{bakin-package.json,skills/github/SKILL.md}`. **Size:** S.
-
-### B4 — pack contract test
-`login` entries bind to `bins[].name` or binary `prereqs[].probe`, non-empty `setup`, https `help`, `accountEnv` shape; `VENDORED.json.tag` matches the bin version and every listed file exists; catalog unchanged.
-**Deps:** B1–B3. **Files:** `packs/pack-contract.test.ts`. **Size:** S.
-
-### B5 — READMEs
-Google Cloud one-time setup (Internal consent for Workspace orgs), `GOG_ACCOUNT`, admin caveat; GitHub login note. **Deps:** none. **Size:** S.
-
-### Checkpoint: Bits
-- [x] Bits suite green; the manifest fixture test in bakin green; pack installs on a `verify` boot (after PR1) and reads `login: missing` with the setup command.
-
----
-
-## Phase 1 — PR1: login verification
+## Phase 1 — PR1: login verification (BUILT, #1087)
 
 ### 1.1 — enforce the pack `bakin` range
 Installer + upgrader refuse a pack whose `bakin` range the host version fails (`Bun.semver.satisfies`, prerelease-aware; `0.0.0-dev` satisfies all), typed `bakin_range_unsatisfied` naming both versions.
@@ -149,74 +132,195 @@ Installed card states "Installed — needs login" / "Login not verified" with th
 
 ---
 
-## Phase 2 — PR2: task approval gate + standing grants
+---
 
-### 2.3 — plugin test harness gains approvals
-`createTestContext` wires `createMemoryApprovalsBackend` + `createPluginApprovalsAPI` (as the SDK harness does) and exposes `decideApproval(id, option, comment?)`.
-**Verify:** existing plugin tests green; smoke test. **Deps:** none. **Files:** `tests/plugins/test-helpers.ts`, test. **Size:** S.
+## Phase F — paste-a-link refuses runtime-plugin bundles
 
-### 2.4a — gate state (pure) + constants
-`plugins/tasks/lib/approval-gate.ts`: `ACTION_CLASS_RE`, `AWAITING_APPROVAL_REASON`, `approvalIdFor`, `requestHash`, the per-task record `{ generation, current?, history[] }` with states `pending | applying | approved-unconsumed | attempting | consumed | rejected | cancelled`, pure transitions, `applyCommittedApproval` as a reducer (entry guards from `pending` vs `applying` per spec).
-**Verify:** `bun test tests/plugins/tasks/approval-gate-state.test.ts --isolate`. **Deps:** 2.3. **Size:** M.
+### F1 — detect and refuse
+In the hub-skill staging path (`src/core/agent-packages/ref-normalize.ts` →
+manifest synthesis), before synthesis: a staged root whose `package.json`
+carries a `pi` field or `pi-package` keyword, an `openclaw.extensions` field,
+or an `openclaw.plugin.json` file is refused with typed `runtime_plugin_bundle`
+("This is a Pi/OpenClaw plugin, not an Agent Skill. Bakin installs runtime
+plugins only through a capability pack.") — no consent token, nothing written.
+**Acceptance:** pi-google-services' shape, an OpenClaw plugin, and a real skill
+repo each take the right path. **Verify:** `bun test
+tests/agent-packages/hub-skill-*.test.ts --isolate`. **Size:** S.
 
-### 2.1a — `approvedActions` field + creation funnel
-`Task`/`TaskCreateInput`/`TaskUpdateInput` (null clears), store schema, `public-task` patch, **`createTaskWithEffects` input + forwarding** and the stored-task create path; `ctx.tasks` (PluginTaskService) strips/refuses the field (plugins have no request provenance).
-**Verify:** `bun test tests/core/task-service.test.ts tests/plugins/tasks/integration.test.ts --isolate`. **Deps:** 2.4a. **Files:** `packages/sdk/src/types/services.ts`, `packages/core/src/tasks/{store,public-task}.ts`, `src/core/task-service.ts`, `src/lib/plugin-context-services.ts`, tests. **Size:** M.
+### F2 — Explore drawer copy
+The paste-a-link drawer renders the refusal through the existing error state
+(no new pattern). **Verify:** RTL test; `ui:conformance --quick`. **Size:** S.
 
-### 2.1b — REST provenance + audit
-Task create/update routes: when the field is present, `assertOperatorDecision(approvalProvenanceFromRequest(req))` → 403 `{ code }`; audit `task.grant.added|removed` with provenance + source; exec tools' schemas exclude the field (test asserts).
-**Verify:** `bun test tests/plugins/tasks/routes-rest.test.ts tests/plugins/tasks/exec-tools.test.ts --isolate`. **Deps:** 2.1a. **Files:** `plugins/tasks/lib/routes*.ts`, tests. **Size:** S.
+### F3 — docs
+`skill-hub-interop.md` (what is refused and why). **Size:** XS.
 
-### 2.1c — tasks CLI
-`bakin tasks create … --allow=<class,…>`, `bakin tasks allow|disallow <id> <class>` (operator header via the shared http plumbing; agent context refused).
-**Verify:** `bun test tests/cli/tasks-grants.test.ts --isolate`. **Deps:** 2.1b. **Files:** `src/cli/commands/tasks.ts`, `src/cli/help.ts`, test. **Size:** S.
-
-### 2.2a — schedule job grants + routes
-`BakinJobMeta.grants?: { actions, setBy: ApprovalProvenance, revision }`; job create/update routes assert operator provenance when present; `bakin_exec_schedule_*` schemas exclude it (test).
-**Verify:** `bun test tests/plugins/schedule/routes-jobs.test.ts tests/plugins/schedule/exec-tools.test.ts --isolate`. **Deps:** 2.1b. **Files:** `plugins/schedule/{types.ts,lib/job-service.ts,lib/routes/jobs.ts}`, tests. **Size:** S.
-
-### 2.2b — inheritance + exempt block reason
-Fire engine copies `grants.actions` onto the created task with `inheritedFrom { jobId, revision, setBy }` (audit `schedule-inherit`); `AWAITING_APPROVAL_REASON` joins the triage-exempt reasons in failure tracking; edits affect future tasks only (test).
-**Verify:** `bun test tests/plugins/schedule/blocked-fire-routing.test.ts tests/plugins/schedule/scheduler.test.ts --isolate`. **Deps:** 2.2a, 2.4a. **Files:** `plugins/schedule/lib/fire-engine.ts`, tests. **Size:** S.
-
-### 2.2c — schedule CLI
-`bakin schedule create … --allow=<class,…>` and `bakin schedule allow|disallow <jobId> <class>` with `--as human`.
-**Verify:** `bun test tests/cli/schedule-grants.test.ts --isolate`. **Deps:** 2.2a. **Files:** `src/cli/commands/schedule.ts`, help, test. **Size:** S.
-
-### 2.4b — gate handler, subscriber, reconciliation, manual-move cancel
-`registerPluginGate('tasks','action')`: validate-only `onResolve` (409), `ownerState`; `approval.resolved` subscriber → `applyCommittedApproval` (status ∈ approved/rejected, current generation, blocked guard only from `pending`); boot reconciliation over `pending|applying`; human move out of blocked cancels the approval; delete/archive ⇒ orphaned.
-**Verify:** `bun test tests/plugins/tasks/approval-gate.test.ts --isolate` (approve / approve-all adds grant / reject / cancel ignored / superseded / crash-replay from `applying` / boot). **Deps:** 2.4a, 2.1a. **Files:** `approval-gate.ts`, `plugins/tasks/index.ts`, test. **Size:** M.
-
-### 2.5 — exec tools `request_approval` + `approval_outcome`
-Per spec §4.3 (caller rule via ledger live run → `no_task`; workflow refusal; standing auto-approve + log + audit; hash reuse; request with three options; block with exempt reason; `attempting → done|failed|unknown`, second `attempting` refused).
-**Verify:** `bun test tests/plugins/tasks/request-approval.test.ts tests/plugins/tasks/exec-tools.test.ts --isolate`. **Deps:** 2.4b. **Files:** `plugins/tasks/lib/exec-tools.ts`, `approval-gate.ts`, tests. **Size:** M.
-
-### 2.6a — dispatch resume: plumbing + main/triage
-`dispatch-prepare` loads the task's gate state; `buildDispatchMessage` renders the `approvals` section in the main and triage branches (grants, the one actionable request with full command / attempted-unknown verify-first wording, the rule); fixtures `main-agent.txt`, `triage*.txt` regenerated.
-**Verify:** `bun test tests/core/dispatch-prompts.test.ts tests/core/dispatch-prompt-fixtures.test.ts --isolate`. **Deps:** 2.4a. **Files:** `src/core/dispatch-prompts.ts`, `src/core/dispatch-prepare.ts`, fixtures, tests. **Size:** M.
-
-### 2.6b — dispatch resume: specialist/workflow + budget
-Same section in specialist and workflow branches; history summaries ≤ 1 KB with omission marker; budget test (command cap + 2 KB framing + 1 KB history); remaining fixtures regenerated.
-**Verify:** same files. **Deps:** 2.6a. **Size:** S.
-
-### 2.7a — UI: approve-all rendering + grants editor
-ApprovalPanel plugin-gate renderer: `approve-all` as secondary with the caption. Task detail editor: **the grants editor is a composition of `Input` (class entry, regex-validated, Enter adds) + `Badge` tokens each with a remove `Button`**, all `@makinbakin/sdk/ui` primitives inside the existing `Field` layout — decided now (no fitting pattern exists: `Combobox` multiple needs a fixed option list, and tasks' `tags` has no editor to reuse). The conformance skill runs first in build; if it asks for adjustments, the composition changes, the scope does not — both editors (task detail, job form) ship as the spec requires. A `CanonicalUsage` story is added only if the editor is promoted to the SDK; for now it stays plugin-local.
-**Verify:** `bun test tests/plugins/tasks/approval-panel.test.tsx tests/plugins/tasks/grants-editor.test.tsx --isolate`; `bun run ui:conformance --quick`. **Deps:** 2.1b, 2.4b. **Files:** `plugins/tasks/components/{approval-panel,task-detail-modes,grants-editor}.tsx`, tests. **Size:** M.
-
-### 2.7b — UI: job-form grants
-Reuse the grants editor in the schedule job form.
-**Verify:** `bun test tests/plugins/schedule/job-form.test.tsx --isolate`; conformance quick. **Deps:** 2.7a, 2.2a. **Size:** S.
-
-### 2.8a / 2.8b — docs
-2.8a: `approvals.md` (tasks `action` gate, post-commit application), `tasks-plugin.md` (tools, field, state machine), `dispatch.md` (resume section). 2.8b: `bakin-owned-scheduler.md` (grants inheritance, exempt reason), new `provider-integrations.md` (why, classes, follow-ups), CLAUDE.md pointer. **Size:** S each.
-
-### Checkpoint: PR2
-- [ ] Gate green incl. `ui:conformance --full`; ≥2 Codex rounds fixed.
-- [ ] Mark on 3737 (restarted on the branch): **W2** (gated Gmail reply, Discord card, `attempting`/`done`) and **W3** (gh triage, approve-all) pass; Bits PR marked ready.
+### Checkpoint: Fix
+- [ ] Gate green; ≥2 Codex rounds; Mark pastes the pi-google-services link on 3737 and sees the refusal.
 
 ---
 
-## Phase 3 — PR3: schedule chat target
+## Phase 2 — PR2: provider relay + approval gate
+
+### 2.1 — invocation context: type + Pi path
+`PluginToolContext.invocation` becomes `{ agentId, turn?: { kind: 'task',
+taskId, runId } | { kind: 'chat', chatId, turnId } }` (additive). `MessageArgs`
+gains `invocationTurn` set by dispatch (`threadId task:<id>:d<seq>`) and by the
+conversation turn engine; Pi's `tool-bridge.ts` passes it to every handler.
+**Verify:** `bun test tests/adapter-pi/tool-bridge.test.ts tests/core/dispatch*.test.ts tests/core/conversation-turns.test.ts --isolate`.
+**Files:** `packages/core/src/plugin-types.ts`, `packages/core/src/adapters/runtime/concepts.ts`, `packages/adapter-pi/src/{tool-bridge,messaging}.ts`, `src/core/dispatch*.ts`, `packages/core/src/conversation/turns.ts`, tests. **Size:** M.
+
+### 2.2 — MCP-side caller resolution
+`src/core/integrations/caller.ts`: for MCP calls (no turn on the transport),
+resolve the agent's live turns from the dispatch in-flight registry and the
+conversation engine; exactly one → that turn; none → `no_caller`; several →
+`ambiguous_caller`. **Verify:** `bun test tests/core/integrations/caller.test.ts --isolate`. **Size:** S.
+
+### 2.3 — raw-schema exec tools
+`ExecToolDefinition` gains a variant `{ inputSchema: JSONSchema, parameters?:
+never }`; `src/core/exec-tools/provider.ts` and `src/core/mcp-server.ts`
+declare it verbatim, validate only "is a JSON object", preserve unknown
+properties. Zod tools unchanged (arch test: every core/plugin tool still zod).
+**Verify:** `bun test tests/core/exec-tools/*.test.ts tests/core/mcp-server*.test.ts --isolate`. **Size:** M.
+
+### 2.4 — live registry
+Registry emits `added`/`removed`; `mcp-server.ts` keeps live sessions in sync
+(register/remove + `notifications/tools/list_changed`) instead of snapshotting
+at connect; a call to a removed relayed tool → `tool_removed`. **Verify:** a
+connected MCP client test sees a tool appear and disappear. **Size:** M.
+
+### 2.5 — manifest `mcpServers` + classify (pure)
+Zod schema per spec §4.2 (bin must be the pack's own; `token.prereq` declared;
+`tools` rows incl. `byArg`, `refuseUnless`, `expose: false`); install refuses
+`mcpServers` from non-official sources (typed). `src/core/integrations/classify.ts`:
+`classify(table, tool, args) → { class, action } | { refused: 'inexact_send' } | hidden`.
+**Verify:** `bun test tests/agent-packages/manifest.test.ts tests/core/integrations/classify.test.ts --isolate`. **Size:** M.
+
+### 2.6 — relay supervisor
+`src/core/integrations/relay.ts` with `@modelcontextprotocol/sdk` `Client` +
+`StdioClientTransport`: spawn the pinned bin with args/readonlyArgs, account
+flag from the login receipt, token from `token.command` per spawn (stdout
+never logged); 30 s request deadline; backoff 1 s → 60 s; `tools/list` on
+connect → register/unregister `bakin_exec_<id>_<tool>` (raw schema, class in
+the description, hidden rows skipped); states `token-unavailable` /
+`auth-rejected` / `start-failed` into capability readiness. Booted from
+`server.ts` after readiness, restarted on pack install/sync/remove — never in
+`createAppServices()`. **Verify:** `bun test tests/core/integrations/relay.test.ts --isolate` against a fake stdio MCP server fixture (`tests/fixtures/fake-mcp-server.ts`: read/private/external tools, call log, crash-on-demand). **Size:** L → split if it exceeds one session (supervisor / registration).
+
+### 2.7a — approvals: `integration-action` owner (core)
+`ApprovalOwner` union + zod schema + store list filter `chatIds`; the kind's
+`ownerState` (anchor live) and validate-only `onResolve`; rehydration skips
+nothing new. **Verify:** `bun test tests/core/approvals/*.test.ts --isolate`. **Size:** M.
+
+### 2.7b — approval consumers
+`plugins/tasks/hooks/use-task-approvals.ts`, `approvals-attention-provider.tsx`
+(chat-anchored events announce, link `/chat/$chatId`), Discord card links,
+OpenClaw two-option card + "Approve all is on the board". **Verify:** the
+touched tests + a new attention-provider chat case. **Size:** M.
+
+### 2.8 — `approvedActions` field + REST + CLI
+Rev 3 tasks 2.1a–2.1c, unchanged in substance: field on Task/inputs/store
+(null clears), creation funnel, `ctx.tasks` refuses it, REST asserts operator
+provenance + audit, exec-tool schemas exclude it, `bakin tasks create
+--allow` / `allow|disallow`. Action-class regex `<provider>.<verb>`.
+**Verify:** rev 3's test files. **Size:** M (three commits).
+
+### 2.9 — schedule grants + inheritance + exempt reason
+Rev 3 tasks 2.2a–2.2c (job `grants` with provenance, copied onto created tasks
+with `inheritedFrom`, `AWAITING_APPROVAL_REASON` exempt, schedule CLI).
+**Verify:** rev 3's test files. **Size:** M (three commits).
+
+### 2.10 — gate state machine (pure)
+`src/core/integrations/gate-state.ts`: sidecar per approval
+(`pending → applying → approved-unconsumed | rejected`; `attempting → done |
+failed | unknown`; `expired`), the match key (agent, scope, server, account,
+tool, argsHash), canonical JSON, expiry (24 h / anchor end), outcome mapping
+by class. **Verify:** `bun test tests/core/integrations/gate-state.test.ts --isolate`. **Size:** M.
+
+### 2.11 — gate wiring
+The relay's handler: classify → forward / refuse / match-and-consume
+(`attempting` written before forwarding) / standing grant auto-approval /
+create-or-reuse the pending card; tasks block with `AWAITING_APPROVAL_REASON`;
+returns `needs_approval`. **Verify:** `bun test tests/core/integrations/gate.test.ts --isolate` (the spec §8 matrix incl. concurrent double call, changed args, reassigned task, inexact send, external `isError` → unknown). **Size:** M.
+
+### 2.12 — apply-after-commit: task anchor + reconciliation
+`approval.resolved` subscriber + boot reconciliation over `pending`,
+`applying`, outcome-less `attempting` (→ `unknown`); task log, approve-all
+grant, blocked → todo, `triggerDispatch`; human move out of blocked cancels.
+**Verify:** `bun test tests/core/integrations/apply.test.ts --isolate` with crash injection before/after the provider call. **Size:** M.
+
+### 2.13 — chat anchor: follow-up turn
+Chat hook `chat.enqueueFollowUp({ chatId, admissionKey, message })`; the
+conversation queue persists `admissionKey` (second enqueue = no-op) and the
+transcript user row records it so a crashed drain cannot run it twice.
+**Verify:** `bun test tests/core/conversation-turns.test.ts tests/plugins/chat/follow-up.test.ts --isolate`. **Size:** M.
+
+### 2.14 — dispatch resume section
+`approvals` section in every dispatch branch (grants; approved → "make exactly
+this call again" with tool + args; pending → stop; unknown → verify first;
+history ≤ 1 KB with omission marker); fixtures regenerated. **Verify:** dispatch
+prompt tests + fixtures. **Size:** M.
+
+### 2.15 — UI
+Conformance skill first. ApprovalPanel renders `integration-action` (argument
+preview, approve-all caption); the same card inline in chat under the asking
+turn (conversation kit composition); the grants editor (rev 3's
+Input + Badge composition) in task detail and the job form.
+**Verify:** RTL tests; `ui:conformance --quick`. **Size:** M (two commits).
+
+### 2.16 — `settings.integrations.privateNeedsApproval`
+Settings schema + System & Alerts row; gate honors it. **Size:** S.
+
+### 2.17 — OpenClaw rig check (manual, recorded)
+`bun run instance up --runtime openclaw --mode isolated`: a relayed tool appears
+to the OpenClaw agent through Bakin's MCP server, a gated call is refused with
+a card, `ambiguous_caller` when a chat and a task overlap. Evidence in the PR.
+
+### 2.18 — gog no-retry fix (draft only)
+Patch for gogcli's retry transport (no retry for non-idempotent methods) +
+test, kept in the scratchpad; opened upstream only on Mark's go. Also check
+github-mcp-server's retry behaviour; record findings in the pack README.
+
+### 2.19 — docs
+New `.claude/knowledge/provider-integrations.md` (relay, classes, gate,
+states, risks); `approvals.md` (owner kind, chat anchor), `capability-packs.md`
+(`mcpServers`, server states), `tasks-plugin.md` (grants), `chat-plugin.md`
+(follow-up turns, admission key), `dispatch.md`, `bakin-owned-scheduler.md`;
+CLAUDE.md pointer; `docs/…/packages.md` (`mcpServers`). **Size:** M (two commits).
+
+### Checkpoint: PR2
+- [ ] Gate green incl. `ui:conformance --full`; ≥2 Codex rounds fixed.
+- [ ] Mark on 3737 (restarted on the branch, Bits branch installed): W1 via the relay, W2, W3, W4.
+
+---
+
+## Phase B — Bits #143 rework
+
+### B1 — google-workspace 2.0.0
+`mcpServers[google]` per spec §4.2 with the class table; login leg adds
+`--client bakin` (setup stays the terminal command until PR4); drop the
+vendored CLI references + `scripts/vendor-gog-skills.ts`. **Size:** M.
+
+### B2 — github 2.0.0
+`github-mcp-server` v2.1.0 pinned bin (four platforms, tarball + member sha256
+from the release checksums), `mcpServers[github]` with the class table and
+`token` from `gh auth token`. **Size:** M.
+
+### B3 — tools/list fixtures + contract test
+Captured `tools/list` JSON for both pinned servers; contract: every listed
+tool has a row, no `read` row on a write-annotated tool, `bin` is the pack's
+own, `token.prereq` declared. **Size:** S.
+
+### B4 — skills
+One relay skill per pack (spec §4.2 "Skills"); ≤ 6 KB each; `bakin agents
+context` before/after recorded. **Size:** S.
+
+### B5 — READMEs
+Google: Connect (PR4) with the terminal fallback; the gog 5xx retry risk.
+GitHub: `gh auth login`, account note. **Size:** S.
+
+---
+
+## Phase 3 — PR3: schedule chat target (rev 3 tasks, unchanged; acceptance is now W5, and a scheduled chat's external calls use the chat card from PR2)
 
 ### 3.2 — ledger: target, chat columns, `starting`, retention
 Migration vN as a **transactional table rebuild** (the `disposition` CHECK excludes new values): create `cron_fires_v2` with `target TEXT NOT NULL DEFAULT 'task'`, `chat_id`, `turn_id`, CHECK including `'starting'`; copy rows (incl. `skip_reason`); drop; rename; re-create indexes. `pruneCronFires` deletes only `disposition NOT IN ('pending','starting')`. Verbs: `claimCronFire(…, target)`, `markCronFireStarting`, `attachCronChatTurn`; `findHealableCronClaims` returns `pending` and `starting`; `CronFireRow` typed.
@@ -273,23 +377,70 @@ Lift the `not_yet_supported` refusal; job form target switch hides task-only fie
 
 ---
 
+---
+
+## Phase 4 — PR4: Bakin Google client + Connect
+
+Prerequisite (Mark): the "Bakin" Google Cloud project, External consent
+screen, Desktop OAuth client, test users added while unverified. Tasks 4.1–4.4
+build against a placeholder client id until the real one exists.
+
+### 4.1 — client constants + gog registration
+`packages/core/src/integrations/google-client.ts` (id + secret + the pinned
+scope flags); idempotent `gog auth credentials` registration as client `bakin`
+at pack install/sync (compared by client id). Verify the exact gog command on
+the pinned build first. **Size:** S.
+
+### 4.2 — persisted account selection
+Pack state `accountSelection`; `login-verify.ts` prefers it over
+`process.env[accountEnv]` and includes it in the receipt invalidation key;
+the relay spawns on it. **Verify:** two stored accounts, selection wins,
+survives restart, change invalidates. **Size:** S.
+
+### 4.3 — Connect API
+`POST /api/integrations/google/connect { email, access }` (declared operator,
+agent contexts refused) → step 1 with frozen flags, returns URL + `attemptId`,
+records gog's `state` and expiry, one attempt at a time; `POST
+…/connect/:attemptId { url }` → state check → step 2 `--auth-url` → selection
+→ login check → relay respawn. Pasted URLs never logged. **Size:** M.
+
+### 4.4 — Connect dialog
+ConfirmDialog-hosted flow in Explore's installed card and the runtime hub
+Capabilities tab: email, access (Full default / Read-only), the "last page
+will fail to load" explanation, open-in-new-tab, paste field, outcome.
+Conformance skill first. **Size:** M.
+
+### 4.5 — Bits: setup = Connect
+google-workspace login `setup` points at the Connect action; README. **Size:** XS.
+
+### 4.6 — docs
+`provider-integrations.md` (client, verification track), `capability-packs.md`. **Size:** S.
+
+### Checkpoint: PR4
+- [ ] Gate incl. `--full`; ≥2 Codex rounds; Mark runs W6 on a fresh home.
+
 ## Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| gog OAuth setup friction blocks W1 | Med | README + remediation name every step; `gog auth setup --dry-run` first |
-| Agents bypass `request_approval` | Med (policy) | skill + resume section repeat the contract; W2/W3 observe; `--readonly` reads |
-| Grants editor composition needs rework under conformance | Low | adjust the composition (primitives only); scope unchanged |
-| Turn engine `turn` option regresses interactive chat | Low | option absent ⇒ behaviour byte-identical; `conversation-turns.test.ts` pins both paths |
-| Ledger rebuild on margo's db | Med | migration test from a v(N-1) fixture incl. rows; backup `bakin.db` before upgrade (release note) |
-| Rollback after state is written | Med | the quiescence table above; downgrade tests in 3.2 |
+| gog retries a send on Google 5xx | Low (rare duplicate email) | stated risk; upstream fix drafted (2.18); repin |
+| MCP-side caller ambiguity on OpenClaw (chat + task overlap) | Med | `ambiguous_caller` refusal, never a guess; OpenClaw serializes same-agent dispatch |
+| gog MCP lacks calendar writes / Drive upload / Docs create | Med (scope) | ship as gaps; upstream later (D16) |
+| Exec-tool contract change ripples to plugins | Med | additive variant; arch test keeps every non-relayed tool zod |
+| Agents ignore `needs_approval` and keep calling | Low | same refusal every time, one card per key; skill + resume repeat the rule |
+| Google verification takes weeks | Med | unverified mode (warning + 100 users) works meanwhile; W6 does not need verification |
+| Rollback after state is written | Med | quiescence table; downgrade test in PR2 |
 | Codex rounds change a decision | Med | amend the spec first, then the plan, then code |
 
 ## Open questions
-None blocking. The grants editor composition is confirmed with the conformance skill at 2.7a.
+None blocking. Decided in build: the grants editor composition (conformance
+skill, 2.15); the gog credentials command (4.1).
 
 ## Todo
-- [x] B1 · [x] B2a · [x] B2b · [x] B3 · [x] B4 · [x] B5 · [x] B6 (bakin ranges) · [ ] Bits checkpoint
-- [x] 1.1 · [x] 1.2 · [x] 1.3 · [x] 1.4a · [x] 1.4b · [x] 1.4c · [x] 1.5a · [x] 1.5b · [x] 1.5c · [x] 1.6 · [x] PR1 gate · [x] Codex ×2 · [ ] W1 (Mark)
-- [ ] 2.3 · [ ] 2.4a · [ ] 2.1a · [ ] 2.1b · [ ] 2.1c · [ ] 2.2a · [ ] 2.2b · [ ] 2.2c · [ ] 2.4b · [ ] 2.5 · [ ] 2.6a · [ ] 2.6b · [ ] 2.7a · [ ] 2.7b · [ ] 2.8a · [ ] 2.8b · [ ] PR2 gate · [ ] Codex ×2 · [ ] W2+W3 (Mark)
-- [ ] 3.2 · [ ] 3.1a · [ ] 3.1b · [ ] 3.1c · [ ] 3.3a · [ ] 3.3b · [ ] 3.4a · [ ] 3.4b · [ ] 3.4c · [ ] 3.4d · [ ] 3.4e · [ ] 3.5 · [ ] 3.6 · [ ] PR3 gate · [ ] Codex ×2 · [ ] W4 (Mark)
+- [x] Bits B1–B6 (rev 3, CLI packs) · [x] 1.1–1.6 · [x] PR1 gate · [x] Codex ×2 · [ ] W1 (Mark)
+- [ ] F1 · [ ] F2 · [ ] F3 · [ ] Fix gate · [ ] Codex ×2 · [ ] Mark check
+- [ ] 2.1 · [ ] 2.2 · [ ] 2.3 · [ ] 2.4 · [ ] 2.5 · [ ] 2.6 · [ ] 2.7a · [ ] 2.7b · [ ] 2.8 · [ ] 2.9 · [ ] 2.10 · [ ] 2.11 · [ ] 2.12 · [ ] 2.13 · [ ] 2.14 · [ ] 2.15 · [ ] 2.16 · [ ] 2.17 · [ ] 2.18 · [ ] 2.19 · [ ] PR2 gate · [ ] Codex ×2 · [ ] W1/W2/W3/W4 (Mark)
+- [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (rev 4 rework)
+- [ ] 3.2 · [ ] 3.1a · [ ] 3.1b · [ ] 3.1c · [ ] 3.3a · [ ] 3.3b · [ ] 3.4a · [ ] 3.4b · [ ] 3.4c · [ ] 3.4d · [ ] 3.4e · [ ] 3.5 · [ ] 3.6 · [ ] PR3 gate · [ ] Codex ×2 · [ ] W5 (Mark)
+- [ ] Mark: Google Cloud project · [ ] 4.1 · [ ] 4.2 · [ ] 4.3 · [ ] 4.4 · [ ] 4.5 · [ ] 4.6 · [ ] PR4 gate · [ ] Codex ×2 · [ ] W6 (Mark)
+
