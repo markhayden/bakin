@@ -218,7 +218,7 @@ mcpServers: [{
 ```
 
 `tools` maps every exposed tool to `{ class: 'read' | 'private' | 'external',
-action?: '<provider>.<verb>' }` or `{ byArg: '<arg>', cases: { <value>:
+action?: '<provider>.<verb>', refuseUnless?: <argument predicate> }` or `{ byArg: '<arg>', cases: { <value>:
 {class, action} }, default: {class:'external', action} }`. A tool the server
 lists that the table lacks is exposed as `external` with action
 `<id>.other`; a row `{ expose: false }` hides a tool entirely. Contract-tested in Bits: every tool the pinned server lists
@@ -235,7 +235,7 @@ until PR4 ships the terminal command). Class table:
 | gmail_search, gmail_get_message, gmail_get_thread, gmail_list_drafts, gmail_get_draft, gmail_list_labels, calendar_events, drive_search, drive_get, docs_get, sheets_read_range | read | — |
 | gmail_create_draft, gmail_update_draft, gmail_create_label, gmail_mark_read, gmail_mark_unread, gmail_archive_messages | private | — |
 | gmail_modify_messages, gmail_modify_thread | byArg on added labels: `TRASH`/`SPAM` → external `gmail.delete`; otherwise private | — |
-| gmail_send_message | external | `gmail.send` |
+| gmail_send_message | external, **exact-message rule**: refused `inexact_send` (no card) unless `to` is explicit and `reply_all`/`quote` are absent or false — gog resolves those from the live thread at send time, so the approved arguments would not fix the recipients or quoted text; `thread_id` only threads | `gmail.send` |
 | gmail_send_draft | **not exposed** — a draft id does not bind its content (drafts update without a card), so sends always carry the full message | — |
 | gmail_trash_messages, gmail_restore_messages | external | `gmail.delete` |
 | docs_write | external | `docs.write` |
@@ -307,17 +307,18 @@ description. PR2 extends the exec-tool contract in three ways:
 1. Classify from the table (with `byArg`). `read` → forward. `private` →
    forward unless `settings.integrations.privateNeedsApproval` is true.
 2. `external`: `argsHash = sha256(canonicalJSON(args))`. Look for an
-   **approved-unconsumed** approval with the same scope (the task, or the
-   chat — never a turn, since the follow-up is a new turn), server, account,
-   tool and `argsHash`, not expired. Found → compare-and-set
+   **approved-unconsumed** approval with the same calling agent, scope (the
+   task, or the chat — never a turn, since the follow-up is a new turn),
+   server, account, tool and `argsHash`, not expired. A reassigned task's
+   approvals do not transfer to the new agent. Found → compare-and-set
    it to `attempting` (durable, with the attempt time) BEFORE forwarding,
    then forward. Task standing
    grant for `action` → auto-approval record (audited
    `integration.approval.standing`), consumed the same way.
 3. Otherwise create — or return the existing pending one for the same key —
-   an approval with owner `{ kind: 'integration-action', taskId?: string,
-   chatId?: string, originTurnId?: string, serverId, account, tool, action,
-   argsHash }` (exactly one of `taskId`/`chatId`; `originTurnId` is
+   an approval with owner `{ kind: 'integration-action', agentId,
+   taskId?: string, chatId?: string, originTurnId?: string, serverId,
+   account, tool, action, argsHash }` (exactly one of `taskId`/`chatId`; `originTurnId` is
    provenance only); title `${agent} wants to ${action}`; body = the
    arguments rendered as escaped plain text (recipients, subject, body, repo,
    number); options `approve`, `approve-all` (tasks only), `reject`. Return
@@ -486,17 +487,27 @@ pins the exact gog `--services`/`--gmail-scope`/`--drive-scope` values).
 
 **Connect flow** (Explore's installed card and the runtime hub's
 Capabilities tab, one ConfirmDialog-hosted flow):
-1. The dialog explains, BEFORE opening Google: "Google's last page will fail
+1. The dialog asks for the Google account email first (gog requires it and
+   rejects a consent for a different identity), then explains, BEFORE
+   opening Google: "Google's last page will fail
    to load — that is expected. Copy its full address and paste it here." Access
    choice: **Full** (default) or **Read-only** (sets the pack's scope profile →
    `readonlyArgs` + gog's read-only scopes).
-2. `POST /api/integrations/google/connect` runs `gog auth add --client bakin
-   --remote --step 1 …` and returns the consent URL; the attempt is bound to
-   the requesting session and expires in 10 min.
+2. `POST /api/integrations/google/connect { email, access }` (declared
+   operator provenance; agent contexts refused, #898) runs `gog auth add
+   <email> --client bakin --remote --step 1` with the scope flags frozen for
+   the attempt, and returns the consent URL plus an unguessable `attemptId`.
+   ONE attempt at a time: a new attempt cancels the previous (gog reuses its
+   pending state per client + scopes, so concurrent attempts would share it).
+   The attempt records gog's `state` value and inherits gog's own state
+   expiry, shown in the dialog. Single-user Bakin has no browser sessions to
+   bind to; the attempt id is a single-use secret held only by the dialog.
 3. Browser opens the URL in a new tab; the user consents; the redirect to
    127.0.0.1 fails; the user pastes the address.
-4. `POST /api/integrations/google/connect/:attemptId` runs step 2 with the
-   pasted URL (never logged), then the login check; the leg turns ready and
+4. `POST /api/integrations/google/connect/:attemptId` checks the pasted
+   URL's `state` equals the attempt's, then runs step 2 with the same email
+   and flags and `--auth-url <pasted>` (never logged); the attempt is
+   consumed; then the login check; the leg turns ready and
    the relay (re)spawns.
 The terminal command stays in the card as the fallback. Plan verifies gog's
 step-1/step-2 state handling on the pinned build before relying on it.
