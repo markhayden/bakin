@@ -1,7 +1,7 @@
 import { ArrowUpRight, Check, Image as ImageIcon } from 'lucide-react'
 import { CodeBlock } from '@makinbakin/sdk/content'
 import { Grid } from '@makinbakin/sdk/layout'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { Drawer, DrawerSection, Text } from '@makinbakin/sdk/ui'
 import { KeyValue, ListRow, ListRows, StatusBadge } from '@makinbakin/sdk/patterns'
 import { EntryVisual } from './catalog-entry'
@@ -131,7 +131,7 @@ export function DetailDrawer({
 
         {entry.updateAvailable === true && entry.kind === 'agent' && (
           <PluginLink
-            to={`/team/${entry.id}`}
+            to={entityHref('team:agent', entry.id) ?? '/team'}
             className="inline-flex items-center gap-bakin-1 text-bakin-action-primary-background hover:underline"
           >
             Update available — manage in Team <ArrowUpRight aria-hidden="true" className="size-bakin-4" />

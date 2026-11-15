@@ -13,6 +13,8 @@ export type { PluginLinkProps } from './plugin-link'
 
 /** The in-app href for an entity, resolved from its declared kind. */
 export { entityHref } from './entities'
+/** Route parameters and extra query parameters for an entity link. */
+export type { EntityHrefOptions } from './entities'
 
 /** Browser router hooks and plain-string URL conversion. */
 export {

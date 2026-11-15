@@ -54,12 +54,24 @@ Core kinds (pinned by `tests/plugins/core-entity-declarations.test.ts`):
 
 ## Resolving a link
 
-`entityHref(kind, id, params?)` — `@makinbakin/sdk/navigation` in the browser,
-`@bakin/core/plugins/entity-registry` on the server. Both fill the declared
-template through the one pure function `fillEntityHref`
-(`packages/core/src/plugins/entity-href.ts`). The result is `null` when the
-kind is not declared by a loaded plugin or a placeholder has no value: render
-no link. Never build an entity URL by hand.
+`entityHref(kind, id, { params?, query? })` — `@makinbakin/sdk/navigation` in
+the browser, `@bakin/core/plugins/entity-registry` on the server. Both build
+the link through the one pure function `buildEntityHref`
+(`packages/core/src/plugins/entity-href.ts`): `params` fills a compound
+route's other placeholders, `query` appends page state
+(`{ tab: 'diagnostics' }`, `{ recover: '1' }`) whether or not the template
+already has a query string. The result is `null` when the kind is not
+declared by a loaded plugin or a placeholder has no value: fall back to the
+list page or render no link.
+
+Every link to an entity in `bakin` goes through it — pages, health incident
+resolutions, scheduled events, search hit renderers, API responses. Writing
+one by hand fails `tests/architecture/no-literal-entity-href.test.ts`, which
+derives the banned prefixes from the manifests (a route that continues past
+the id, such as `/workflows/${id}/edit`, is a different route and is
+allowed); `eslint.config.mjs` mirrors it. Tests resolve the core kinds
+because the preload `tests/setup-entities.ts` seeds both registries from the
+core manifests.
 
 ## Reporting from a tool
 

@@ -19,7 +19,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { CalendarClock, CheckSquare, ChevronRight, FolderKanban, MessageSquare, Users, type LucideIcon } from 'lucide-react'
 import { Composer } from '@makinbakin/sdk/conversation'
 import { handoffReturnChannel, toast, useAgentList, useHandoffReturn, useHostStore, usePluginEvent, usePluginJsonFetch, useTerminalHandoff } from '@makinbakin/sdk/hooks'
-import { PluginLink, useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { PluginLink, useQueryState, useRouter, entityHref } from '@makinbakin/sdk/navigation'
 import { HandoffCard, ListRow, ListRowActions, ListRows, Page, PageBody, PageHeader } from '@makinbakin/sdk/patterns'
 import { Avatar, AvatarFallback, AvatarImage, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Overline, ShimmerText, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
@@ -219,7 +219,7 @@ function ReadyView({ agent, person, starters, suggestions, onSuggestionsChanged,
       if (!result.sent) toast("Message didn't send. Your text is waiting in the composer.", 'error')
       // The first thing asked, typed or picked from a card, ends the first day: Home greets a returning person from then on.
       if (firstDay) await recordFirstRequest()
-      router.push(`/chat/${encodeURIComponent(result.chatId)}`)
+      router.push(entityHref('chat:chat', result.chatId) ?? '/chat')
       return true
     } finally {
       inFlight.current = false

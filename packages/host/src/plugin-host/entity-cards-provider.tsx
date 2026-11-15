@@ -25,7 +25,7 @@ export function EntityCardsProvider({ children }: { children: ReactNode }) {
       const declaration = getEntityDeclaration(ref.kind)
       // An undeclared kind (its plugin is gone) renders as plain content.
       if (!declaration) return null
-      const href = entityHref(ref.kind, ref.id, ref.params)
+      const href = entityHref(ref.kind, ref.id, { params: ref.params })
       return {
         label: declaration.label,
         icon: <NavIcon name={declaration.icon} />,

@@ -18,6 +18,7 @@ import { healthHealthy, healthObserved, healthWarning } from '@makinbakin/sdk/ut
 import { scanBrandIntegrity } from './integrity'
 import { getBrand, listBrands } from './store'
 import { collectBrandUsage } from './usage'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 
 /** brands.integrity families (re-homing rows 189–190): broken references are the operator's decision on the recover page; stale drafts are an observation. */
 export const BRANDS_INTEGRITY_INCIDENTS: HealthIncidentDeclaration[] = [
@@ -96,7 +97,7 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
           ? 'No open task uses this brand right now; branded work would render with missing brand assets.'
           : `Whether an open task uses this brand could not be determined (${usageGap}); branded work would render with missing brand assets.`,
       required: tasks.length > 0,
-      href: `/brands/${encodeURIComponent(finding.brandId)}?recover=1`,
+      href: entityHref('brands:brand', finding.brandId, { query: { recover: '1' } }) ?? '/brands',
       tasks,
       evidence: { refs: finding.dangling.map((ref) => ({ assetId: ref.assetId, where: ref.where })), openTasks: tasks, usageKnown: tasksKnown },
     }))
@@ -117,7 +118,7 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
           ? 'No open task uses this brand right now; it cannot be edited or injected until the manifest reads again.'
           : `Whether an open task uses this brand could not be determined (${usageGap}); it cannot be edited or injected until the manifest reads again.`,
       required: tasks.length > 0,
-      href: `/brands/${encodeURIComponent(entry.id)}?recover=1`,
+      href: entityHref('brands:brand', entry.id, { query: { recover: '1' } }) ?? '/brands',
       tasks,
       evidence: { error: entry.error.slice(0, 500), openTasks: tasks, usageKnown: tasksKnown },
     }))
@@ -132,8 +133,8 @@ export async function checkBrandsIntegrity(ctx: PluginContext): Promise<HealthCh
     const read = brandId.startsWith('project:') ? null : getBrand(brandId)
     const draft = read?.status === 'ok' && read.manifest.draft === true
     const href = draft
-      ? `/brands/${encodeURIComponent(brandId)}`
-      : `/tasks?taskId=${encodeURIComponent(tasks[0]!)}&field=brand`
+      ? entityHref('brands:brand', brandId) ?? '/brands'
+      : entityHref('tasks:task', tasks[0]!, { query: { field: 'brand' } }) ?? '/tasks'
     observations.push(brandIncident({
       key: `ghost-${stablePart(brandId)}`,
       brandId,

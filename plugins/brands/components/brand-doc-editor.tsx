@@ -14,6 +14,7 @@ import {
   useRouter,
   useSearchParams,
   useUnsavedChangesGuard,
+  entityHref,
 } from '@makinbakin/sdk/navigation'
 import {
   Page,
@@ -115,7 +116,7 @@ function BrandDocEditorInner({ brandId, kind, name }: { brandId: string; kind: s
   }, [load])
 
   const backToDocs = useCallback(
-    () => router.push(`/brands/${encodeURIComponent(brandId)}?tab=${encodeURIComponent(kind)}`),
+    () => router.push(entityHref('brands:brand', brandId, { query: { tab: kind } }) ?? '/brands'),
     [router, brandId, kind],
   )
 

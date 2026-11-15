@@ -8,6 +8,7 @@
 import type { ScheduledDomainEvent, ScheduledEventsQuery, ScheduledEventReschedule, ScheduledEventRescheduleResult } from '@makinbakin/sdk'
 import { readTaskboard, updateTask } from '../../../src/core/task-store'
 import type { Task, ColumnId } from '../types'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 
 /** Columns whose tasks still have a future — done/archived contribute nothing. */
 const LIVE_COLUMNS: ColumnId[] = ['backlog', 'todo', 'inProgress', 'review', 'blocked']
@@ -46,7 +47,7 @@ export async function listScheduledTaskEvents(query: ScheduledEventsQuery): Prom
         startsAt: new Date(Date.parse(task.availableAt!)).toISOString(),
         kind: 'task-scheduled',
         status: 'waiting',
-        url: `/tasks?taskId=${task.id}`,
+        url: entityHref('tasks:task', task.id) ?? '/tasks',
         reschedulable: true,
         ...(task.agent ? { metadata: { agent: task.agent } } : {}),
       })
@@ -58,7 +59,7 @@ export async function listScheduledTaskEvents(query: ScheduledEventsQuery): Prom
         title: task.title,
         dueAt: new Date(Date.parse(task.dueAt!)).toISOString(),
         kind: 'task-due',
-        url: `/tasks?taskId=${task.id}`,
+        url: entityHref('tasks:task', task.id) ?? '/tasks',
         reschedulable: true,
         ...(task.agent ? { metadata: { agent: task.agent } } : {}),
       })

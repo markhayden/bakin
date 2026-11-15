@@ -23,6 +23,7 @@ import {
 import { healthError, healthHealthy, healthObserved, healthUnknown, healthWarning } from '@makinbakin/sdk/utils'
 import type { HealthCheckRunInput, HealthIncidentDeclaration, HealthObservationInput } from '@makinbakin/sdk'
 import { stableKeyPart } from './key'
+import { entityHref } from '@bakin/core/plugins/entity-registry'
 
 /** Row 44: an unreachable usage ledger is the fallback lane's; row 50: a running runaway is the operator's decision (Pause agent dispatch on the diagnostics tab); every other row is an observation. */
 export const AGENT_BURN_INCIDENTS: HealthIncidentDeclaration[] = [
@@ -213,7 +214,7 @@ export async function checkAgentBurnWith(
     const agentLabel = report.agent.slice(0, 120)
     const keyPart = stableKeyPart(report.agent)
     const agentResource = { kind: 'agent' as const, id: keyPart, label: agentLabel }
-    const diagnosticsHref = `/team/${encodeURIComponent(report.agent.slice(0, 1_000))}?tab=diagnostics`
+    const diagnosticsHref = entityHref('team:agent', report.agent.slice(0, 1_000), { query: { tab: 'diagnostics' } }) ?? '/team'
     const legacyFlags: BurnFlag[] = []
     for (const flag of report.flags) {
       if (flag.kind === 'interactive') {

@@ -13,6 +13,7 @@ import { pluginFetch } from '@makinbakin/sdk/utils'
 
 import { visibleChatIdFromLocation } from './attention'
 import type { ChatSummaryDto } from './use-chat-data'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 interface ChatAttentionSettings {
   sound: boolean
@@ -64,7 +65,7 @@ export function ChatBadgeProvider() {
         agentId={done.agentId}
         title="replied"
         preview={done.preview}
-        to={`/chat/${encodeURIComponent(done.key)}`}
+        to={entityHref('chat:chat', done.key) ?? '/chat'}
         onNavigate={dismiss}
         testId={{ attr: 'data-chat-toast', value: done.key }}
       />
@@ -72,7 +73,7 @@ export function ChatBadgeProvider() {
     osNotification: (done) => ({
       title: `${done.agentId} replied`,
       body: done.preview ?? '',
-      href: `/chat/${encodeURIComponent(done.key)}`,
+      href: entityHref('chat:chat', done.key) ?? '/chat',
     }),
     errorToast: (payload) => `Chat reply failed: ${String(payload.message ?? 'unknown error')}`,
     titlePrefix: true,

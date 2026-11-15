@@ -252,10 +252,10 @@ that creates a task, an asset and a scheduled job shows three working cards. Cri
 
 ### Phase 4 — Link migration (bakin) → PR 4
 
-- [ ] **T9: Browser-side links** — Home activity, health incident row, brands, approvals
+- [x] **T9: Browser-side links** — Home activity, health incident row, brands, approvals
   attention. One commit per area. Size: M.
-- [ ] **T10: Search hit renderers** resolve through the registry. Size: S.
-- [ ] **T11: Server-side links and the architecture test** — scheduled events, health
+- [x] **T10: Search hit renderers** resolve through the registry. Size: S.
+- [x] **T11: Server-side links and the architecture test** — scheduled events, health
   checks, `HealthResource` kinds; `tests/architecture/no-literal-entity-href.test.ts` plus
   the mirrored ESLint rule. Verify: test fails when a literal is reintroduced. Size: M.
 - `url-state-deep-linking.md` updated here (incl. removing `/projects/[id]/edit`).

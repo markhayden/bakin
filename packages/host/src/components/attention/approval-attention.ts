@@ -8,6 +8,7 @@
  * here is gated on runtime capabilities. The durable record stays the
  * authority — this is attention, not approval state.
  */
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 export interface ApprovalPendingPayload {
   approvalId: string
@@ -18,7 +19,7 @@ export interface ApprovalPendingPayload {
 
 /** Every approval is decided on its task's detail — deep-link there (spec D7). */
 export function approvalUrl(payload: Pick<ApprovalPendingPayload, 'taskId'>): string {
-  return `/tasks?taskId=${encodeURIComponent(payload.taskId)}`
+  return entityHref('tasks:task', payload.taskId) ?? '/tasks'
 }
 
 /** Already looking at that task: the approval panel is on screen, no fanfare. */

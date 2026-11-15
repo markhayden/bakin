@@ -8,6 +8,7 @@ import { BrandsPage } from './components/brands-page'
 import { BrandDetailPage } from './components/brand-detail-page'
 import { BrandDocEditorPage } from './components/brand-doc-editor'
 import { TaskBrandPanel } from './components/task-brand-panel'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   id: 'brands',
@@ -16,13 +17,13 @@ registerPlugin({
       brands: (hit) => ({
         title: String(hit.fields.title ?? hit.id),
         subtitle: String(hit.fields.description ?? '').trim() || `brand doc: ${hit.fields.doc ?? ''}`,
-        href: `/brands/${encodeURIComponent(String(hit.fields.brand_id ?? ''))}`,
+        href: entityHref('brands:brand', String(hit.fields.brand_id ?? '')) ?? '/brands',
         icon: 'paintbrush',
       }),
       'brand-lessons': (hit) => ({
         title: String(hit.fields.title ?? hit.id),
         subtitle: `brand lesson · ${hit.fields.brand_id ?? ''}`,
-        href: `/brands/${encodeURIComponent(String(hit.fields.brand_id ?? ''))}`,
+        href: entityHref('brands:brand', String(hit.fields.brand_id ?? '')) ?? '/brands',
         icon: 'paintbrush',
       }),
     },

@@ -3,7 +3,7 @@
  * the palette as its base edge, then name/status/completeness/meta. The
  * brand's OWN colors are the only strong color — chrome stays neutral.
  */
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { StatusBadge } from '@makinbakin/sdk/patterns'
 import { Avatar, AvatarFallback, Card, CardAction, CardContent, CardHeader, CardMedia, CardTitle, Text } from '@makinbakin/sdk/ui'
 import { Progress, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@makinbakin/sdk/ui'
@@ -56,7 +56,7 @@ export function BrandCoverCard({ brand }: { brand: ListedBrand }) {
       className="h-full"
       interactive={{
         label: `Open ${brand.name}`,
-        render: <PluginLink to={`/brands/${encodeURIComponent(brand.id)}`} />,
+        render: <PluginLink to={entityHref('brands:brand', brand.id) ?? '/brands'} />,
       }}
       data-brand-card={brand.id}
     >

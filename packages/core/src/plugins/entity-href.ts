@@ -24,3 +24,22 @@ export function fillEntityHref(
   })
   return missing ? null : href
 }
+
+/** How to address one entity: placeholder values and extra query parameters. */
+export interface EntityHrefOptions {
+  /** Values for a compound route's placeholders other than `{id}`. */
+  params?: Readonly<Record<string, string>>
+  /** Extra query parameters for the page (`{ tab: 'diagnostics' }`), appended URL-encoded. */
+  query?: Readonly<Record<string, string>>
+}
+
+/** Fill a template and append `query`, whether or not the template already has a query string. */
+export function buildEntityHref(template: string, id: string, options: EntityHrefOptions = {}): string | null {
+  const href = fillEntityHref(template, id, options.params)
+  if (href === null) return null
+  const extra = Object.entries(options.query ?? {})
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&')
+  if (!extra) return href
+  return `${href}${href.includes('?') ? '&' : '?'}${extra}`
+}

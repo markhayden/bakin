@@ -31,6 +31,7 @@ import {
   listNodeRendererKinds,
   unregisterPluginDefinitions,
 } from './lib/node-renderer-registry'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   search: {
@@ -41,7 +42,7 @@ registerPlugin({
         return {
           title: String(hit.fields.name ?? hit.fields.title ?? bare),
           subtitle: isInstance ? 'workflow run' : 'workflow',
-          href: isInstance ? `/tasks?taskId=${encodeURIComponent(bare)}` : `/workflows/${encodeURIComponent(bare)}`,
+          href: (isInstance ? entityHref('tasks:task', bare) : entityHref('workflows:workflow', bare)) ?? '/workflows',
           icon: 'workflow',
         }
       },

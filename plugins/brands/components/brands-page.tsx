@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Grid } from '@makinbakin/sdk/layout'
-import { useQueryState, useRouter } from '@makinbakin/sdk/navigation'
+import { useQueryState, useRouter, entityHref } from '@makinbakin/sdk/navigation'
 import { Page, PageBody, PageHeader, SearchInput } from '@makinbakin/sdk/patterns'
 import { Badge, Banner, Button, Skeleton, SystemState } from '@makinbakin/sdk/ui'
 import { pluginFetch } from '@makinbakin/sdk/utils'
@@ -33,7 +33,7 @@ export function BrandsPage() {
   // showing the list.
   useEffect(() => {
     const legacy = new URLSearchParams(window.location.search).get('brand')
-    if (legacy) router.replace(`/brands/${encodeURIComponent(legacy)}`)
+    if (legacy) router.replace(entityHref('brands:brand', legacy) ?? '/brands')
   }, [router])
 
   const refresh = useCallback(async () => {
@@ -74,8 +74,7 @@ export function BrandsPage() {
     (brandId: string, taskId?: string) => {
       // Straight to the new brand (the drafting banner links the dispatched
       // task); the list refetches on its own next mount — no refresh here.
-      const path = `/brands/${encodeURIComponent(brandId)}`
-      router.push(taskId ? `${path}?draftTask=${encodeURIComponent(taskId)}` : path)
+      router.push(entityHref('brands:brand', brandId, taskId ? { query: { draftTask: taskId } } : undefined) ?? '/brands')
     },
     [router],
   )

@@ -4,7 +4,7 @@ import { useId, useState } from 'react'
 import type { HealthDecisionChoice, HealthIncident } from '@makinbakin/sdk/types'
 import { useTerminalHandoff } from '@makinbakin/sdk/hooks'
 import { Panel } from '@makinbakin/sdk/layout'
-import { PluginLink } from '@makinbakin/sdk/navigation'
+import { PluginLink, entityHref } from '@makinbakin/sdk/navigation'
 import { ConfirmDialog, HandoffCard, ListRow, StatusBadge, type StatusTone } from '@makinbakin/sdk/patterns'
 import { Button, Popover, PopoverContent, PopoverTrigger, buttonVariants } from '@makinbakin/sdk/ui'
 import { TriangleAlert, BellOff, ChevronRight, CircleQuestionMark, Wrench } from 'lucide-react'
@@ -255,7 +255,7 @@ export function IncidentRow({ item, onRepair, onDecided, onAck }: IncidentRowPro
         )}
         {incident.repairTaskId && (
           <PluginLink
-            to={`/tasks?taskId=${encodeURIComponent(incident.repairTaskId)}`}
+            to={entityHref('tasks:task', incident.repairTaskId) ?? '/tasks'}
             className={buttonVariants({ size: 'sm', variant: 'ghost' })}
             aria-label={`Open the repair task for ${incident.title}`}
           >

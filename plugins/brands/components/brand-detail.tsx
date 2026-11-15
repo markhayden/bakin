@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MarkdownContent } from '@makinbakin/sdk/content'
 import { Grid, Inline, Panel, Section, Stack } from '@makinbakin/sdk/layout'
-import { useRouter, useUnsavedChangesGuard } from '@makinbakin/sdk/navigation'
+import { useRouter, useUnsavedChangesGuard, entityHref } from '@makinbakin/sdk/navigation'
 import { cn } from '@makinbakin/sdk/utils'
 import {
   ConfirmDialog,
@@ -362,7 +362,7 @@ export function BrandDetail({ brandId, onBack }: { brandId: string; onBack: () =
   /** Every doc opens in the dedicated editor route — never an inline swap (spec §7e). */
   const editDoc = useCallback(
     (kind: DocKind, name: string, create = false) => {
-      const path = `/brands/${encodeURIComponent(brandId)}/docs/${encodeURIComponent(kind)}/${encodeURIComponent(name)}`
+      const path = entityHref('brands:doc', `${brandId}/${kind}/${name}`, { params: { brandId, kind, name } }) ?? '/brands'
       router.push(create ? `${path}?create=1` : path)
     },
     [router, brandId],
@@ -1624,7 +1624,7 @@ function AssetTile({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(info?.description ?? '')
   const isImage = info?.type === 'images'
-  const open = () => router.push(`/assets/${encodeURIComponent(assetId)}`)
+  const open = () => router.push(entityHref('assets:asset', assetId) ?? '/assets')
   const commit = () => { setEditing(false); if (draft !== (info?.description ?? '')) onDescription(draft) }
 
   return (
@@ -1802,7 +1802,7 @@ function DraftBanner({ brand, brandId, onPublish }: { brand: BrandManifest; bran
       action={(
         <>
           {taskId && (
-            <Button variant="outline" size="sm" onClick={() => router.push(`/tasks?taskId=${encodeURIComponent(taskId)}`)} data-draft-task-link>
+            <Button variant="outline" size="sm" onClick={() => router.push(entityHref('tasks:task', taskId) ?? '/tasks')} data-draft-task-link>
               View the drafting task
             </Button>
           )}

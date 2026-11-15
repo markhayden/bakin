@@ -19,7 +19,7 @@
   },
   "hostInitialJs": {
     "path": "packages/host/dist/main.js",
-    "bytes": 189147
+    "bytes": 189202
   },
   "sdkUiBundles": [
     {
@@ -50,7 +50,7 @@
       "name": "sdk-navigation",
       "path": "packages/host/public/vendor/sdk-navigation.js",
       "bytes": 2910,
-      "reachableBytes": 121812
+      "reachableBytes": 122047
     },
     {
       "name": "sdk-patterns",
@@ -179,6 +179,10 @@
       "bytes": 82246
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-bnfscyym.js",
+      "bytes": 718
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-d0sfrshs.js",
       "bytes": 1342
     },
@@ -229,10 +233,6 @@
     {
       "path": "packages/host/public/vendor/sdk-shared-t0azmvgv.js",
       "bytes": 28381
-    },
-    {
-      "path": "packages/host/public/vendor/sdk-shared-t4575kk1.js",
-      "bytes": 483
     },
     {
       "path": "packages/host/public/vendor/sdk-shared-t5kvskc5.js",
@@ -304,37 +304,37 @@
       "repository": "bakin",
       "pluginId": "assets",
       "path": "plugins/assets/dist/client.js",
-      "bytes": 84794
+      "bytes": 84907
     },
     {
       "repository": "bakin",
       "pluginId": "brands",
       "path": "plugins/brands/dist/client.js",
-      "bytes": 101632
+      "bytes": 101696
     },
     {
       "repository": "bakin",
       "pluginId": "chat",
       "path": "plugins/chat/dist/client.js",
-      "bytes": 35244
+      "bytes": 35345
     },
     {
       "repository": "bakin",
       "pluginId": "explore",
       "path": "plugins/explore/dist/client.js",
-      "bytes": 48158
+      "bytes": 48190
     },
     {
       "repository": "bakin",
       "pluginId": "health",
       "path": "plugins/health/dist/client.js",
-      "bytes": 264893
+      "bytes": 264946
     },
     {
       "repository": "bakin",
       "pluginId": "home",
       "path": "plugins/home/dist/client.js",
-      "bytes": 33965
+      "bytes": 34015
     },
     {
       "repository": "bakin",
@@ -352,7 +352,7 @@
       "repository": "bakin",
       "pluginId": "schedule",
       "path": "plugins/schedule/dist/client.js",
-      "bytes": 57467
+      "bytes": 57515
     },
     {
       "repository": "bakin",
@@ -364,19 +364,19 @@
       "repository": "bakin",
       "pluginId": "tasks",
       "path": "plugins/tasks/dist/client.js",
-      "bytes": 215686
+      "bytes": 215731
     },
     {
       "repository": "bakin",
       "pluginId": "team",
       "path": "plugins/team/dist/client.js",
-      "bytes": 305961
+      "bytes": 306054
     },
     {
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 368539
+      "bytes": 368619
     }
   ]
 }

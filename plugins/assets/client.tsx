@@ -10,6 +10,7 @@ import { TaskAssets } from './components/task-assets'
 import { VersionedAssetGrid } from './components/versioned/VersionedAssetGrid'
 import { VersionedAssetDetail } from './components/versioned/VersionedAssetDetail'
 import { AssetsBadgeProvider } from './components/assets-badge-provider'
+import { entityHref } from '@makinbakin/sdk/navigation'
 
 registerPlugin({
   search: {
@@ -35,7 +36,7 @@ registerPlugin({
           title,
           subtitle,
           meta: [type, pick(hit.fields.agent), date].filter(Boolean).join(' · '),
-          href: `/assets/${hit.id}`,
+          href: entityHref('assets:asset', hit.id) ?? '/assets',
           ...(hasThumb ? { thumbnailUrl: `/api/assets/${hit.id}/thumb` } : {}),
           icon: iconByType[type] ?? 'package',
         }
