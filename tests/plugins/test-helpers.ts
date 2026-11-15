@@ -17,7 +17,8 @@
  *    callers create and clean their own dirs);
  *  - `callSearchRoute` and the legacy `ActivatedPlugin` shape.
  */
-import { mkdirSync, existsSync } from 'fs'
+import { mkdirSync, existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import type {
   PluginContext,
   RegisteredAPIRoute,
@@ -126,7 +127,12 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
   // PluginContext deliberately differ (reduced runtime facade vs full
   // adapter), so the harness's SDK-typed surface is cast once at this
   // boundary. T19 unified APIRoute but NOT the context tiers — by design.
-  const harness = sdkCreateTestContext(pluginId, { dir: testDir }) as unknown as {
+  // A core plugin is tested against its real manifest, so a tool that reports
+  // an entity kind its entry does not list fails here as it would be dropped
+  // in production.
+  const manifestPath = join(import.meta.dir, '../../plugins', pluginId, 'bakin-plugin.json')
+  const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown : undefined
+  const harness = sdkCreateTestContext(pluginId, { dir: testDir, ...(manifest ? { manifest } : {}) }) as unknown as {
     ctx: PluginContext
     routes: RegisteredAPIRoute[]
     execTools: ExecToolDefinition[]

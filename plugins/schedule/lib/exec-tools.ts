@@ -82,7 +82,11 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       })
       if (!result.ok) return result
       const { warnings, ...created } = result
-      return { ...created, ...(warnings.length ? { warnings } : {}) }
+      return {
+        ...created,
+        ...(warnings.length ? { warnings } : {}),
+        entities: [{ kind: 'schedule:job', id: created.jobId, title: params.name as string, action: 'created' as const }],
+      }
     },
   })
 
@@ -111,7 +115,16 @@ export function registerScheduleExecTools(ctx: PluginContext): void {
       ])
       if (!result.ok) return result
       indexJob(params.jobId as string)
-      return { ok: true, ...(result.warnings.length ? { warnings: result.warnings } : {}) }
+      return {
+        ok: true,
+        ...(result.warnings.length ? { warnings: result.warnings } : {}),
+        entities: [{
+          kind: 'schedule:job',
+          id: params.jobId as string,
+          title: (params.name as string | undefined) ?? guard.meta.displayName ?? (params.jobId as string),
+          action: 'updated' as const,
+        }],
+      }
     },
   })
 

@@ -109,6 +109,7 @@
       },
       {
         "name": "bakin_exec_tasks_create",
+        "reports": ["tasks:task"],
         "summary": "Create a new task on the task board",
         "description": "Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip."
       },
@@ -144,6 +145,7 @@
       },
       {
         "name": "bakin_exec_tasks_update",
+        "reports": ["tasks:task"],
         "summary": "Update a task on the board — change title, description, or assigned agent",
         "description": "Update a task on the board — change title, description, or assigned agent."
       }

@@ -102,6 +102,7 @@
       },
       {
         "name": "bakin_exec_schedule_create",
+        "reports": ["schedule:job"],
         "summary": "Create a new scheduled job that creates tasks on the board",
         "description": "Create a new scheduled job that creates tasks on the board"
       },
@@ -142,6 +143,7 @@
       },
       {
         "name": "bakin_exec_schedule_update",
+        "reports": ["schedule:job"],
         "summary": "Update an existing scheduled job",
         "description": "Update an existing scheduled job"
       }
