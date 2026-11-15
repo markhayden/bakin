@@ -53,6 +53,8 @@
     "./hooks/hook-registry": "./src/hooks/hook-registry.ts",
     "./hooks/hook-registry-singleton": "./src/hooks/hook-registry-singleton.ts",
     "./skills/plugin-skill-registry": "./src/skills/plugin-skill-registry.ts",
+    "./plugins/entity-href": "./src/plugins/entity-href.ts",
+    "./plugins/entity-registry": "./src/plugins/entity-registry.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
     "./plugins/settings-store": "./src/plugins/settings-store.ts",
     "./plugins/signatures": "./src/plugins/signatures.ts",
