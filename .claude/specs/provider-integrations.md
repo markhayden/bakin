@@ -325,11 +325,20 @@ description. PR2 extends the exec-tool contract in three ways:
    `{ status: 'needs_approval', approvalId, instruction: 'End your turn.' }`.
    Tasks block with `AWAITING_APPROVAL_REASON` (schedule fire engine exempt,
    as rev 5).
-4. Forward result: `attempting` → `done` on success, `failed` on MCP
-   `isError`, `unknown` on transport loss or deadline after the request was
-   written. Boot reconciliation turns any `attempting` without an outcome into
+4. Forward result: `attempting` → `done` on success; `unknown` on an
+   external call's MCP `isError` (gog reports any subprocess failure that way,
+   including a connection lost after Google accepted the send, so an error is
+   not proof of no effect), on transport loss, or on deadline; `failed` only
+   for read/private calls and for the relay's own refusals before forwarding. Boot reconciliation turns any `attempting` without an outcome into
    `unknown` (the crash may have landed before or after the provider acted).
-   Never retried automatically. The next turn's resume section presents
+   Never retried automatically by Bakin. **Below Bakin:** gog v0.48.0's
+   Google transport retries replayable requests on 5xx, POST included, so a
+   send that succeeded upstream but answered 5xx can repeat under one
+   approval. PR2 contributes a gog fix (no retry for non-idempotent methods)
+   and repins when it lands; until then this is a stated risk on `gmail.send`
+   (rare, needs a Google 5xx after acceptance), recorded in the pack README.
+   github-mcp-server's client retry behavior is checked the same way before
+   PR2's live test. The next turn's resume section presents
    `unknown` as "verify with a read before anything else".
 
 **Expiry:** an approved-unconsumed approval expires 24 h after the decision
@@ -507,8 +516,11 @@ Capabilities tab, one ConfirmDialog-hosted flow):
 4. `POST /api/integrations/google/connect/:attemptId` checks the pasted
    URL's `state` equals the attempt's, then runs step 2 with the same email
    and flags and `--auth-url <pasted>` (never logged); the attempt is
-   consumed; then the login check; the leg turns ready and
-   the relay (re)spawns.
+   consumed; the connected email becomes the pack's **explicit account
+   selection** (the login leg's `accountEnv` value, persisted in pack state and
+   part of the receipt's invalidation key; PR4 extends `login-verify.ts`, which reads `accountEnv` only from `process.env` today, to prefer the persisted selection), so a second stored account can
+   never be picked instead; then the login check for exactly that
+   account; the leg turns ready and the relay (re)spawns on it.
 The terminal command stays in the card as the fallback. Plan verifies gog's
 step-1/step-2 state handling on the pinned build before relying on it.
 
