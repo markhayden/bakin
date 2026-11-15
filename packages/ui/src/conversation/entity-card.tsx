@@ -105,14 +105,19 @@ export function HandoffMarker({ direction, peers }: HandoffMarkerProps) {
   const resolve = use(EntityKindResolverContext)
   if (peers.length === 0) return null
   if (direction === 'out') {
+    // The spacer is the agent avatar's column, so these cards line up with the
+    // cards in the reply above them.
     return (
-      <ul data-conv-handoff="out" aria-label="Continued in" className="grid min-w-0 max-w-md list-none grid-cols-1 gap-bakin-2 p-0">
-        {peers.map((peer) => (
-          <li key={`${peer.entity}:${peer.id}`} className="min-w-0">
-            <EntityCard {...(resolve(peerRef(peer)) ?? { label: fallbackLabel(peer.entity) })} title={peer.title} action="continued" />
-          </li>
-        ))}
-      </ul>
+      <div data-conv-handoff="out" className="flex min-w-0 gap-bakin-3">
+        <span aria-hidden="true" className="w-bakin-6 shrink-0" />
+        <ul aria-label="Continued in" className="grid min-w-0 max-w-md flex-1 list-none grid-cols-1 gap-bakin-2 p-0">
+          {peers.map((peer) => (
+            <li key={`${peer.entity}:${peer.id}`} className="min-w-0">
+              <EntityCard {...(resolve(peerRef(peer)) ?? { label: fallbackLabel(peer.entity) })} title={peer.title} action="continued" />
+            </li>
+          ))}
+        </ul>
+      </div>
     )
   }
   const source = peers[0]!

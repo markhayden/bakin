@@ -5,6 +5,7 @@ import { expect } from 'storybook/test'
 import {
   Conversation,
   ConversationEmptyState,
+  foldConversation,
   type ConversationTurn,
 } from '@makinbakin/sdk/conversation'
 import {
@@ -247,5 +248,72 @@ export const ContainedAndEmptyStates = {
       scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
     }
     await expect(await canvas.findByRole('button', { name: 'Jump to latest' })).toBeVisible()
+  },
+} satisfies Story
+
+const planProject = { kind: 'projects:project', id: 'spring-launch', title: 'Spring launch plan', action: 'created' as const }
+const chatTurns = foldConversation([
+  { kind: 'user', ts: '2026-01-14T16:20:00.000Z', content: 'Plan the spring launch with me.' },
+  { kind: 'tool', ts: '2026-01-14T16:20:04.000Z', turnId: 'turn-1', toolName: 'bakin_exec_projects_create', status: 'completed', summary: 'Spring launch plan', metadata: { bakinEntities: [planProject] } },
+  { kind: 'assistant', ts: '2026-01-14T16:20:06.000Z', turnId: 'turn-1', content: 'I set up a project for it. We can shape the brief there.' },
+  { kind: 'handoff', ts: '2026-01-14T16:20:07.000Z', handoffId: 'chat-1:turn-1', direction: 'out', peers: [{ entity: 'projects:project', id: 'spring-launch', title: 'Spring launch plan' }] },
+])
+const projectTurns = foldConversation([
+  { kind: 'handoff', ts: '2026-01-14T16:20:07.000Z', handoffId: 'chat-1:turn-1:spring-launch', direction: 'in', peers: [{ entity: 'chat:chat', id: 'chat-1', title: 'Spring launch planning' }], carried: 2 },
+  { kind: 'user', ts: '2026-01-14T16:20:00.000Z', content: 'Plan the spring launch with me.' },
+  { kind: 'assistant', ts: '2026-01-14T16:20:06.000Z', turnId: 'turn-1', content: 'I set up a project for it. We can shape the brief there.' },
+  { kind: 'user', ts: '2026-01-14T16:24:00.000Z', content: 'Start with who it is for.' },
+])
+
+function HandOffExample() {
+  // In the app, the host resolves each kind to its label, icon and link for
+  // every conversation surface, so the card and the divider's title are
+  // links. Standing alone, as here, they render as plain content.
+  return (
+      <main className="bakin-conversation-story bakin-conversation-story--document">
+        <Page width="standard">
+          <PageHeader
+            eyebrow="Conversation / hand-off"
+            title="A chat that became a project"
+            description="When a reply creates something that owns a conversation, the chat's history is carried there. Each end keeps a marker linking to the other."
+          />
+          <PageBody gap="content">
+            <section aria-labelledby="handoff-source" className="bakin-conversation-story__section">
+              <header>
+                <h2 id="handoff-source">In the chat</h2>
+                <p>The reply's card, then where the conversation continued.</p>
+              </header>
+              <PageTimeline label="The original chat">
+                <Conversation turns={chatTurns} agent={releaseAgent} />
+              </PageTimeline>
+            </section>
+            <section aria-labelledby="handoff-target" className="bakin-conversation-story__section">
+              <header>
+                <h2 id="handoff-target">In the project</h2>
+                <p>The carried history sits under a divider; new messages follow it.</p>
+              </header>
+              <PageTimeline label="The project conversation">
+                <Conversation turns={projectTurns} agent={releaseAgent} />
+              </PageTimeline>
+            </section>
+          </PageBody>
+        </Page>
+      </main>
+  )
+}
+
+export const HandOff = {
+  args: { turns: chatTurns },
+  render: () => <HandOffExample />,
+  play: async ({ canvas }) => {
+    // Source: the reply's card, then a "continued here" card for the target.
+    await expect(canvas.getByRole('list', { name: 'Created and updated' })).toHaveTextContent('Project · Created')
+    const continued = canvas.getByRole('list', { name: 'Continued in' })
+    await expect(continued).toHaveTextContent('Spring launch plan')
+    await expect(continued).toHaveTextContent('Project · Continued here')
+    // Target: a divider naming the chat the history came from.
+    await expect(canvas.getByRole('note')).toHaveTextContent('Carried over from the chat Spring launch planning')
+    // The carried turns render as ordinary turns, followed by the new message.
+    await expect(canvas.getByText('Start with who it is for.')).toBeVisible()
   },
 } satisfies Story

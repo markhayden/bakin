@@ -747,6 +747,18 @@ test('public conversation entity card visual baseline', async ({ page }) => {
   })
 })
 
+test('public conversation hand-off markers visual baseline', async ({ page }) => {
+  await page.goto('/iframe.html?id=components-conversation-timeline-and-empty-state--hand-off&viewMode=story')
+  await expect(page.getByRole('heading', { level: 1, name: 'A chat that became a project' })).toBeVisible()
+  await expect(page.getByRole('note')).toContainText('Carried over from the chat')
+  await page.evaluate(async () => document.fonts.ready)
+  await expect(page).toHaveScreenshot('foundation-conversation-handoff.png', {
+    animations: 'disabled',
+    caret: 'hide',
+    fullPage: true,
+  })
+})
+
 test('public embedded conversation panel visual baseline', async ({ page }) => {
   await page.goto('/iframe.html?id=components-conversation-panel-and-tool-detail--product-panel&viewMode=story')
   await expect(page.getByRole('heading', { level: 1, name: 'Coordinate an embedded release review' })).toBeVisible()
