@@ -8,7 +8,7 @@
  * so a failed, disabled or removed plugin never leaves a kind behind.
  */
 import type { EntityContribution } from '@makinbakin/sdk/types'
-import { fillEntityHref } from './entity-href'
+import { buildEntityHref, type EntityHrefOptions } from './entity-href'
 
 export interface EntityDeclaration extends EntityContribution {
   /** The owning plugin. */
@@ -61,9 +61,9 @@ export function getEntityRegistry(): EntityRegistry {
 export function entityHref(
   kind: string,
   id: string,
-  params?: Readonly<Record<string, string>>,
+  options?: EntityHrefOptions,
   registry: EntityRegistry = getEntityRegistry(),
 ): string | null {
   const declaration = registry.get(kind)
-  return declaration ? fillEntityHref(declaration.href, id, params) : null
+  return declaration ? buildEntityHref(declaration.href, id, options) : null
 }

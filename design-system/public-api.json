@@ -11,7 +11,7 @@
     "supportedEntrypoints": 7,
     "frozenLegacyEntrypoints": 0,
     "valueExports": 324,
-    "typeExports": 441
+    "typeExports": 442
   },
   "entrypoints": [
     {
@@ -854,6 +854,7 @@
         "useUnsavedChangesGuard"
       ],
       "types": [
+        "EntityHrefOptions",
         "PluginLinkProps",
         "Router",
         "RouterNavigationOptions",

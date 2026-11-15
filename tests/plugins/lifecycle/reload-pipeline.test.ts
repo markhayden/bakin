@@ -360,7 +360,8 @@ describe('runReloadPipeline — boot-parity registrations (declarative routes + 
 })
 
 describe('runReloadPipeline — entity declarations', () => {
-  const entityIds = () => getEntityRegistry().list().map((entity) => entity.id).sort()
+  // The preload seeds the core kinds; these tests are about the fixture's own.
+  const entityIds = () => getEntityRegistry().list().filter((entity) => entity.pluginId === 'fixture').map((entity) => entity.id).sort()
   const thing = { kind: 'thing', label: 'Thing', icon: 'Box', href: '/things/{id}' }
   const writeManifest = (entities: unknown) => writeFileSync(join(pluginRoot, 'bakin-plugin.json'), JSON.stringify({
     id: 'fixture',

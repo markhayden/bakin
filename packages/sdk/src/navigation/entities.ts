@@ -6,7 +6,7 @@
  * every manifest refresh, so a removed plugin's kinds disappear with it.
  * Everything that links to an entity resolves through here.
  */
-import { fillEntityHref } from '@bakin/core/plugins/entity-href'
+import { buildEntityHref, type EntityHrefOptions } from '@bakin/core/plugins/entity-href'
 import type { EntityContribution } from '../types/manifest'
 
 /** A declared entity kind with its owner and public identity. */
@@ -46,11 +46,14 @@ export function subscribeEntityDeclarations(listener: () => void): () => void {
 
 /**
  * The in-app href for an entity: its declared kind's template filled with
- * `id` (and `params` for compound routes). `null` when the kind is not
- * declared by a loaded plugin — render no link. Never build an entity URL by
- * hand; the owning plugin's manifest is the one place its route is written.
+ * `id`, plus `options.params` for a compound route and `options.query` for
+ * extra query parameters. `null` when the kind is not declared by a loaded
+ * plugin — render no link. Never build an entity URL by hand; the owning
+ * plugin's manifest is the one place its route is written.
  */
-export function entityHref(kind: string, id: string, params?: Readonly<Record<string, string>>): string | null {
+export function entityHref(kind: string, id: string, options?: EntityHrefOptions): string | null {
   const declaration = declarations.get(kind)
-  return declaration ? fillEntityHref(declaration.href, id, params) : null
+  return declaration ? buildEntityHref(declaration.href, id, options) : null
 }
+
+export type { EntityHrefOptions }
