@@ -245,8 +245,9 @@ until PR4 ships the terminal command). Class table:
 **github 2.0.0** — new bin `github-mcp-server` v2.1.0 (tar.gz, member
 `github-mcp-server`, pins committed in the plan), args `['stdio',
 '--toolsets=default']`, `readonlyArgs` add `--read-only`; `token` from `gh
-auth token` (the existing login leg captures the active account; the relay
-spawns with `GH_HOST`/account consistent with that probe). Class table:
+auth token` (the existing login leg captures the active account; github.com only in this
+release: the probe is `gh auth status --hostname github.com --active` and the
+token command `gh auth token --hostname github.com --user <receipt account>`). Class table:
 the 27 read-annotated default tools `read`; `create_branch`,
 `create_pull_request` (draft or not), `update_pull_request`,
 `update_pull_request_branch` → `github.pr`; `merge_pull_request` →
@@ -642,6 +643,8 @@ identifiers never display names; `const` over `let`; kebab-case files.
 - **Jira Cloud pack** — Atlassian's MCP server or ACLI; terms review first.
 - **Hermes runtime** — gets relayed tools through the exec-tool path with no
   integration work; nothing to build here.
+- **GitHub Enterprise hosts** — host capture in the login receipt, then
+  host-bound probe and token.
 - **gh as a pinned bin** — needs zip support in the bin installer.
 - **Per-agent grants, chat standing grants** — declined for now (D6).
 - **Workflow-task approvals** — a workflow-anchored card later.

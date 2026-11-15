@@ -207,8 +207,8 @@ the 2.18b fixture install). `src/core/integrations/classify.ts`:
 `src/core/integrations/relay.ts` with `@modelcontextprotocol/sdk` `Client` +
 `StdioClientTransport`: spawn the pinned bin with args/readonlyArgs, account
 flag from the login receipt, token from `token.command` per spawn with
-`{host}`/`{account}` substituted from that receipt (stdout never logged; a
-receipt change — new account, new host — respawns); 30 s request deadline; backoff 1 s → 60 s; `tools/list` on
+`{account}` substituted from that receipt (stdout never logged; a receipt
+change respawns); 30 s request deadline; backoff 1 s → 60 s; `tools/list` on
 connect → register/unregister `bakin_exec_<id>_<tool>` (raw schema, class in
 the description, hidden rows skipped); states `token-unavailable` /
 `auth-rejected` / `start-failed` into capability readiness. **Not booted yet:** this
@@ -350,10 +350,12 @@ vendored CLI references + `scripts/vendor-gog-skills.ts`. **Size:** M.
 ### B2 — github 2.0.0
 `github-mcp-server` v2.1.0 pinned bin (four platforms, tarball + member sha256
 from the release checksums), `mcpServers[github]` with the class table and
-`token: { command: ['gh','auth','token','--hostname','{host}','--user','{account}'] }`
-— `{host}`/`{account}` filled from the github login receipt (the probe
-captures the active account; host defaults to github.com), so the token always
-belongs to the verified identity. `bakin` floor = the PR2 rc. **Size:** M.
+**github.com only in this release:** the login probe becomes `gh auth status
+--hostname github.com --active` (today's unrestricted probe checks every host)
+and `token: { command: ['gh','auth','token','--hostname','github.com','--user','{account}'] }`
+with `{account}` from that receipt, so probe and token name the same identity.
+Test: a second host with a different active account and the same username on
+both never changes what the relay uses. Enterprise hosts are a follow-up. `bakin` floor = the PR2 rc. **Size:** M.
 
 ### B3 — tools/list fixtures + contract test
 Captured `tools/list` JSON for both pinned servers; contract: every listed
