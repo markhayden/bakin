@@ -21,7 +21,7 @@ mock.module('../../../src/core/logger', () => ({
 
 import '../../../src/core/exec-tools/tools/ask-user'
 import { getExecTool } from '../../../src/core/exec-tools/registry'
-import { findQuestionToken, questionRegistry } from '../../../packages/core/src/conversation/questions'
+import { parseBakinQuestion } from '../../../packages/core/src/conversation/questions'
 
 const tool = () => {
   const found = getExecTool('bakin_exec_ask_user')
@@ -42,21 +42,13 @@ describe('bakin_exec_ask_user', () => {
     expect(() => z.toJSONSchema(z.object(tool().parameters), { io: 'input' })).not.toThrow()
   })
 
-  test('returns a short token message and parks the full question', async () => {
+  test('returns a short message and the minted question for the host to carry', async () => {
     const result = await tool().handler(args, 'roscoe')
     expect(result.ok).toBe(true)
-    const message = String(result.message)
-    expect(message.length).toBeLessThan(200)
-    const id = findQuestionToken(message)
-    expect(id).not.toBeNull()
-    const stored = questionRegistry.take(id!)
-    expect(stored).toMatchObject({ v: 1, id, question: args.question, recommended: 0, allowOther: true })
-    expect(stored?.options).toHaveLength(2)
-  })
-
-  test('the token leads the message so a truncated summary still carries it', async () => {
-    const result = await tool().handler(args, 'roscoe')
-    expect(String(result.message).startsWith('bakin-question:')).toBe(true)
+    expect(String(result.message).length).toBeLessThan(200)
+    const question = parseBakinQuestion(result.question)
+    expect(question).toMatchObject({ v: 1, question: args.question, recommended: 0, allowOther: true })
+    expect(question?.options).toHaveLength(2)
   })
 
   test('invalid questions fail with the cap that was broken', async () => {

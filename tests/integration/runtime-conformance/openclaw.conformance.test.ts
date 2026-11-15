@@ -122,6 +122,8 @@ const target: RuntimeConformanceTarget = {
   // The crab's [[tool]] content trigger emits tool/item/command_output
   // frames like the real wire (fixture-shaped).
   prepareToolTurn: () => 'conformance: run the listing [[tool]] then summarize',
+  // The crab's exec tool "lists" one file.
+  toolOutputHead: 'README.md',
   failingStream: () => {
     // The mode env is read when the RPC arrives (first iteration) — hold it
     // for the whole stream and restore on exit, error, or early break.

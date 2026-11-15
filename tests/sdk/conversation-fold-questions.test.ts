@@ -29,7 +29,7 @@ const Q: BakinQuestion = {
 const ts = (n: number) => `2026-10-25T10:00:0${n}.000Z`
 const questionRow = (question: BakinQuestion = Q, turnId = 'turn-1'): ConversationMessage => ({
   kind: 'tool', ts: ts(2), turnId, callId: `call-${question.id}`, toolName: 'bakin_exec_ask_user', status: 'completed',
-  summary: `bakin-question:${question.id} posted.`, metadata: { bakinQuestion: question },
+  summary: 'Question posted.', metadata: { bakinQuestion: question },
 })
 
 function questionItems(turns: ConversationTurn[]): Extract<TurnItem, { type: 'question' }>[] {

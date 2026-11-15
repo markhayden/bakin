@@ -33,6 +33,7 @@ import { createRuntimeExecToolProvider } from '../../src/core/exec-tools/provide
 import { currentAgentInvocation } from '../../src/core/agent-invocation'
 import { claimRun, getLiveRun } from '../../src/core/execution-ledger'
 import { closeDb } from '../../packages/core/src/storage/db'
+import { findReceiptToken, receiptRegistry } from '../../packages/core/src/conversation/receipts'
 
 afterAll(() => {
   closeDb()
@@ -60,8 +61,34 @@ addExecTool({
   handler: async () => ({ ok: true, invocation: currentAgentInvocation() }),
 })
 
+addExecTool({
+  name: 'bakin_exec_test_ask',
+  description: 'Returns a minted question for the conversation',
+  parameters: {},
+  handler: async () => ({
+    ok: true,
+    message: 'Posted.',
+    question: {
+      v: 1,
+      id: 'q_0123456789abcdef',
+      question: 'Which inbox?',
+      options: [{ label: 'Personal' }, { label: 'Work' }],
+      allowOther: true,
+    },
+  }),
+})
+
 describe('runtime exec-tool provider', () => {
   const provider = createRuntimeExecToolProvider()
+
+  test('a result carrying a question is sealed: the agent reads the envelope, the registry holds the question', async () => {
+    const result = await provider.invoke('bakin_exec_test_ask', {}, 'agent-7')
+    const parsed = JSON.parse(result.text) as { receipt: string; result: Record<string, unknown> }
+    expect(parsed.result).toEqual({ ok: true, message: 'Posted.' })
+
+    const receipt = receiptRegistry.take(findReceiptToken(result.text)!, { agentId: 'agent-7', toolName: 'bakin_exec_test_ask' })
+    expect(receipt?.question?.question).toBe('Which inbox?')
+  })
 
   test('a handler runs inside the calling agent\'s invocation context, and only for that call (#898)', async () => {
     const result = await provider.invoke('bakin_exec_test_whoami', {}, 'agent-7')

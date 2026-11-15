@@ -67,6 +67,13 @@ export interface RuntimeConformanceTarget {
    */
   prepareToolTurn(): string | Promise<string>
   /**
+   * The leading text of the output the `prepareToolTurn()` tool returns. When
+   * set, the result chunk's `outputPreview` must contain it — the property
+   * host tool receipts (`@bakin/core/conversation/receipts`) depend on: their
+   * token leads the tool's output and must survive the runtime's preview.
+   */
+  toolOutputHead?: string
+  /**
    * Content for a `toolsMode: 'none'` turn on a runtime that ENFORCES it
    * (perTurnToolsMode true). Optional: defaults to `prepareToolTurn()`, i.e.
    * the same prompt that normally makes the agent call a tool — the turn must
@@ -822,6 +829,33 @@ export const runtimeConformanceChecks = {
   },
 
   /**
+   * A finished tool call's result chunk carries the HEAD of the tool's
+   * output as `outputPreview`. A one-line summary is not enough: the turn
+   * engine reads a host receipt token off the leading text, and a runtime
+   * that drops it silently loses every question card and entity card.
+   */
+  async toolResultCarriesOutputHead(target: RuntimeConformanceTarget): Promise<void> {
+    const content = await target.prepareToolTurn()
+    const previews: unknown[] = []
+    for await (const chunk of target.runtime.messaging.stream({
+      agentId: target.agentId,
+      content,
+      threadId: target.newThreadId(),
+    })) {
+      if (chunk.type === 'tool' && chunk.data.phase === 'result') previews.push(chunk.data.outputPreview)
+    }
+    if (previews.length === 0) fail('tool-using turn streamed no tool result chunk')
+    const texts = previews.filter((p): p is string => typeof p === 'string' && p.length > 0)
+    if (texts.length === 0) {
+      fail('tool result chunk carries no outputPreview — the head of the tool output must reach the turn engine')
+    }
+    const head = target.toolOutputHead
+    if (head !== undefined && !texts.some((text) => text.includes(head))) {
+      fail(`tool result outputPreview does not contain the tool's leading output '${head}'`)
+    }
+  },
+
+  /**
    * Terminal failure ends the stream with a typed `error` chunk (data.kind
    * when known) and NO done — and the iterator itself never throws.
    */
@@ -1171,6 +1205,10 @@ export function runRuntimeConformanceSuite(
 
     it('tool turns stream classified, structured chunks', async () => {
       await runtimeConformanceChecks.toolTurnStreamsClassifiedStructuredChunks(getTarget())
+    })
+
+    it("a tool result chunk carries the head of the tool's output", async () => {
+      await runtimeConformanceChecks.toolResultCarriesOutputHead(getTarget())
     })
 
     it('terminal stream failure is a typed error chunk (iterator never throws)', async () => {

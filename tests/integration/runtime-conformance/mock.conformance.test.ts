@@ -68,6 +68,7 @@ beforeEach(() => {
     // streams/taps a structured tool call+result pair, [[fail]] is a typed
     // terminal failure.
     prepareToolTurn: () => 'conformance: use the tool [[tool]]',
+    toolOutputHead: 'mock tool output',
     failingStream: () =>
       runtime.messaging.stream({
         agentId: 'main',
