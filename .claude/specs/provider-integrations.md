@@ -221,7 +221,7 @@ mcpServers: [{
 action?: '<provider>.<verb>' }` or `{ byArg: '<arg>', cases: { <value>:
 {class, action} }, default: {class:'external', action} }`. A tool the server
 lists that the table lacks is exposed as `external` with action
-`<id>.other`. Contract-tested in Bits: every tool the pinned server lists
+`<id>.other`; a row `{ expose: false }` hides a tool entirely. Contract-tested in Bits: every tool the pinned server lists
 (captured `tools/list` fixture) has a row; no `read` row on a tool whose
 annotations say it writes.
 
@@ -235,7 +235,8 @@ until PR4 ships the terminal command). Class table:
 | gmail_search, gmail_get_message, gmail_get_thread, gmail_list_drafts, gmail_get_draft, gmail_list_labels, calendar_events, drive_search, drive_get, docs_get, sheets_read_range | read | — |
 | gmail_create_draft, gmail_update_draft, gmail_create_label, gmail_mark_read, gmail_mark_unread, gmail_archive_messages | private | — |
 | gmail_modify_messages, gmail_modify_thread | byArg on added labels: `TRASH`/`SPAM` → external `gmail.delete`; otherwise private | — |
-| gmail_send_message, gmail_send_draft | external | `gmail.send` |
+| gmail_send_message | external | `gmail.send` |
+| gmail_send_draft | **not exposed** — a draft id does not bind its content (drafts update without a card), so sends always carry the full message | — |
 | gmail_trash_messages, gmail_restore_messages | external | `gmail.delete` |
 | docs_write | external | `docs.write` |
 | sheets_update_range | external | `sheets.write` |
@@ -277,33 +278,56 @@ unregister). Failure states are distinct and surface in capability readiness:
 `token-unavailable`, `auth-rejected` (401/403 from the server), `start-failed`.
 A failed spawn never marks the login leg missing.
 
-**Exec tools:** `bakin_exec_<serverId>_<tool>` registered through the
-exec-tool registry with the server's JSON schema passed through unchanged
-and the class shown in the description. The handler resolves the caller from
-the exec-tool invocation context: a task run (task id + run id from the
-ledger) or a chat turn (chat id + turn id); a call with neither is refused
-`no_caller`.
+**Exec tools:** `bakin_exec_<serverId>_<tool>` with the class shown in the
+description. PR2 extends the exec-tool contract in three ways:
+
+- **Raw-schema tools.** Today every exec tool is a zod shape
+  (`packages/core/src/plugin-types.ts`) re-rendered to JSON Schema and parsed
+  through zod (`src/core/exec-tools/provider.ts`). A relayed tool instead
+  registers the server's JSON Schema as-is; both transports (Pi's
+  `tool-bridge.ts`, `src/core/mcp-server.ts`) declare it verbatim; Bakin only
+  requires a JSON object and the provider server validates (its errors come
+  back as `failed`). Additional properties are preserved.
+- **Live registry.** The registry emits add/remove events. `mcp-server.ts`
+  stops snapshotting: live sessions get tools added/removed and
+  `notifications/tools/list_changed`; Pi reads descriptors per turn already.
+  A call to an unregistered relayed tool is refused `tool_removed` at the
+  handler (covers clients that cached the old list).
+- **Invocation context.** `ExecToolContext` gains `invocation: { kind:
+  'task', taskId, runId } | { kind: 'chat', chatId, turnId }`, set by the
+  ONE place each turn starts: dispatch (`threadId task:<id>:d<seq>` is the
+  run id) and the conversation turn engine; Pi's bridge passes it per turn.
+  Bakin's MCP server cannot learn it from OpenClaw today, so for MCP calls
+  the relay resolves the calling agent's live turns (dispatch registry +
+  conversation engine): exactly one → that invocation; none or several →
+  refused `ambiguous_caller` (OpenClaw serializes same-agent dispatch, so
+  this bites only when a chat and a task overlap). No caller → `no_caller`.
 
 **Gate** (`src/core/integrations/gate.ts`), per call:
 1. Classify from the table (with `byArg`). `read` → forward. `private` →
    forward unless `settings.integrations.privateNeedsApproval` is true.
 2. `external`: `argsHash = sha256(canonicalJSON(args))`. Look for an
-   **approved-unconsumed** approval with the same anchor (task or chat),
-   server, account, tool and `argsHash`, not expired. Found → compare-and-set
-   it to `consumed` (durable) BEFORE forwarding, then forward. Task standing
+   **approved-unconsumed** approval with the same scope (the task, or the
+   chat — never a turn, since the follow-up is a new turn), server, account,
+   tool and `argsHash`, not expired. Found → compare-and-set
+   it to `attempting` (durable, with the attempt time) BEFORE forwarding,
+   then forward. Task standing
    grant for `action` → auto-approval record (audited
    `integration.approval.standing`), consumed the same way.
 3. Otherwise create — or return the existing pending one for the same key —
-   an approval with owner `{ kind: 'integration-action', anchor: { kind:
-   'task', taskId } | { kind: 'chat', chatId, turnId }, serverId, account,
-   tool, action, argsHash }`; title `${agent} wants to ${action}`; body = the
+   an approval with owner `{ kind: 'integration-action', taskId?: string,
+   chatId?: string, originTurnId?: string, serverId, account, tool, action,
+   argsHash }` (exactly one of `taskId`/`chatId`; `originTurnId` is
+   provenance only); title `${agent} wants to ${action}`; body = the
    arguments rendered as escaped plain text (recipients, subject, body, repo,
    number); options `approve`, `approve-all` (tasks only), `reject`. Return
    `{ status: 'needs_approval', approvalId, instruction: 'End your turn.' }`.
    Tasks block with `AWAITING_APPROVAL_REASON` (schedule fire engine exempt,
    as rev 5).
-4. Forward result: success → record outcome `done`; MCP `isError` → `failed`;
-   transport loss or deadline after the request was written → `unknown`.
+4. Forward result: `attempting` → `done` on success, `failed` on MCP
+   `isError`, `unknown` on transport loss or deadline after the request was
+   written. Boot reconciliation turns any `attempting` without an outcome into
+   `unknown` (the crash may have landed before or after the provider acted).
    Never retried automatically. The next turn's resume section presents
    `unknown` as "verify with a read before anything else".
 
@@ -315,11 +339,15 @@ or superseded → a fresh card.
 core): `onResolve` validates only (anchor live, still pending); ONE idempotent
 `applyCommittedApproval(record)` runs from the `approval.resolved`
 subscriber and boot reconciliation, with plugin-state replaced by a core
-sidecar per approval (`pending → applying → approved-unconsumed | rejected →
-consumed | expired`). Task anchor: log entry, `approve-all` adds the class to
+sidecar per approval (`pending → applying → approved-unconsumed | rejected`,
+then `attempting → done | failed | unknown`, or `expired`). Task anchor: log entry, `approve-all` adds the class to
 `approvedActions`, blocked → todo, `triggerDispatch`. Chat anchor: enqueue
-ONE follow-up turn in that chat (dedupe key = approvalId) through the chat
-queue with a system-authored message "Approved: <action> — <summary>. Make
+ONE follow-up turn through a new chat hook `chat.enqueueFollowUp({ chatId,
+admissionKey: approvalId, message })`. The conversation queue today mints
+random ids and may drain twice after a crash (`packages/core/src/conversation/turns.ts`),
+so PR2 adds a durable admission key: a second enqueue with the same key is a
+no-op, and the transcript records the key on the user row so a crashed drain
+cannot run it twice. Messages go as a system-authored message "Approved: <action> — <summary>. Make
 that exact call now." (reject: "Rejected: <reason>. Do not make that call.").
 
 **Standing grants** keep rev 5's field (`approvedActions` on tasks and
@@ -331,6 +359,18 @@ approval (approved-unconsumed → "make exactly this call again"; pending →
 stop; unknown outcome → verify first) with its tool and arguments; older
 decisions as one-liners within a 1 KB budget. Pinned by dispatch-prompt
 fixtures.
+
+**Approval consumers that assume a task** (`packages/core/src/approvals/store.ts`
+filters on `owner.taskId`, `plugins/tasks/hooks/use-task-approvals.ts` groups
+by it, `approvals-attention-provider.tsx` drops events without it, Discord
+cards link to the task): each resolves the anchor explicitly — task cards
+keep today's paths; chat cards filter by `chatId`, link to `/chat/$chatId`,
+and announce through the same provider.
+
+**Channel cards:** Bakin's Discord bridge renders all three options.
+OpenClaw's native delivery only round-trips exactly `approve`/`reject`
+(`packages/adapter-openclaw/src/approval-helpers.ts`), so there the card
+offers those two and says "Approve all is on the board".
 
 **UI:** the ApprovalPanel renders `integration-action` with the argument
 preview; `approve-all` keeps its distinct caption. Chat renders the same
@@ -527,8 +567,11 @@ identifiers never display names; `const` over `let`; kebab-case files.
   refused, expiry, standing grant, consume-before-forward under a concurrent
   double call, outcome `unknown` on transport loss, no automatic retry.
   Apply: task (log, grant, move, dispatch) and chat (one follow-up turn,
-  deduped across replays) anchors; boot reconciliation over `pending` and
-  `applying`. Relay: spawn args by profile, token env present only in the
+  deduped across replays and a crashed drain) anchors; boot reconciliation
+  over `pending`, `applying` and outcome-less `attempting` (crash injected
+  before and after the provider call). Exec-tool contract: raw-schema
+  declaration on both transports, live add/remove reaching a connected MCP
+  session, invocation context per transport, `ambiguous_caller`. Relay: spawn args by profile, token env present only in the
   child and absent from logs, crash restart, tool re-registration, distinct
   failure states.
 - **Integration** — a fake stdio MCP server fixture (one read, one private,
