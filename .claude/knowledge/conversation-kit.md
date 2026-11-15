@@ -107,6 +107,15 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   the fold turns them into cards linking to what the reply created or
   changed. Declaration, the reporting rule and rendering:
   `.claude/knowledge/entity-links.md`.
+- **Settled outcome.** `onSettled` receives `outcome.turnId` and
+  `outcome.entities` (what the turn's tools reported, in order), captured
+  while the turn ran. It fires after the slot releases and queued sends
+  drain, so re-reading the transcript there can include a later turn; rows up
+  to the last one carrying `turnId` are the settled turn's.
+- **Batch append.** A service config may provide `appendRows(key, rows)`;
+  `appendExternal` then writes a batch as ONE call (all rows or none) instead
+  of row by row. Chat hand-off relies on it
+  (`.claude/knowledge/entity-links.md` § Hand-off).
 - **Fold.** A tool row/chunk whose `metadata.bakinQuestion` passes the
   structural guard (every rendered field type-checked against
   `QUESTION_RENDER_LIMITS`, compile-pinned to core `QUESTION_LIMITS`) becomes a `{ type: 'question' }` turn item (live: the

@@ -264,28 +264,37 @@ that creates a task, an asset and a scheduled job shows three working cards. Cri
 
 ### Phase 5 — Hand-off (core + chat) → PR 5
 
-- [ ] **T12: Settlement snapshot in the turn engine.** Verify: queued follow-up does not
+- [x] **T12: Settlement snapshot in the turn engine.** Verify: queued follow-up does not
   leak into the snapshot; overlapping settle tails; success, error and abort. Size: M.
-- [ ] **T13: `handoff` row type, atomic batch append, acceptor API.** SDK types; chat store
+- [x] **T13: `handoff` row type, atomic batch append, acceptor API.** SDK types; chat store
   schema; `appendRows` batch writer honoured by `appendExternal`; acceptor registration
   validated against a `handoff: true` declaration; harness support.
   - Verify: busy target resolves only after `written`; mid-batch failure writes nothing;
     missing target throws; repeat `handoffId` is a no-op; undeclared kind rejected.
     Size: L → two commits (types + batch append, acceptor API).
-- [ ] **T14: Hand-off rendering.** Fold item; `out` card and `in` divider stories per A7.
+- [x] **T14: Hand-off rendering.** Fold item; `out` card and `in` divider stories per A7.
   Size: M.
-- [ ] **T15: Chat trigger.** Attachments reduced to a note. Verify: one target; two
+- [x] **T15: Chat trigger.** Attachments reduced to a note. Verify: one target; two
   targets; two created with one failed; no hand-off kinds; a second hand-off later in the
   same chat; error and aborted turns. Size: M.
-- [ ] **T16: Redirect.** Verify each branch incl. two-created/one-failed (no redirect) and
+- [x] **T16: Redirect.** Verify each branch incl. two-created/one-failed (no redirect) and
   load-never-redirects. Size: S.
-- [ ] **T17: Carried-history preamble helper**, published via `@makinbakin/sdk/utils`.
+- [x] **T17: Carried-history preamble helper**, published via `@makinbakin/sdk/utils`.
   Verify: budget boundary, multi-byte text, primes again after a pre-delivery failure,
   primes a second agent, stops after that agent's first reply. Size: S.
 - Knowledge docs for hand-off (`chat-plugin.md`, `plugin-system.md`) land in this PR.
 
 **Checkpoint E** — `ui:conformance --full`; core suite green using a test-only hand-off
 plugin on the SDK harness; nothing in core names Projects or Messaging.
+
+As built (PR 5):
+- The snapshot is `TurnOutcome.turnId` + `TurnOutcome.entities`. No separate `boundary`:
+  rows up to the last one carrying `turnId` are the settled turn's.
+- The `in` marker leads its batch and records `carried` (how many rows follow), so the
+  divider sits above the history and the preamble rule can tell carried assistant rows from
+  the receiving agent's own.
+- `EntityLink` is dropped: the kit renders both markers itself through the host's resolver
+  (`renderLink`), so nothing would consume a public link component.
 
 ### Phase 6 — Bits (`bakin-bits-official`) → PRs 6–8
 

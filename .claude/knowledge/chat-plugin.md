@@ -24,6 +24,14 @@ Spec/plan for the 2026-07 overhaul: `.claude/specs/chat-conversation-kit.md`, `t
 
 - **Inbound channel chat (#669 Phase B).** `lib/channel-inbound.ts` (wired in `activate`, unsubscribed in `onShutdown`, feature-detected — inert on runtimes without `channels.subscribeInboundMessages`): bridge-gated inbound messages find-or-create a chat bound via `ChatSummary.externalKey` (deterministic channel-label title suppresses auto-titling by design; a Discord thread is its own channel id ⇒ its own chat), run through `startChatTurn` (queue-when-busy), pulse `channels.sendTyping` while running, and post the reply back on the `chat.done` bus event — INCLUDING web-originated turns on bound chats (interchangeable conversation, D7). The reply (`extractReplyText`) is the turn's assistant text plus any structured question rendered as text (bold question, numbered options with the recommendation marked) in transcript order — a turn that ends on a question still reaches the channel; the user answers in their own words. `chat.error` posts an honest failure line; aborted turns stay silent. Attachments adopt into `chat/attachments/<chatId>/`: sniffed raster images enter the model lane gated on `capabilities().input.imageInput` (unsupported ⇒ visible note, stays local — an image-capability concern); non-raster files (PDF, SVG, CSV, …) pass through as TurnAttachments and the turn ENGINE generates the file-lane note (#742 — `fileLaneNote` is the one generator; a sniff-failed raster label is downgraded to octet-stream so it can never classify into the model lane). Deep dive: `.claude/knowledge/delivery-bridge.md`.
 
+- **Hand-off.** When a reply creates something that owns a conversation (a
+  kind another plugin accepts hand-offs for), chat carries its history there
+  after the turn settles, keeps a "continued in" marker, emits
+  `chat.handoff`, and the open chat follows a single target. Chat names no
+  target plugin. Files: `lib/handoff.ts` (what is carried, delivery, marker,
+  event), `components/handoff-redirect.ts` (the redirect rule). Deep
+  reference: `.claude/knowledge/entity-links.md` § Hand-off.
+
 ## File map
 
 ```
