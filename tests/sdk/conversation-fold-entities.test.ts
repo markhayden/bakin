@@ -117,3 +117,39 @@ describe('foldConversation — entities', () => {
     expect(refs(turns)).toEqual([project])
   })
 })
+
+describe('foldConversation — hand-off markers', () => {
+  const chat = { entity: 'chat:chat', id: 'c-1', title: 'Launch chat' }
+  const proj = { entity: 'projects:project', id: 'p-1', title: 'Launch plan' }
+
+  it('an out marker is its own turn after the reply that created the target', () => {
+    const turns = foldConversation([
+      user,
+      toolRow('bakin_exec_projects_create', [project]),
+      { kind: 'done', ts: ts(3), turnId: 'turn-1' },
+      { kind: 'handoff', ts: ts(4), handoffId: 'c-1:turn-1:p-1', direction: 'out', peers: [proj] },
+    ])
+    expect(turns.map((turn) => turn.kind)).toEqual(['user', 'agent', 'handoff'])
+    expect(turns[2]).toMatchObject({ kind: 'handoff', direction: 'out', peers: [proj] })
+  })
+
+  it('an in marker leads the carried history, which folds as ordinary turns', () => {
+    const turns = foldConversation([
+      { kind: 'handoff', ts: ts(5), handoffId: 'c-1:turn-1:p-1', direction: 'in', peers: [chat], carried: 2 },
+      { kind: 'user', ts: ts(1), content: 'plan the launch' },
+      { kind: 'assistant', ts: ts(2), turnId: 'turn-1', content: 'On it.' },
+      { kind: 'user', ts: ts(6), content: 'what is first?' },
+    ])
+    expect(turns.map((turn) => turn.kind)).toEqual(['handoff', 'user', 'agent', 'user'])
+    expect(turns[0]).toMatchObject({ kind: 'handoff', direction: 'in', peers: [chat], carried: 2 })
+  })
+
+  it('a marker between two replies splits them', () => {
+    const turns = foldConversation([
+      { kind: 'assistant', ts: ts(1), turnId: 'turn-1', content: 'First.' },
+      { kind: 'handoff', ts: ts(2), handoffId: 'h', direction: 'out', peers: [proj] },
+      { kind: 'assistant', ts: ts(3), turnId: 'turn-1', content: 'Second.' },
+    ])
+    expect(turns.map((turn) => turn.kind)).toEqual(['agent', 'handoff', 'agent'])
+  })
+})

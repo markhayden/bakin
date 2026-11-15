@@ -48,6 +48,8 @@ export { createTurnRecorder, SUMMARY_MAX_CHARS, PREVIEW_MAX_CHARS } from '@bakin
 export type { TurnRecorder } from '@bakin/core/conversation/turn-recorder'
 /** Validate structured questions (`bakin_exec_ask_user` envelopes) at a plugin's server boundary. */
 export { parseBakinQuestion, validateBakinQuestionInput, QUESTION_LIMITS } from '@bakin/core/conversation/questions'
+/** Hand-off helpers for a surface that accepts a chat's history: the acceptor's atomic, idempotent write, and the one-time preamble for the receiving agent. */
+export { HANDOFF_PREAMBLE_BYTES, handoffPreamble, hasAcceptedHandoff, writeHandoffBatch } from '@bakin/core/conversation/handoff'
 
 /** Structured-value (JSON → human) renderers — labeled prose, one-line summary, tool-envelope unwrap. */
 export { humanizeKey, formatStructured, summarizeStructured, unwrapToolResult, type FormatStructuredOptions } from '@bakin/core/format'

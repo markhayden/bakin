@@ -150,3 +150,79 @@ route as a client-routed `PluginLink` by default, on every surface that
 renders markdown, so it never reloads the shell. Server endpoints (`/api/…`)
 and in-page anchors stay ordinary links; external URLs open in a new tab.
 `renderInternalLink` remains as an override.
+
+## Hand-off
+
+When a chat reply creates something that owns a conversation, the chat's
+history is carried into it and the user follows it there.
+
+**Who takes part.** A plugin marks a kind `"handoff": true` in its manifest
+and registers an acceptor in `activate()`:
+
+```ts
+ctx.conversations.acceptHandoff('project', async (request) => {
+  const rows = readTranscript(request.target.id)        // throw if the target is missing
+  await writeHandoffBatch(service, ctx, request.target.id, request, rows)
+})
+```
+
+- `acceptHandoff` is refused for a kind the manifest does not declare with
+  `handoff: true` (the activation fails); one acceptor per kind; swept with
+  the plugin. Registry: `packages/core/src/conversation/handoff.ts`.
+- **Acceptor contract:** throw when the target does not exist; write
+  `request.rows` as ONE atomic batch; resolve only once it is durable, also
+  when the target has a turn in flight; accept a `handoffId`
+  (`<chatId>:<turnId>:<entityId>`) once. `writeHandoffBatch`
+  (`@makinbakin/sdk/utils`) does the last three over a turn service whose
+  config provides `appendRows` (the batch writer `appendExternal` uses).
+- Core names no plugin. Chat finds targets from what the turn's tools
+  reported as **created**, filtered to kinds with an acceptor.
+
+**The rows.** One marker row kind, at both ends:
+`{ kind: 'handoff', ts, handoffId, direction: 'out' | 'in', peers: [{ entity, id, title }], carried? }`.
+- `in` (target): leads the batch, followed by `carried` rows of the chat's
+  history, oldest first.
+- `out` (chat): appended after the turn; its peers are the targets that took
+  the history.
+
+**What chat carries** (`plugins/chat/lib/handoff.ts`, `carriedRows`): every
+row up to and including the settled turn's last row, verbatim, including tool
+rows and their cards. Not carried: `done` and earlier `handoff` rows, and
+attachments — their files are chat-owned, so the user message keeps a note
+naming them. A later queued turn is never included: the engine's settled
+outcome names its `turnId` and its entities (`TurnOutcome`), because
+`onSettled` runs after queued sends drain.
+
+**After the turn** (`handOffSettledTurn`, from chat's `onSettled`, for clean,
+failed and stopped turns alike): deliver to each created target; append the
+`out` marker through `appendExternal` so it never interleaves a follow-up
+turn; emit `chat.handoff { chatId, turnId, created, targets }`. A target that
+refuses is logged and audited as `chat.handoff.failed` and gets no marker;
+its card in the reply still links to it.
+
+**Redirect** (`plugins/chat/components/handoff-redirect.ts`): the chat page
+navigates on the live `chat.handoff` event only when the event is for the
+chat on screen, the reply created exactly one hand-off target, and that
+target took the history. Two created never redirects, even if one failed.
+Opening a chat that was handed off earlier never redirects. The original chat
+stays usable; later messages there are not carried.
+
+**Priming** (`handoffPreamble`, `@makinbakin/sdk/utils`): the receiving
+surface prepends the carried history to the runtime content of the agent's
+next turn. Derived, not stored: it returns the preamble while no assistant
+row from the agent about to be sent to (or an unattributed one) follows the
+carried rows. So a turn that failed before the agent replied primes again on
+retry, and a second agent on the same target is primed for its own thread.
+Byte-budgeted (16 KB by default), newest kept, with a visible omission
+marker; nothing runs automatically on arrival.
+
+**Rendering** (`HandoffMarker` in `packages/ui/src/conversation/entity-card.tsx`;
+story `Components/Conversation/Timeline and empty state` → `HandOff`): the
+fold turns a marker into its own turn. `out` renders an `EntityCard` per
+peer reading "Kind · Continued here"; `in` renders a labelled divider,
+"Carried over from the chat <title>", linking back. Both resolve through the
+same host provider as cards.
+
+**Testing.** The SDK harness exposes `harness.handoffs` (a real registry):
+`harness.handoffs.deliver({ handoffId, target, source, carried })` hands a
+plugin a chat's history exactly as Bakin does.

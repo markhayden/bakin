@@ -1103,6 +1103,31 @@ describe('PluginRegistryImpl', () => {
       expect(getExecTool('bakin_exec_ghost_make')).toBeUndefined()
     })
 
+    it('a plugin accepts hand-offs only for a kind it declares with handoff: true, and a sweep removes the acceptor', async () => {
+      const { getHandoffRegistry } = await import('../../packages/core/src/conversation/handoff')
+      const accept = (kind: string) => `ctx.conversations.acceptHandoff('${kind}', async function() {})`
+      writeUserPlugin('planner', {
+        activate: accept('plan'),
+        manifest: { contributes: { entities: [{ kind: 'plan', label: 'Plan', icon: 'Box', href: '/plans/{id}', handoff: true }] } },
+      })
+      // Declares the kind, but not as one that accepts a hand-off.
+      writeUserPlugin('notaker', {
+        activate: accept('note'),
+        manifest: { contributes: { entities: [{ kind: 'note', label: 'Note', icon: 'Box', href: '/notes/{id}' }] } },
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(getHandoffRegistry().has('planner:plan')).toBe(true)
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'notaker')
+      expect(failed).toMatchObject({ status: 'failed', errorCode: 'activation_failed' })
+      expect(failed.errorMessage).toContain('cannot accept hand-offs for "note"')
+      expect(getHandoffRegistry().has('notaker:note')).toBe(false)
+
+      await pluginRegistry.suspendPlugin('planner')
+      expect(getHandoffRegistry().has('planner:plan')).toBe(false)
+    })
+
     it('registers declared socket routes and fails undeclared ones', async () => {
       const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
       writeUserPlugin('declared-socket', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })

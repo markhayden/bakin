@@ -111,6 +111,14 @@ const TranscriptRowSchema = z.discriminatedUnion('kind', [
     turnId: z.string().optional(),
   }),
   z.object({
+    kind: z.literal('handoff'),
+    ts: z.string(),
+    handoffId: z.string().min(1),
+    direction: z.enum(['out', 'in']),
+    peers: z.array(z.object({ entity: z.string().min(1), id: z.string().min(1), title: z.string() })),
+    carried: z.number().int().min(0).optional(),
+  }),
+  z.object({
     kind: z.literal('done'),
     ts: z.string(),
     turnId: z.string().optional(),
@@ -500,7 +508,8 @@ export async function sweepInterruptedTurns(isInFlight?: (chatId: string) => boo
         continue
       }
       const markerEra = chat.markerEra || rows.some((r) => r.kind === 'done')
-      const terminal = last.kind === 'done' || last.kind === 'aborted' || last.kind === 'error'
+      // A hand-off marker is written after its turn settled: nothing was interrupted.
+      const terminal = last.kind === 'done' || last.kind === 'aborted' || last.kind === 'error' || last.kind === 'handoff'
       if (!markerEra || terminal || !last.turnId) continue
       await appendTranscriptRow(chat.id, {
         kind: 'error',

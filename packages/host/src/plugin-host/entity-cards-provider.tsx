@@ -29,7 +29,10 @@ export function EntityCardsProvider({ children }: { children: ReactNode }) {
       return {
         label: declaration.label,
         icon: <NavIcon name={declaration.icon} />,
-        ...(href ? { link: <PluginLink to={href} /> } : {}),
+        ...(href ? {
+          link: <PluginLink to={href} />,
+          renderLink: (children) => <PluginLink to={href} className="text-bakin-text-primary underline underline-offset-2">{children}</PluginLink>,
+        } : {}),
       }
     }
   }, [version])

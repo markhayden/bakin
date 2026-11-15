@@ -56,6 +56,8 @@ export type TranscriptRowDto =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  /** A hand-off marker: `out` = continued in its peers; `in` = carried over from its peer, followed by `carried` rows of history. */
+  | { kind: 'handoff'; ts: string; handoffId: string; direction: 'out' | 'in'; peers: { entity: string; id: string; title: string }[]; carried?: number }
 
 export function attachmentUrl(chatId: string, name: string): string {
   return `/api/plugins/chat/chats/${chatId}/attachments/${encodeURIComponent(name)}`
@@ -286,7 +288,8 @@ export function useChatStream(chatId: string): ChatStreamState {
   // attachments, and attachment URL mapping.
   const thread = useConversationThread<ChatSummaryDto, { name: string; mimeType: string; path: string }>({
     threadKey: chatId,
-    events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error' },
+    // `chat.handoff` announces the "continued in" marker, written outside a turn.
+    events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', appended: 'chat.handoff' },
     keyOf: (payload) => payload.chatId,
     load: async (key) => {
       const decorSeq = ++decorSeqRef.current

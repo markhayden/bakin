@@ -1073,7 +1073,10 @@ plugin owns and where each lives (`{ kind, label, icon, href, handoff? }`),
 and `contributes.execTools[].reports` lists the kinds a tool may report on
 its result. Every link and conversation card is built from these. Hot reload
 re-reads and re-validates the manifest, so a changed declaration lands without
-a restart. Deep reference: `.claude/knowledge/entity-links.md`.
+a restart. Deep reference: `.claude/knowledge/entity-links.md`. A kind
+declared `"handoff": true` may register `ctx.conversations.acceptHandoff` to
+receive a chat's history when a chat reply creates one (same reference,
+§ Hand-off).
 
 ## Runtime Plugin Loader (browser)
 

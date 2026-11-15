@@ -85,6 +85,8 @@ export type ChatTranscriptRow =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  /** A hand-off marker: `out` = continued in its peers; `in` = carried over from its peer, followed by `carried` rows of history. */
+  | { kind: 'handoff'; ts: string; handoffId: string; direction: 'out' | 'in'; peers: { entity: string; id: string; title: string }[]; carried?: number }
 
 /** SSE payloads broadcast on the global bus while a turn streams. */
 export interface ChatChunkEvent {
@@ -108,6 +110,17 @@ export interface ChatDoneEvent {
   preview?: string
   /** True when the turn ended via user abort (no notification fanfare). */
   aborted?: boolean
+}
+
+/** A settled reply was handed off to what it created (see lib/handoff.ts). */
+export interface ChatHandoffEvent {
+  type: 'chat.handoff'
+  chatId: string
+  turnId: string
+  /** How many hand-off targets the reply created. */
+  created: number
+  /** The targets that took the chat's history. */
+  targets: { entity: string; id: string; title: string }[]
 }
 
 export interface ChatErrorEvent {

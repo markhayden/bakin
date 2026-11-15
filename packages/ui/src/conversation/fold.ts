@@ -66,6 +66,8 @@ export type ConversationMessage =
   | { kind: 'error'; ts: string; turnId?: string; message: string; errorKind?: string }
   | { kind: 'aborted'; ts: string; turnId?: string }
   | { kind: 'done'; ts: string; turnId?: string }
+  /** A hand-off marker: `out` = continued in its peers; `in` = carried over from its peer, followed by `carried` rows of history. */
+  | { kind: 'handoff'; ts: string; handoffId: string; direction: 'out' | 'in'; peers: { entity: string; id: string; title: string }[]; carried?: number }
 
 /** One tool invocation inside an activity group. */
 export interface ConversationToolCall {
@@ -232,6 +234,19 @@ export type ConversationTurn =
       status: TurnStatus
       /** Latest runtime status label, meaningful while streaming. */
       statusLabel?: string
+    }
+  | {
+      /**
+       * A hand-off marker between turns. `out`: this conversation was
+       * continued in `peers`. `in`: the `carried` turns that follow were
+       * carried over from `peers[0]`.
+       */
+      kind: 'handoff'
+      key: string
+      ts: string
+      direction: 'out' | 'in'
+      peers: { entity: string; id: string; title: string }[]
+      carried?: number
     }
 
 /** Optional in-flight state folded after persisted conversation rows. */
@@ -478,6 +493,20 @@ export function foldConversation(
     // Terminal markers are persistence evidence, not visible turn content.
     if (row.kind === 'done') continue
 
+    // A hand-off marker stands on its own between turns.
+    if (row.kind === 'handoff') {
+      flush()
+      turns.push({
+        kind: 'handoff',
+        key: `handoff-${row.handoffId}-${row.direction}`,
+        ts: row.ts,
+        direction: row.direction,
+        peers: row.peers,
+        ...(row.carried !== undefined ? { carried: row.carried } : {}),
+      })
+      continue
+    }
+
     const rowTurnId = row.turnId
     if (current && rowTurnId !== undefined && currentTurnId !== undefined && rowTurnId !== currentTurnId) {
       flush()
@@ -556,6 +585,7 @@ function deriveQuestionStates(turns: ConversationTurn[]): void {
       replyClaimed = false
       continue
     }
+    if (turn.kind === 'handoff') continue
     for (let i = turn.items.length - 1; i >= 0; i--) {
       const item = turn.items[i]!
       if (item.type !== 'question') continue

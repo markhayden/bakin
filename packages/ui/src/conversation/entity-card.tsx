@@ -3,9 +3,13 @@ import { createContext, use, type ReactElement, type ReactNode } from 'react'
 import { Card, CardContent, CardMedia } from '../primitives/card'
 import type { ConversationEntityRef } from './fold'
 
-const ACTION_LABEL: Record<ConversationEntityRef['action'], string> = {
+/** What the card says happened: a tool created or changed the thing, or the conversation moved there. */
+export type EntityCardAction = ConversationEntityRef['action'] | 'continued'
+
+const ACTION_LABEL: Record<EntityCardAction, string> = {
   created: 'Created',
   updated: 'Updated',
+  continued: 'Continued here',
 }
 
 /** Props for one entity card: a resolved kind plus the reference's snapshot. */
@@ -14,7 +18,7 @@ export interface EntityCardProps {
   label: string
   /** The entity's title at the time of the tool call. */
   title: string
-  action: ConversationEntityRef['action']
+  action: EntityCardAction
   /** The kind's icon, decorative. */
   icon?: ReactNode
   /**
@@ -60,6 +64,8 @@ export interface ResolvedEntityKind {
   label: string
   icon?: ReactNode
   link?: ReactElement<{ className?: string }>
+  /** Wrap inline content in a link to the entity (the same destination as `link`). */
+  renderLink?: (children: ReactNode) => ReactNode
 }
 
 /** Resolves a reference's kind to its display name, icon and link; `null` when the kind is unknown. */
@@ -80,6 +86,54 @@ const resolveNothing: EntityKindResolver = () => null
  * named after the kind.
  */
 export const EntityKindResolverContext = createContext<EntityKindResolver>(resolveNothing)
+
+type Peer = { entity: string; id: string; title: string }
+const peerRef = (peer: Peer): ConversationEntityRef => ({ kind: peer.entity, id: peer.id, title: peer.title, action: 'created' })
+
+/** Props for a hand-off marker between turns. */
+export interface HandoffMarkerProps {
+  direction: 'out' | 'in'
+  peers: readonly Peer[]
+}
+
+/**
+ * A hand-off marker. `out`: the conversation continued somewhere — a card per
+ * place, linking there. `in`: what follows was carried over from another
+ * conversation — a labelled divider linking back to it.
+ */
+export function HandoffMarker({ direction, peers }: HandoffMarkerProps) {
+  const resolve = use(EntityKindResolverContext)
+  if (peers.length === 0) return null
+  if (direction === 'out') {
+    // The spacer is the agent avatar's column, so these cards line up with the
+    // cards in the reply above them.
+    return (
+      <div data-conv-handoff="out" className="flex min-w-0 gap-bakin-3">
+        <span aria-hidden="true" className="w-bakin-6 shrink-0" />
+        <ul aria-label="Continued in" className="grid min-w-0 max-w-md flex-1 list-none grid-cols-1 gap-bakin-2 p-0">
+          {peers.map((peer) => (
+            <li key={`${peer.entity}:${peer.id}`} className="min-w-0">
+              <EntityCard {...(resolve(peerRef(peer)) ?? { label: fallbackLabel(peer.entity) })} title={peer.title} action="continued" />
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+  const source = peers[0]!
+  const resolved = resolve(peerRef(source))
+  const label = (resolved?.label ?? fallbackLabel(source.entity)).toLowerCase()
+  return (
+    <div data-conv-handoff="in" role="note" className="flex min-w-0 items-center gap-bakin-3 py-bakin-2">
+      <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle/60" />
+      <span className="min-w-0 shrink text-balance text-center text-[length:var(--bakin-typography-size-meta)] text-bakin-text-muted">
+        Carried over from the {label}{' '}
+        {resolved?.renderLink ? resolved.renderLink(source.title) : <span className="text-bakin-text-primary">{source.title}</span>}
+      </span>
+      <span aria-hidden="true" className="h-px flex-1 bg-bakin-border-subtle/60" />
+    </div>
+  )
+}
 
 /** The cards for one `entities` turn item. */
 export function EntityCards({ refs }: { refs: readonly ConversationEntityRef[] }) {

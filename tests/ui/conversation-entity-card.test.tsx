@@ -16,7 +16,7 @@ const contentDirMock = () => ({
 mock.module('../../src/core/content-dir', contentDirMock)
 mock.module('../../packages/core/src/content-dir', contentDirMock)
 
-import { AgentTurn, foldConversation, type ConversationMessage } from '@makinbakin/sdk/conversation'
+import { AgentTurn, Conversation, foldConversation, type ConversationMessage } from '@makinbakin/sdk/conversation'
 import { EntityKindResolverContext, type EntityKindResolver } from '@makinbakin/sdk/internal'
 
 const rows: ConversationMessage[] = [
@@ -65,5 +65,53 @@ describe('entity cards in an agent turn', () => {
     await actRender(() => render(<AgentTurn turn={turn as never} agent={agent} />))
     expect(screen.queryByRole('link')).toBeNull()
     expect(screen.getByText('Project · Created')).toBeDefined()
+  })
+})
+
+describe('hand-off markers in a conversation', () => {
+  const proj = { entity: 'projects:project', id: 'p-1', title: 'Launch plan' }
+  const chat = { entity: 'chat:chat', id: 'c-1', title: 'Launch chat' }
+  const linked: EntityKindResolver = (ref) => {
+    const href = ref.kind === 'projects:project' ? `/projects/${ref.id}` : ref.kind === 'chat:chat' ? `/chat/${ref.id}` : null
+    if (!href) return null
+    return { label: ref.kind === 'chat:chat' ? 'Chat' : 'Project', link: <a href={href} />, renderLink: (children) => <a href={href}>{children}</a> }
+  }
+
+  it('out: a "continued here" card per target, linking there', async () => {
+    const turns = foldConversation([
+      { kind: 'assistant', ts: '2026-11-14T10:00:01.000Z', turnId: 't1', content: 'Project created.' },
+      { kind: 'handoff', ts: '2026-11-14T10:00:02.000Z', handoffId: 'c-1:t1', direction: 'out', peers: [proj] },
+    ])
+    await actRender(() => render(
+      <EntityKindResolverContext value={linked}><Conversation turns={turns} agent={agent} /></EntityKindResolverContext>,
+    ))
+    const list = screen.getByRole('list', { name: 'Continued in' })
+    expect(within(list).getByRole('link', { name: 'Open project: Launch plan' }).getAttribute('href')).toBe('/projects/p-1')
+    expect(within(list).getByText('Project · Continued here')).toBeDefined()
+  })
+
+  it('in: a divider naming the source, linking back to it', async () => {
+    const turns = foldConversation([
+      { kind: 'handoff', ts: '2026-11-14T10:00:02.000Z', handoffId: 'c-1:t1:p-1', direction: 'in', peers: [chat], carried: 1 },
+      { kind: 'user', ts: '2026-11-14T09:00:00.000Z', content: 'plan the launch' },
+    ])
+    await actRender(() => render(
+      <EntityKindResolverContext value={linked}><Conversation turns={turns} agent={agent} /></EntityKindResolverContext>,
+    ))
+    const note = screen.getByRole('note')
+    expect(note.textContent).toBe('Carried over from the chat Launch chat')
+    expect(within(note).getByRole('link', { name: 'Launch chat' }).getAttribute('href')).toBe('/chat/c-1')
+    expect(screen.getByText('plan the launch')).toBeDefined()
+  })
+
+  it('without a resolver both markers are plain content, never a dead link', async () => {
+    const turns = foldConversation([
+      { kind: 'handoff', ts: '2026-11-14T10:00:02.000Z', handoffId: 'h', direction: 'in', peers: [chat], carried: 0 },
+      { kind: 'handoff', ts: '2026-11-14T10:00:03.000Z', handoffId: 'h2', direction: 'out', peers: [proj] },
+    ])
+    await actRender(() => render(<Conversation turns={turns} agent={agent} />))
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.getByRole('note').textContent).toBe('Carried over from the chat Launch chat')
+    expect(screen.getByText('Project · Continued here')).toBeDefined()
   })
 })
