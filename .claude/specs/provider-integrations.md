@@ -135,7 +135,9 @@ stale and re-keys the in-flight dedupe). The Google pack's probe is `gog auth li
 --no-input` with `expect: "email":\s*"([^"]+)"[^}]*"valid":\s*true`
 (`[^}]*` stays inside one account object — an invalid first account never
 lends its email to a valid second one). `gh auth status` exits 1 when logged
-out, so the GitHub pack declares no `expect`.
+out; the GitHub pack still declares an `expect`, to capture the username
+(`account (\S+) \([^)]*\)\s*\n\s*- Active account: true`) — the relay's
+token command needs the account, and the first stdout line is the host.
 
 Host-side admission (not only the Bits contract test): the binding predicate
 is `bins.some(b => b.name === probe[0])` OR `prereqs.some(p => p.kind ===

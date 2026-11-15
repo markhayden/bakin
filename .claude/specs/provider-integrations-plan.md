@@ -361,7 +361,7 @@ with `{account}` from that receipt, so probe and token name the same identity.
 environment (`unsetEnv` on the login entry and on `token`, added to the schema
 in 2.5 and honored by `login-verify.ts` and the relay), so an environment PAT
 can neither satisfy the probe nor be swapped for a stored token; the README's
-PAT-override note is removed. Tests: environment-only auth reads missing;
+PAT-override note is removed. The login entry keeps v1.1.1's capturing `expect` (`account (\S+) \([^)]*\)\s*\n\s*- Active account: true`, matched against real `gh auth status --hostname github.com --active` output on this box, 2026-11-15), so `receipt.account` is the username, never the host line. Tests: a real-shaped gh transcript flows through receipt creation into the token command's `--user`; environment-only auth reads missing;
 same user with an env PAT and a stored token uses the stored one in both.
 Test: a second host with a different active account and the same username on
 both never changes what the relay uses. Enterprise hosts are a follow-up. `bakin` floor = the PR2 rc. **Size:** M.
