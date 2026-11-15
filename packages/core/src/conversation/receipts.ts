@@ -15,6 +15,8 @@
  * metadata. A receipt is bound to the tool and agent that produced it, so a
  * different tool that merely quotes a live token cannot take it.
  */
+import { z } from 'zod'
+import type { EntityRef } from '@makinbakin/sdk/types'
 import type { ChatChunk } from '../adapters/runtime/concepts'
 import { parseBakinQuestion, type BakinQuestion } from './questions'
 
@@ -29,7 +31,19 @@ export interface ReceiptOwner {
 export interface ToolReceipt extends ReceiptOwner {
   id: string
   question?: BakinQuestion
+  entities?: EntityRef[]
 }
+
+/** Bounds on what one tool call may report. */
+export const ENTITY_REF_LIMITS = { title: 200, perResult: 50 } as const
+
+const entityRefSchema = z.object({
+  kind: z.string().regex(/^[a-z][a-z0-9-]{0,39}:[a-z][a-z0-9-]{0,39}$/),
+  id: z.string().min(1).max(512),
+  title: z.string().trim().min(1).transform((title) => title.slice(0, ENTITY_REF_LIMITS.title)),
+  action: z.enum(['created', 'updated']),
+  params: z.record(z.string(), z.string().min(1).max(512)).optional(),
+}).strict()
 
 export interface ReceiptRegistry {
   put(receipt: ToolReceipt): void
@@ -86,24 +100,55 @@ export function createReceiptRegistry(
 /** The process-wide registry shared by the tool invoke paths and the turn engine. */
 export const receiptRegistry: ReceiptRegistry = createReceiptRegistry()
 
+export interface SealOptions {
+  registry?: ReceiptRegistry
+  /** Kinds the tool's manifest entry declares (`contributes.execTools[].reports`). */
+  reports?: readonly string[]
+  /** Called with the references that were dropped: malformed, or a kind the tool does not declare. */
+  onRejected?: (refs: unknown[]) => void
+}
+
 /**
  * Serialise a successful tool result for the agent. A result with nothing for
- * the conversation serialises as-is; otherwise the payload is parked in the
- * registry, removed from what the agent reads, and the rest is wrapped in the
- * receipt envelope. THE one serialiser for both invoke paths.
+ * the conversation serialises as-is; otherwise the payload (a question, the
+ * entities the call created or changed) is parked in the registry, removed
+ * from what the agent reads, and the rest is wrapped in the receipt envelope.
+ * Only kinds the tool declares are carried. THE one serialiser for both
+ * invoke paths.
  */
 export function sealToolResult(
   result: Record<string, unknown>,
   owner: ReceiptOwner,
-  registry: ReceiptRegistry = receiptRegistry,
+  { registry = receiptRegistry, reports = [], onRejected }: SealOptions = {},
 ): string {
+  const { entities: reported, ...withoutEntities } = result
   const question = parseBakinQuestion(result.question)
-  if (!question) return JSON.stringify(result, null, 2)
 
-  const { question: _carried, ...rest } = result
+  const entities: EntityRef[] = []
+  const rejected: unknown[] = []
+  for (const ref of Array.isArray(reported) ? reported : []) {
+    const parsed = entityRefSchema.safeParse(ref)
+    if (parsed.success && reports.includes(parsed.data.kind) && entities.length < ENTITY_REF_LIMITS.perResult) {
+      entities.push(parsed.data)
+    } else if (!parsed.success || !reports.includes(parsed.data.kind)) {
+      rejected.push(ref)
+    }
+  }
+  if (rejected.length > 0) onRejected?.(rejected)
+
+  // `entities` is the host's field: an array there never reaches the agent.
+  const rest = Array.isArray(reported) ? withoutEntities : result
+  if (!question && entities.length === 0) return JSON.stringify(rest, null, 2)
+
+  const { question: _carried, ...body } = rest
   const id = mintReceiptId()
-  registry.put({ id, ...owner, question })
-  return JSON.stringify({ receipt: `bakin-receipt:${id}`, result: rest }, null, 2)
+  registry.put({
+    id,
+    ...owner,
+    ...(question ? { question } : {}),
+    ...(entities.length > 0 ? { entities } : {}),
+  })
+  return JSON.stringify({ receipt: `bakin-receipt:${id}`, result: question ? body : rest }, null, 2)
 }
 
 /**
@@ -123,6 +168,16 @@ export function enrichReceiptChunk(
   if (chunk.type !== 'tool' || chunk.data.phase !== 'result') return chunk
   const id = findReceiptToken(chunk.data.outputPreview) ?? findReceiptToken(chunk.content)
   const receipt = id ? registry.take(id, { agentId, toolName: chunk.data.toolName }) : null
-  if (!receipt?.question) return chunk
-  return { ...chunk, data: { ...chunk.data, metadata: { ...chunk.data.metadata, bakinQuestion: receipt.question } } }
+  if (!receipt) return chunk
+  return {
+    ...chunk,
+    data: {
+      ...chunk.data,
+      metadata: {
+        ...chunk.data.metadata,
+        ...(receipt.question ? { bakinQuestion: receipt.question } : {}),
+        ...(receipt.entities ? { bakinEntities: receipt.entities } : {}),
+      },
+    },
+  }
 }

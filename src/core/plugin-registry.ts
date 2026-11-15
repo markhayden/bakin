@@ -706,6 +706,27 @@ class PluginRegistryImpl {
     }
   }
 
+  /**
+   * The entity kinds a tool's manifest entry reports, checked against what
+   * is actually declared. The manifest parser already holds each kind to
+   * "own, or owned by a dependency"; a dependency has activated by now, so
+   * its kinds are in the entity registry — a kind nobody declares fails the
+   * activation rather than silently never producing a card.
+   */
+  private resolveToolReports(pluginId: string, state: PluginState, toolName: string): readonly string[] {
+    const contributes = state.manifest?.contributes
+    const reports = contributes?.execTools?.find((item) => item.name === toolName)?.reports ?? []
+    const ownKinds = new Set((contributes?.entities ?? []).map((entity) => `${pluginId}:${entity.kind}`))
+    for (const kind of reports) {
+      if (ownKinds.has(kind) || getEntityRegistry().get(kind)) continue
+      throw new Error(
+        `Plugin "${pluginId}" exec tool "${toolName}" reports "${kind}", which no loaded plugin declares. ` +
+        'Declare the kind in contributes.entities, or depend on the plugin that owns it.',
+      )
+    }
+    return reports
+  }
+
   private buildContext(
     pluginId: string,
     state: PluginState,
@@ -736,6 +757,7 @@ class PluginRegistryImpl {
         const erased = tool as unknown as ExecToolDefinition
         this.assertExecToolDeclared(pluginId, state, erased)
         erased.source = `plugin:${pluginId}`
+        erased.reports = this.resolveToolReports(pluginId, state, erased.name)
         addExecTool(erased)
       },
       // Collision semantics are uniform across every registrar (R18): a
@@ -872,7 +894,7 @@ class PluginRegistryImpl {
     }
     this.plugins.set(plugin.id, state)
     this.failedPlugins.delete(plugin.id)
-    this.publishEntities(plugin.id, manifest)
+    this.publishEntities(plugin.id, state.manifest ?? manifest)
     if (source === 'core') {
       corePluginIds.add(plugin.id)
     } else {

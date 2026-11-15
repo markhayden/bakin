@@ -522,11 +522,29 @@ describe('plugin manifest entities', () => {
 
   it('parses the kinds an exec tool reports', () => {
     const manifest = withEntities([project], [
-      { name: 'bakin_exec_messaging_create', summary: 'Create', reports: ['messaging:project', 'assets:asset'] },
+      { name: 'bakin_exec_messaging_create', summary: 'Create', reports: ['messaging:project', 'messaging:project'] },
       { name: 'bakin_exec_messaging_list', summary: 'List' },
     ])()
-    expect(manifest.contributes?.execTools?.[0]?.reports).toEqual(['messaging:project', 'assets:asset'])
+    // De-duplicated.
+    expect(manifest.contributes?.execTools?.[0]?.reports).toEqual(['messaging:project'])
     expect(manifest.contributes?.execTools?.[1]?.reports).toBeUndefined()
+  })
+
+  it('a tool may report its own declared kinds or a declared dependency\'s kinds, nothing else', () => {
+    const parse = (reports: string[], extra: Record<string, unknown> = {}) => () => parsePluginManifest({
+      ...baseManifest,
+      ...extra,
+      contributes: {
+        entities: [project],
+        execTools: [{ name: 'bakin_exec_messaging_create', summary: 'Create', reports }],
+      },
+    })
+    expect(parse(['messaging:project'])).not.toThrow()
+    expect(parse(['messaging:project', 'assets:asset'], { dependencies: ['assets'] })).not.toThrow()
+    // Own kind that the manifest never declares.
+    expect(parse(['messaging:plan'])).toThrow(/reports "messaging:plan".*not declared in contributes\.entities/)
+    // Another plugin's kind without depending on it.
+    expect(parse(['assets:asset'])).toThrow(/reports "assets:asset".*"assets" is not listed in dependencies/)
   })
 
   it('rejects a reported kind that is not written as <pluginId>:<kind>', () => {

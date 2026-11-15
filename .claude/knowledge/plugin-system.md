@@ -1068,6 +1068,13 @@ interface PluginManifest {
 (Shape excerpt. The full shape, including every `contributes` sub-type, lives
 in `packages/sdk/src/types/manifest.ts` — treat that file as canonical.)
 
+**Linkable entities.** `contributes.entities[]` declares the kinds of thing a
+plugin owns and where each lives (`{ kind, label, icon, href, handoff? }`),
+and `contributes.execTools[].reports` lists the kinds a tool may report on
+its result. Every link and conversation card is built from these. Hot reload
+re-reads and re-validates the manifest, so a changed declaration lands without
+a restart. Deep reference: `.claude/knowledge/entity-links.md`.
+
 ## Runtime Plugin Loader (browser)
 
 `packages/host/src/plugin-host/PluginHost.tsx` wraps the shell tree.

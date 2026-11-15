@@ -35,6 +35,7 @@ import { BakinEventBus } from '@bakin/core/events'
 import { MarkdownStorageAdapter } from '@bakin/core/storage'
 import { createPluginSocket, dispatchRoute } from '@bakin/core/routing'
 import { createConversationTurnService } from '@bakin/core/conversation/turns'
+import { parsePluginManifest } from '@bakin/core/plugins/manifest'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 import { taskStatusChangedPayload } from '@bakin/core/tasks/status-change'
@@ -152,6 +153,13 @@ export interface CreateTestContextOptions {
   dir?: string
   /** Treat the plugin as a core plugin (it may then declare core operation resources). */
   core?: boolean
+  /**
+   * The plugin's `bakin-plugin.json`, parsed. It is validated exactly as
+   * install validates it, and each registered tool is bound to the entity
+   * kinds its entry lists under `reports` — `callTool` then fails on a kind
+   * the tool reports without declaring.
+   */
+  manifest?: unknown
 }
 
 /**
@@ -173,6 +181,9 @@ export function createTestContext(
   const routes: APIRoute[] = []
   const socketRoutes: SocketRoute[] = []
   const execTools: ExecToolDefinition[] = []
+  const manifest = options.manifest === undefined ? undefined : parsePluginManifest(options.manifest)
+  const reportsFor = (toolName: string): readonly string[] | undefined =>
+    manifest ? manifest.contributes?.execTools?.find((tool) => tool.name === toolName)?.reports ?? [] : undefined
   const navItems: NavItem[] = []
   const slots: UISlotRegistration[] = []
   const workflows: WorkflowDefinitionInput[] = []
@@ -295,7 +306,11 @@ export function createTestContext(
     } satisfies PluginContext['assets'],
     registerNav: (items) => navItems.push(...items),
     registerSlot: (registration) => slots.push(registration),
-    registerExecTool: (tool) => execTools.push(tool as unknown as ExecToolDefinition),
+    registerExecTool: (tool) => {
+      const erased = tool as unknown as ExecToolDefinition & { reports?: readonly string[] }
+      erased.reports = reportsFor(erased.name)
+      execTools.push(erased)
+    },
     registerSkill: (skill) => skills.push(skill),
     registerWorkflow: (definition, _opts) => workflows.push(definition),
     registerNodeType: (def) => {
@@ -687,5 +702,16 @@ export async function callTool(
       .join('; ')
     return { ok: false, error: `invalid parameters for ${tool.name}: ${detail}` }
   }
-  return tool.handler(parsed.data as Record<string, unknown>, agent, toolCtx)
+  const result = await tool.handler(parsed.data as Record<string, unknown>, agent, toolCtx)
+  // Production drops (and audits) an entity whose kind the tool's manifest
+  // entry does not list, so the card silently never appears. Fail here.
+  const reports = (tool as { reports?: readonly string[] }).reports
+  for (const ref of Array.isArray(result.entities) ? result.entities : []) {
+    if (reports?.includes(ref.kind)) continue
+    throw new Error(
+      `${tool.name} reported "${ref.kind}", which its manifest entry does not list under contributes.execTools[].reports` +
+      (reports === undefined ? ' — pass { manifest } to activatePlugin/createTestContext so the harness knows what the tool declares' : ''),
+    )
+  }
+  return result
 }

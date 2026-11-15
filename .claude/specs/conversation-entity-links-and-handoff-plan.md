@@ -209,19 +209,19 @@ not survive a real runtime, stop and revisit A1.
 
 ### Phase 2 — Declaration, registry, navigation → PR 2
 
-- [ ] **T3: Manifest schema and registry lifecycle.** Zod schema (kind slug, label, icon,
+- [x] **T3: Manifest schema and registry lifecycle.** Zod schema (kind slug, label, icon,
   href with named placeholders starting `/`, `handoff`, tool `reports`); duplicate kinds
   rejected; reload pipeline re-reads the manifest; publish after activation; sweep on
   failure/disable/removal/reload; `plugin-sync-manifest` capture keeps the new fields.
   - Verify: schema tests; **changed-manifest reload test** (add, change, remove a kind);
     failed-activation leaves no declarations. Size: L → two commits (schema, lifecycle).
-- [ ] **T4: Core plugin declarations and browser hydration.** task, asset, schedule job,
+- [x] **T4: Core plugin declarations and browser hydration.** task, asset, schedule job,
   workflow, brand, brand doc, chat, agent declared in their manifests; `PluginHost` seeds
   and replaces the browser registry. Size: M.
-- [ ] **T5: `entityHref`** in `@makinbakin/sdk/navigation` plus the core twin. (`EntityLink`
+- [x] **T5: `entityHref`** in `@makinbakin/sdk/navigation` plus the core twin. (`EntityLink`
   moved to T7: a public kit component needs a public story and visual baseline, and its
   first use is the card and divider stories there.) Verify: segment escaping, query links, compound params, unknown kind. Size: S.
-- [ ] **T6: `EntityRef`, `ExecToolResult.entities`, `reports` validation.** Own-or-dependency
+- [x] **T6: `EntityRef`, `ExecToolResult.entities`, `reports` validation.** Own-or-dependency
   rule; activation assertion for core and user plugins; runtime drop + audit; the
   `@makinbakin/sdk/testing` harness enforces the same so external authors fail in their own
   tests. Size: M.

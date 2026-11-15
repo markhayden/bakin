@@ -657,6 +657,23 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
   }
 
   const contributes = parseContributions(raw.contributes)
+  const dependencies = stringArrayField(raw, 'dependencies')
+  // A tool may report its own declared kinds, or kinds owned by a plugin this
+  // one depends on (Images creates assets). Whether a dependency really
+  // declares the kind is checked at activation, once it has loaded.
+  const ownKinds = new Set((contributes?.entities ?? []).map((entity) => entity.kind))
+  for (const [index, tool] of (contributes?.execTools ?? []).entries()) {
+    for (const reported of tool.reports ?? []) {
+      const [owner, kind] = reported.split(':') as [string, string]
+      if (owner === id) {
+        if (!ownKinds.has(kind)) {
+          throw new PluginManifestError(`contributes.execTools[${index}] reports "${reported}", which is not declared in contributes.entities`)
+        }
+      } else if (!(dependencies ?? []).includes(owner)) {
+        throw new PluginManifestError(`contributes.execTools[${index}] reports "${reported}", but "${owner}" is not listed in dependencies`)
+      }
+    }
+  }
   const requires = parseRequires(raw.requires)
   // A launch runs a binary in the operator's terminal: only one this plugin
   // installs (and Bakin verifies) may be named.
@@ -680,7 +697,7 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
     description: stringField(raw, 'description', { required: true })!,
     contentFiles: stringArrayField(raw, 'contentFiles'),
     secrets: secretDeclarationsField(raw, 'secrets'),
-    dependencies: stringArrayField(raw, 'dependencies'),
+    dependencies,
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
     runtimeCapabilities,
     contributes,

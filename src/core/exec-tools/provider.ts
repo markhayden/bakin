@@ -14,7 +14,7 @@
 import { z } from 'zod'
 
 import type { RuntimeExecToolDescriptor, RuntimeExecToolInvokeResult, RuntimeExecToolProvider } from '@bakin/core/adapters/shared'
-import { sealToolResult } from '@bakin/core/conversation/receipts'
+import { sealExecToolResult } from './seal'
 import { appendAudit } from '../audit'
 import { getContentDir } from '../content-dir'
 import { createLogger } from '../logger'
@@ -104,7 +104,7 @@ export function createRuntimeExecToolProvider(): RuntimeExecToolProvider {
           'mcp',
         )
         const text = result.ok
-          ? sealToolResult(result, { agentId: agentId, toolName: name })
+          ? sealExecToolResult(tool, agentId, result)
           : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
         return { ok: result.ok, text }
       } catch (err) {

@@ -1068,6 +1068,41 @@ describe('PluginRegistryImpl', () => {
       expect(pluginRegistry.findRoute('undeclared-route', '/data', 'GET')).toBeNull()
     })
 
+    it('binds each tool to the entity kinds its manifest entry reports', async () => {
+      const { getExecTool } = await import('../../src/core/exec-tools/registry')
+      const { getEntityRegistry } = await import('../../packages/core/src/plugins/entity-registry')
+      const tool = (id: string) => `ctx.registerExecTool({ name: 'bakin_exec_${id}_make', description: 'Make', parameters: {}, handler: async function() { return { ok: true } } })`
+      writeUserPlugin('maker', {
+        activate: tool('maker'),
+        manifest: { contributes: {
+          entities: [{ kind: 'thing', label: 'Thing', icon: 'Box', href: '/things/{id}' }],
+          execTools: [{ name: 'bakin_exec_maker_make', summary: 'Make', reports: ['maker:thing'] }],
+        } },
+      })
+      writeUserPlugin('borrower', {
+        deps: ['maker'],
+        activate: tool('borrower'),
+        manifest: { contributes: { execTools: [{ name: 'bakin_exec_borrower_make', summary: 'Make', reports: ['maker:thing'] }] } },
+      })
+      // Depends on maker, but maker declares no such kind.
+      writeUserPlugin('ghost', {
+        deps: ['maker'],
+        activate: tool('ghost'),
+        manifest: { contributes: { execTools: [{ name: 'bakin_exec_ghost_make', summary: 'Make', reports: ['maker:nothing'] }] } },
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(getEntityRegistry().get('maker:thing')).toBeDefined()
+      expect(getExecTool('bakin_exec_maker_make')?.reports).toEqual(['maker:thing'])
+      expect(getExecTool('bakin_exec_borrower_make')?.reports).toEqual(['maker:thing'])
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'ghost')
+      expect(failed).toMatchObject({ status: 'failed', errorCode: 'activation_failed' })
+      expect(failed.errorMessage).toContain('reports "maker:nothing", which no loaded plugin declares')
+      expect(getExecTool('bakin_exec_ghost_make')).toBeUndefined()
+    })
+
     it('registers declared socket routes and fails undeclared ones', async () => {
       const route = `[{ path: '/live', summary: 'Live', open: function() {} }]`
       writeUserPlugin('declared-socket', { socketRoutes: route, manifest: { contributes: { socketRoutes: [{ path: '/live', summary: 'Live' }] } } })
