@@ -29,6 +29,14 @@
     "search.write"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "job",
+        "label": "Scheduled task",
+        "icon": "CalendarClock",
+        "href": "/schedule?jobId={id}"
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",

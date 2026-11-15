@@ -171,6 +171,12 @@ export interface ExecToolDefinition<Shape extends ZodRawShape = ZodRawShape> {
   /** Params are inferred from `parameters` — declare the shape once, get typed params. */
   handler: (params: z.infer<z.ZodObject<Shape>>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
   source?: string // 'core' | 'plugin:<id>' — set automatically on registration
+  /**
+   * Entity kinds this tool may report on its result — copied from its
+   * manifest entry (`contributes.execTools[].reports`) on registration.
+   * Anything else it reports is dropped.
+   */
+  reports?: readonly string[]
 }
 
 // ---------------------------------------------------------------------------

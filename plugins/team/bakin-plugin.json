@@ -18,6 +18,14 @@
     "search.write"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "agent",
+        "label": "Agent",
+        "icon": "Users",
+        "href": "/team/{id}"
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",

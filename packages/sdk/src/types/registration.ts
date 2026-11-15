@@ -72,11 +72,33 @@ export interface ContentFile {
 // Runtime-facing public types
 // ---------------------------------------------------------------------------
 
+/**
+ * Something a tool call created or changed, reported on its result so the
+ * conversation shows a card linking to it. `kind` must be one the tool's
+ * manifest entry lists under `reports`.
+ */
+export interface EntityRef {
+  /** Public kind id, `<pluginId>:<kind>` (`projects:project`). */
+  kind: string
+  /** The entity's id; fills `{id}` in the kind's href. */
+  id: string
+  /** Its title at the time of the call. Cards never look it up again. */
+  title: string
+  action: 'created' | 'updated'
+  /** Values for a compound route's other placeholders. */
+  params?: Record<string, string>
+}
+
 /** Result returned from an exec tool handler. */
 export interface ExecToolResult {
   ok: boolean
   error?: string
   details?: unknown
+  /**
+   * What this call created or changed. Bakin renders one card per entity on
+   * the tool's row and removes this field from what the agent reads.
+   */
+  entities?: EntityRef[]
   [key: string]: unknown
 }
 

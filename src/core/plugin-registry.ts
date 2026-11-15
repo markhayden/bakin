@@ -51,6 +51,7 @@ import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { isLoadableUserPluginDir, recoverInterruptedPluginOps } from './plugins/install-recovery'
 import { getHookRegistry } from '@bakin/core/hooks/hook-registry-singleton'
+import { getEntityRegistry } from '@bakin/core/plugins/entity-registry'
 import { getPluginSkills as skillRegistry, clearPluginSkills, removePluginSkillsByPlugin } from '@bakin/core/skills/plugin-skill-registry'
 import { getContentTypes, purgeContentType, unregisterContentTypesByPlugin } from './search-registry'
 import { loadPluginSkillFiles } from '../lib/plugin-skill-loader'
@@ -404,8 +405,20 @@ class PluginRegistryImpl {
     try { removeRouteDocsByPlugin(pluginId) } catch (err) {
       log.warn('sweep: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
+    // Entity kinds are published from the manifest after activation, so a
+    // swept plugin (failed, disabled, reloading) must not keep them.
+    getEntityRegistry().sweep(pluginId)
     const state = this.plugins.get(pluginId)
     if (state) this.clearStateArrays(state)
+  }
+
+  /**
+   * Publish the entity kinds a plugin's manifest declares. Called once a
+   * plugin has activated — at boot/install from finalizeActivation, and by
+   * the hot-reload pipeline with the manifest it re-read from disk.
+   */
+  publishEntities(pluginId: string, manifest: PublicPluginManifest | undefined): void {
+    getEntityRegistry().publish(pluginId, manifest?.contributes?.entities ?? [])
   }
 
   /**
@@ -478,6 +491,7 @@ class PluginRegistryImpl {
     try { removeRouteDocsByPlugin(pluginId) } catch (err) {
       log.warn('deactivate: removeRouteDocsByPlugin failed', { pluginId, err: String(err) })
     }
+    getEntityRegistry().sweep(pluginId)
     try {
       const ownedTables = [...getContentTypes().entries()]
         .filter(([, def]) => def.pluginId === pluginId)
@@ -692,6 +706,27 @@ class PluginRegistryImpl {
     }
   }
 
+  /**
+   * The entity kinds a tool's manifest entry reports, checked against what
+   * is actually declared. The manifest parser already holds each kind to
+   * "own, or owned by a dependency"; a dependency has activated by now, so
+   * its kinds are in the entity registry — a kind nobody declares fails the
+   * activation rather than silently never producing a card.
+   */
+  private resolveToolReports(pluginId: string, state: PluginState, toolName: string): readonly string[] {
+    const contributes = state.manifest?.contributes
+    const reports = contributes?.execTools?.find((item) => item.name === toolName)?.reports ?? []
+    const ownKinds = new Set((contributes?.entities ?? []).map((entity) => `${pluginId}:${entity.kind}`))
+    for (const kind of reports) {
+      if (ownKinds.has(kind) || getEntityRegistry().get(kind)) continue
+      throw new Error(
+        `Plugin "${pluginId}" exec tool "${toolName}" reports "${kind}", which no loaded plugin declares. ` +
+        'Declare the kind in contributes.entities, or depend on the plugin that owns it.',
+      )
+    }
+    return reports
+  }
+
   private buildContext(
     pluginId: string,
     state: PluginState,
@@ -722,6 +757,7 @@ class PluginRegistryImpl {
         const erased = tool as unknown as ExecToolDefinition
         this.assertExecToolDeclared(pluginId, state, erased)
         erased.source = `plugin:${pluginId}`
+        erased.reports = this.resolveToolReports(pluginId, state, erased.name)
         addExecTool(erased)
       },
       // Collision semantics are uniform across every registrar (R18): a
@@ -858,6 +894,7 @@ class PluginRegistryImpl {
     }
     this.plugins.set(plugin.id, state)
     this.failedPlugins.delete(plugin.id)
+    this.publishEntities(plugin.id, state.manifest ?? manifest)
     if (source === 'core') {
       corePluginIds.add(plugin.id)
     } else {

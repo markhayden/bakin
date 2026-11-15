@@ -35,7 +35,7 @@
  * Module is server-only and dev-only. The compiled binary doesn't ship
  * a watcher, so production never imports this code path.
  */
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '@/core/logger'
 import { pluginRegistry } from '@/core/plugin-registry'
@@ -51,6 +51,7 @@ import {
 } from '@/core/sse'
 import { loadPluginSkills } from '@/lib/plugin-skill-loader'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { readPluginManifestJson } from '@bakin/core/plugins/manifest'
 
 const log = createLogger('reload-pipeline')
 
@@ -61,7 +62,7 @@ export interface ReloadResult {
   /** Set when the reload failed — caller surfaces in the dev overlay. */
   error?: string
   /** Stage at which the reload failed. Aids debugging + integration tests. */
-  failedAt?: 'not-registered' | 'import' | 'activate'
+  failedAt?: 'not-registered' | 'manifest' | 'import' | 'activate'
 }
 
 /**
@@ -172,6 +173,24 @@ export async function runReloadPipeline(args: {
 
   const ctx: PluginContext = state.ctx
 
+  // Step 0: re-read the manifest. Boot parses it once; a reload that kept the
+  // cached copy would enforce yesterday's declared routes and tools and
+  // publish yesterday's entity kinds. An invalid manifest fails here, before
+  // anything is torn down — the running plugin stays as it was.
+  let manifest = state.manifest
+  const manifestPath = join(dir, 'bakin-plugin.json')
+  if (existsSync(manifestPath)) {
+    try {
+      manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.error('reload: manifest invalid', err as Error, { pluginId, manifestPath })
+      erroredPlugins.add(pluginId)
+      broadcastPluginError(pluginId, `bakin-plugin.json is invalid: ${message}`)
+      return { ok: false, version: getVersion(pluginId), error: message, failedAt: 'manifest' }
+    }
+  }
+
   // Step 1: cache-bust import. Bun resolves `?v=<n>` as a fresh module
   // graph entry — every reload sees the file system's current bytes.
   // `dist/index.js` is the canonical output of buildUserPlugin; tests
@@ -222,6 +241,7 @@ export async function runReloadPipeline(args: {
   // and every plugin-shipped workflow skill missing until re-link
   // (found live on the linked bits plugins after the legacy-route
   // removal). On throw, re-sweep so partial registrations are gone.
+  state.manifest = manifest
   try {
     pluginRegistry.registerDeclarativeRoutesForReload(newPlugin, pluginId)
     await newPlugin.activate(ctx)
@@ -243,8 +263,10 @@ export async function runReloadPipeline(args: {
     return { ok: false, version: getVersion(pluginId), error: message, failedAt: 'activate' }
   }
 
-  // Step 5: success. Swap the plugin instance + bump the version.
+  // Step 5: success. Swap the plugin instance, publish what the fresh
+  // manifest declares, and bump the version.
   state.plugin = newPlugin
+  pluginRegistry.publishEntities(pluginId, manifest)
   const newVersion = bumpVersion(pluginId)
 
   if (erroredPlugins.has(pluginId)) {

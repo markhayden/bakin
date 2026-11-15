@@ -128,6 +128,36 @@ export interface ExecToolContribution {
   summary: string
   description?: string
   permissions?: PluginPermission[]
+  /**
+   * Entity kinds this tool may report on its result, as `<pluginId>:<kind>`
+   * (`projects:project`, `assets:asset`). A tool may report its own plugin's
+   * kinds or kinds owned by a plugin listed in `dependencies`; anything else
+   * it reports is dropped.
+   */
+  reports?: string[]
+}
+
+/**
+ * Manifest declaration of a linkable entity kind: something this plugin owns
+ * that has a page. Its public identity is `<pluginId>:<kind>`. Bakin renders
+ * every link and conversation card for the kind from this one declaration.
+ */
+export interface EntityContribution {
+  /** Lowercase slug, unique within the plugin (`project`, `brand-doc`). */
+  kind: string
+  /** Singular display name (`Project`). */
+  label: string
+  /** Lucide icon name (`FolderKanban`). */
+  icon: string
+  /**
+   * In-app path template. `{id}` is the entity id; other `{name}`
+   * placeholders are filled from the reference's `params`. Every value is
+   * URL-encoded (`/projects/{id}`, `/tasks?taskId={id}`,
+   * `/brands/{brandId}/docs/{kind}/{name}`).
+   */
+  href: string
+  /** The kind owns a conversation that can accept a chat hand-off. */
+  handoff?: boolean
 }
 
 /** Manifest declaration of a CLI command the plugin contributes. */
@@ -202,6 +232,8 @@ export interface PluginContributions {
   clientRoutes?: ClientRouteContribution[]
   /** MCP exec tools agents can call. */
   execTools?: ExecToolContribution[]
+  /** Linkable entity kinds this plugin owns. */
+  entities?: EntityContribution[]
   /** CLI commands the plugin contributes to the `bakin` binary. */
   cliCommands?: CliCommandContribution[]
   /** Settings keys this plugin owns in the settings UI. */

@@ -480,3 +480,77 @@ describe('plugin manifest declarative client contributions (lazy loading)', () =
     })
   })
 })
+
+describe('plugin manifest entities', () => {
+  const withEntities = (entities: unknown, execTools?: unknown) => () => parsePluginManifest({
+    ...baseManifest,
+    contributes: { entities, ...(execTools ? { execTools } : {}) },
+  })
+  const project = { kind: 'project', label: 'Project', icon: 'FolderKanban', href: '/projects/{id}' }
+
+  it('parses declared entity kinds, defaulting handoff to absent', () => {
+    const manifest = withEntities([
+      { ...project, handoff: true },
+      { kind: 'brand-doc', label: 'Brand document', icon: 'FileText', href: '/brands/{brandId}/docs/{kind}/{name}' },
+      { kind: 'task', label: 'Task', icon: 'SquareCheck', href: '/tasks?taskId={id}' },
+    ])()
+    expect(manifest.contributes?.entities).toEqual([
+      { kind: 'project', label: 'Project', icon: 'FolderKanban', href: '/projects/{id}', handoff: true },
+      { kind: 'brand-doc', label: 'Brand document', icon: 'FileText', href: '/brands/{brandId}/docs/{kind}/{name}' },
+      { kind: 'task', label: 'Task', icon: 'SquareCheck', href: '/tasks?taskId={id}' },
+    ])
+  })
+
+  it('rejects a malformed declaration with the field that broke', () => {
+    expect(withEntities({})).toThrow(/contributes\.entities must be an array/)
+    expect(withEntities([{ ...project, kind: 'Project' }])).toThrow(/contributes\.entities\[0\]\.kind/)
+    expect(withEntities([{ ...project, kind: 'a:b' }])).toThrow(/contributes\.entities\[0\]\.kind/)
+    expect(withEntities([{ ...project, label: undefined }])).toThrow(/label/)
+    expect(withEntities([{ ...project, icon: undefined }])).toThrow(/icon/)
+    expect(withEntities([{ ...project, handoff: 'yes' }])).toThrow(/contributes\.entities\[0\]\.handoff must be a boolean/)
+  })
+
+  it('rejects an href that is not an in-app path template', () => {
+    for (const href of ['projects/{id}', '//evil.example/{id}', 'https://evil.example/{id}', '/projects/{id', '/projects/{}', '/projects/{my id}', '/projects/{id}}']) {
+      expect(withEntities([{ ...project, href }])).toThrow(/contributes\.entities\[0\]\.href/)
+    }
+  })
+
+  it('rejects a kind declared twice', () => {
+    expect(withEntities([project, { ...project, label: 'Again' }])).toThrow(/duplicate kind "project"/)
+  })
+
+  it('parses the kinds an exec tool reports', () => {
+    const manifest = withEntities([project], [
+      { name: 'bakin_exec_messaging_create', summary: 'Create', reports: ['messaging:project', 'messaging:project'] },
+      { name: 'bakin_exec_messaging_list', summary: 'List' },
+    ])()
+    // De-duplicated.
+    expect(manifest.contributes?.execTools?.[0]?.reports).toEqual(['messaging:project'])
+    expect(manifest.contributes?.execTools?.[1]?.reports).toBeUndefined()
+  })
+
+  it('a tool may report its own declared kinds or a declared dependency\'s kinds, nothing else', () => {
+    const parse = (reports: string[], extra: Record<string, unknown> = {}) => () => parsePluginManifest({
+      ...baseManifest,
+      ...extra,
+      contributes: {
+        entities: [project],
+        execTools: [{ name: 'bakin_exec_messaging_create', summary: 'Create', reports }],
+      },
+    })
+    expect(parse(['messaging:project'])).not.toThrow()
+    expect(parse(['messaging:project', 'assets:asset'], { dependencies: ['assets'] })).not.toThrow()
+    // Own kind that the manifest never declares.
+    expect(parse(['messaging:plan'])).toThrow(/reports "messaging:plan".*not declared in contributes\.entities/)
+    // Another plugin's kind without depending on it.
+    expect(parse(['assets:asset'])).toThrow(/reports "assets:asset".*"assets" is not listed in dependencies/)
+  })
+
+  it('rejects a reported kind that is not written as <pluginId>:<kind>', () => {
+    const tool = (reports: unknown) => [{ name: 'bakin_exec_messaging_create', summary: 'Create', reports }]
+    expect(withEntities([project], tool(['project']))).toThrow(/contributes\.execTools\[0\]\.reports/)
+    expect(withEntities([project], tool(['Messaging:project']))).toThrow(/contributes\.execTools\[0\]\.reports/)
+    expect(withEntities([project], tool('messaging:project'))).toThrow(/reports/)
+  })
+})

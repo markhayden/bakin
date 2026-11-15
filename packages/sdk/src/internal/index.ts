@@ -94,3 +94,9 @@ export { isNotificationsEnabled } from './browser-notify'
 export { requestNotificationPermission } from './browser-notify'
 /** Persist the opt-in without prompting. */
 export { toggleNotifications } from './browser-notify'
+
+// ── Entity registry (host seeds it from manifest metadata) ─────────────────
+/** Replace the browser's declared entity kinds; called on every manifest refresh. */
+export { setEntityDeclarations } from '../navigation/entities'
+/** A declared entity kind with its owner and public identity. */
+export type { EntityDeclaration } from '../navigation/entities'

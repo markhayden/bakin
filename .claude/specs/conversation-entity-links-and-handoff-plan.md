@@ -186,13 +186,13 @@ T27 release guard ← T3, T6      T28 pin bump + e2e ← Bits      T29 docs reco
 
 ### Phase 1 — Correlation (highest risk first) → PR 1
 
-- [ ] **T1: Receipt registry and envelope on both invoke paths.**
+- [x] **T1: Receipt registry and envelope on both invoke paths.**
   - Acceptance: one shared post-handler function; envelope shape fixed; a plugin-supplied
     `receipt` key cannot override it; results without entities/question are unchanged;
     `unwrapToolResult`/`summarizeStructured` peel the envelope.
   - Verify: unit tests incl. integer-like keys, a 600-character leading value, large
     payloads, escaped MCP wrapper. Size: M.
-- [ ] **T2: Provenance-checked enrichment; migrate `ask_user`; Pi `outputPreview`.**
+- [x] **T2: Provenance-checked enrichment; migrate `ask_user`; Pi `outputPreview`.**
   - Acceptance: receipt consumed only on matching tool + agent; `bakinQuestion` behaviour
     unchanged for consumers; old question plumbing deleted.
   - Verify: live-token-quotation regression test kept; runtime-conformance check (with a
@@ -200,24 +200,28 @@ T27 release guard ← T3, T6      T28 pin bump + e2e ← Bits      T29 docs reco
     mock, Pi and the OpenClaw mock; two concurrent turns for one agent each get their own.
     Size: M.
 
-**Checkpoint A** — `bun run test`, `lint`, `typecheck` green. On the isolated rig
+**Checkpoint A (2026-11-14, partial)** — suite, lint, typecheck green; envelope confirmed
+over MCP on an isolated server. The real-model leg is OPEN: the isolated rigs could not run
+a turn (Pi login expired, OpenClaw rig has no provider key). PR 1 (#1089) is held until it
+passes. Original criterion: `bun run test`, `lint`, `typecheck` green. On the isolated rig
 (`--mode isolated`, each runtime) a chat question still renders its card. If the token does
 not survive a real runtime, stop and revisit A1.
 
 ### Phase 2 — Declaration, registry, navigation → PR 2
 
-- [ ] **T3: Manifest schema and registry lifecycle.** Zod schema (kind slug, label, icon,
+- [x] **T3: Manifest schema and registry lifecycle.** Zod schema (kind slug, label, icon,
   href with named placeholders starting `/`, `handoff`, tool `reports`); duplicate kinds
   rejected; reload pipeline re-reads the manifest; publish after activation; sweep on
   failure/disable/removal/reload; `plugin-sync-manifest` capture keeps the new fields.
   - Verify: schema tests; **changed-manifest reload test** (add, change, remove a kind);
     failed-activation leaves no declarations. Size: L → two commits (schema, lifecycle).
-- [ ] **T4: Core plugin declarations and browser hydration.** task, asset, schedule job,
+- [x] **T4: Core plugin declarations and browser hydration.** task, asset, schedule job,
   workflow, brand, brand doc, chat, agent declared in their manifests; `PluginHost` seeds
   and replaces the browser registry. Size: M.
-- [ ] **T5: `entityHref` and `EntityLink`** in `@makinbakin/sdk/navigation` plus the core
-  twin. Verify: segment escaping, query links, compound params, unknown kind. Size: S.
-- [ ] **T6: `EntityRef`, `ExecToolResult.entities`, `reports` validation.** Own-or-dependency
+- [x] **T5: `entityHref`** in `@makinbakin/sdk/navigation` plus the core twin. (`EntityLink`
+  moved to T7: a public kit component needs a public story and visual baseline, and its
+  first use is the card and divider stories there.) Verify: segment escaping, query links, compound params, unknown kind. Size: S.
+- [x] **T6: `EntityRef`, `ExecToolResult.entities`, `reports` validation.** Own-or-dependency
   rule; activation assertion for core and user plugins; runtime drop + audit; the
   `@makinbakin/sdk/testing` harness enforces the same so external authors fail in their own
   tests. Size: M.
@@ -227,7 +231,7 @@ not survive a real runtime, stop and revisit A1.
 
 ### Phase 3 — Cards → PR 3
 
-- [ ] **T7: Fold `entities` items; `EntityCard`; SDK wrapper.** Stories per A7.
+- [ ] **T7: Fold `entities` items; `EntityCard`; `EntityLink`; SDK wrapper.** Stories per A7.
   - Verify: fold unit tests; RTL (with `rtl-settle`); `bun run ui:test:stories`;
     story interaction + visual evidence. Size: M.
 - [ ] **T8a: Tasks and Schedule report.** Size: S.

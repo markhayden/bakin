@@ -16,6 +16,14 @@
     "search.write"
   ],
   "contributes": {
+    "entities": [
+      {
+        "kind": "task",
+        "label": "Task",
+        "icon": "CheckSquare",
+        "href": "/tasks?taskId={id}"
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",

@@ -11,6 +11,9 @@ export { PluginLink } from './plugin-link'
 /** Props for a runtime-route link with native anchor semantics. */
 export type { PluginLinkProps } from './plugin-link'
 
+/** The in-app href for an entity, resolved from its declared kind. */
+export { entityHref } from './entities'
+
 /** Browser router hooks and plain-string URL conversion. */
 export {
   toNavigationOptions,

@@ -27,7 +27,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { ActivityClass } from '@makinbakin/sdk/types'
-import { sealToolResult } from '@bakin/core/conversation/receipts'
+import { sealExecToolResult } from './exec-tools/seal'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
@@ -183,7 +183,7 @@ export function registerTools(server: McpServer, getAgent: () => string, verifie
           )
 
           const text = result.ok
-            ? sealToolResult(result, { agentId: agent, toolName: tool.name })
+            ? sealExecToolResult(tool, agent, result)
             : `ERROR: ${result.error}${result.details ? '\n' + JSON.stringify(result.details, null, 2) : ''}`
           return { content: [{ type: 'text' as const, text }], isError: !result.ok }
         } catch (err) {

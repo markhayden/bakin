@@ -62,6 +62,7 @@ import {
 } from '../../../src/core/plugin-host/reload-pipeline'
 import { pluginRegistry } from '../../../src/core/plugin-registry'
 import { getAllRoutes, _resetRouteDocsForTests } from '../../../src/core/api-docs'
+import { getEntityRegistry } from '../../../packages/core/src/plugins/entity-registry'
 
 const registeredSkills: string[] = []
 import { __resetVersionsForTest, getVersion } from '../../../src/core/plugin-host/version-stamp'
@@ -355,5 +356,78 @@ describe('runReloadPipeline — boot-parity registrations (declarative routes + 
     const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
     expect(result.ok).toBe(true)
     expect(pluginRegistry.getPluginState('fixture')!.routes.length).toBe(1)
+  })
+})
+
+describe('runReloadPipeline — entity declarations', () => {
+  const entityIds = () => getEntityRegistry().list().map((entity) => entity.id).sort()
+  const thing = { kind: 'thing', label: 'Thing', icon: 'Box', href: '/things/{id}' }
+  const writeManifest = (entities: unknown) => writeFileSync(join(pluginRoot, 'bakin-plugin.json'), JSON.stringify({
+    id: 'fixture',
+    name: 'Fixture',
+    version: '1.0.0',
+    bakin: '>=0.0.0-dev',
+    description: 'reload fixture',
+    contributes: { entities, apiRoutes: [{ method: 'GET', path: '/', summary: 'Root' }] },
+  }), 'utf-8')
+
+  beforeEach(() => getEntityRegistry().sweep('fixture'))
+
+  it('re-reads the manifest: a kind added, changed and removed on disk is what the registry holds', async () => {
+    seedRegistryEntry()
+    writeFixture('v1')
+
+    writeManifest([thing])
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).ok).toBe(true)
+    expect(entityIds()).toEqual(['fixture:thing'])
+
+    writeManifest([{ ...thing, label: 'Widget' }, { ...thing, kind: 'gadget' }])
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).ok).toBe(true)
+    expect(entityIds()).toEqual(['fixture:gadget', 'fixture:thing'])
+    expect(getEntityRegistry().get('fixture:thing')?.label).toBe('Widget')
+
+    writeManifest([{ ...thing, kind: 'gadget' }])
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).ok).toBe(true)
+    expect(entityIds()).toEqual(['fixture:gadget'])
+  })
+
+  it('an invalid manifest fails the reload before anything is torn down', async () => {
+    seedRegistryEntry()
+    writeFixture('v1')
+    writeManifest([thing])
+    await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+
+    writeManifest([{ ...thing, href: 'https://evil.example/{id}' }])
+    const result = await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+    expect(result).toMatchObject({ ok: false, failedAt: 'manifest' })
+    expect(result.error).toContain('contributes.entities[0].href')
+    // The running plugin and its declarations are untouched.
+    expect(entityIds()).toEqual(['fixture:thing'])
+    expect(pluginRegistry.getPluginState('fixture')!.routes.length).toBe(1)
+    expect(broadcasts.at(-1)).toMatchObject({ type: 'dev:plugin:error', pluginId: 'fixture' })
+  })
+
+  it('a failed activation leaves no declarations', async () => {
+    seedRegistryEntry()
+    writeFixture('v1')
+    writeManifest([thing])
+    await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })
+    expect(entityIds()).toEqual(['fixture:thing'])
+
+    writeFixture('throws-activate')
+    expect((await runReloadPipeline({ pluginId: 'fixture', dir: pluginRoot })).failedAt).toBe('activate')
+    expect(entityIds()).toEqual([])
+  })
+
+  it('disabling or removing a plugin sweeps its declarations', async () => {
+    seedRegistryEntry()
+    getEntityRegistry().publish('fixture', [thing])
+    await pluginRegistry.suspendPlugin('fixture')
+    expect(entityIds()).toEqual([])
+
+    seedRegistryEntry()
+    getEntityRegistry().publish('fixture', [thing])
+    await pluginRegistry.deactivatePlugin('fixture')
+    expect(entityIds()).toEqual([])
   })
 })
