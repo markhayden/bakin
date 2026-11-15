@@ -112,6 +112,17 @@ export interface ChatDoneEvent {
   aborted?: boolean
 }
 
+/** A settled reply was handed off to what it created (see lib/handoff.ts). */
+export interface ChatHandoffEvent {
+  type: 'chat.handoff'
+  chatId: string
+  turnId: string
+  /** How many hand-off targets the reply created. */
+  created: number
+  /** The targets that took the chat's history. */
+  targets: { entity: string; id: string; title: string }[]
+}
+
 export interface ChatErrorEvent {
   type: 'chat.error'
   chatId: string

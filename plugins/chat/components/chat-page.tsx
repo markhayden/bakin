@@ -33,6 +33,7 @@ import { AgentPicker } from './agent-picker'
 import { ChatRail, useRailCollapsed } from './chat-rail'
 import { ChatView, DraftChatView } from './chat-view'
 import { Launcher } from './launcher'
+import { handoffRedirect, type ChatHandoffPayload } from './handoff-redirect'
 import { createChatRequest, uploadAttachmentRequest, useChats, type UploadedAttachment } from './use-chat-data'
 
 export interface CreateAndSendResult {
@@ -128,6 +129,13 @@ function ChatPageInner({ chatId = '', draft = false }: ChatPageProps) {
   }, [setStreamingIds])
   usePluginEvent('chat.done', (payload) => clearStreaming(payload.chatId as string))
   usePluginEvent('chat.error', (payload) => clearStreaming(payload.chatId as string))
+  // The open chat's reply created one thing that owns a conversation and
+  // handed the chat to it: follow it there. Event-driven only — opening a
+  // chat that was handed off earlier never redirects.
+  usePluginEvent('chat.handoff', (payload) => {
+    const to = handoffRedirect(payload as ChatHandoffPayload, chatId)
+    if (to) router.push(to)
+  })
 
   const visibleChats = useMemo(() => {
     if (!search.trim()) return chats

@@ -24,6 +24,7 @@ import { createChatMeterHook } from '../../../src/core/conversation-metering'
 type ChatTurnContext = Pick<PluginContext, 'runtime' | 'events'>
 import type { ChatAttachment, ChatQueuedMessage, ChatTranscriptRow } from '../types'
 import { maybeAutoTitle } from './auto-title'
+import { handOffSettledTurn } from './handoff'
 import { appendTranscriptRow, getChatSummary, listQueuedChatIds, readQueue, writeQueue } from './store'
 
 /**
@@ -67,8 +68,15 @@ const service = createConversationTurnService({
     // Failed/aborted turns still get a title shot on the next success; the
     // slot has already released when this runs (quick follow-ups never 409
     // on titling).
-    onSettled: ({ ctx, key, outcome }) =>
-      outcome.aborted || outcome.errored ? undefined : maybeAutoTitle(ctx as ChatTurnContext, key),
+    onSettled: async ({ ctx, key, outcome }) => {
+      // Carry the chat into what this turn created — also for a failed or
+      // stopped turn: whatever it created exists. The marker goes through
+      // appendExternal so it never interleaves a follow-up turn's rows.
+      await handOffSettledTurn(ctx as ChatTurnContext, key, outcome, {
+        appendOut: (row) => service.appendExternal(ctx, key, [row]),
+      })
+      if (!outcome.aborted && !outcome.errored) await maybeAutoTitle(ctx as ChatTurnContext, key)
+    },
   },
 })
 
