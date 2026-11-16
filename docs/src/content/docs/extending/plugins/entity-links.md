@@ -30,7 +30,7 @@ Your plugin owns things with pages: a project, a session, a record. Declare each
 | `href` | An in-app path. `{id}` is the entity id. Any other `{name}` is filled from the reference's `params`. Every value is URL-encoded. |
 | `handoff` | `true` when the kind has a conversation that can receive a chat's history. |
 
-The path must start with a single `/`. A kind is available while your plugin is loaded; if the plugin is removed, links to it stop resolving and existing cards render as plain text.
+The path must start with a single `/`, contain at least one `{name}`, and have no `#` fragment. A kind is available while your plugin is loaded; if the plugin is removed, links to it stop resolving and existing cards render as plain text.
 
 ## Link to an entity
 
@@ -81,7 +81,7 @@ ctx.registerExecTool({
 - `action` is `'created'` or `'updated'`. Report from tools that create or edit. Tools that only read report nothing.
 - `title` is a snapshot. The card shows it as it was; Bakin does not look it up again.
 - For a route with more than `{id}`, add `params` with the other values.
-- Bakin removes `entities` from what the agent reads, and shows one card per thing per reply.
+- Bakin removes `entities` from what the agent reads, and shows one card per thing per reply. The field name is reserved: do not use `entities` on a tool result for anything else.
 
 **What a tool may report.** Its own plugin's kinds, or kinds owned by a plugin listed in your manifest's `dependencies`. Anything else is refused:
 

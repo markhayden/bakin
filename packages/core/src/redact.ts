@@ -15,5 +15,5 @@ export function redactSensitiveText(value: string): string {
     .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
     .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
     .replace(/([?&][^=\s"'`]*(?:token|password|secret|api[_-]?key)[^=\s"'`]*=)[^&\s"'`]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
+    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
 }

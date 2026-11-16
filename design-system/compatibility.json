@@ -7,10 +7,10 @@
   ],
   "repositories": {
     "bakin": {
-      "ref": "7ddb128f8ff9dcfbcd90155b18c65d3a14943e2d"
+      "ref": "05f20d00fa641f69963be13d1e2fda333fae8d4b"
     },
     "bakin-bits-official": {
-      "ref": "ee5f152b15fe2575a3118e0a236fafabdbfd4e6f"
+      "ref": "d9ffd49cfca3920ce83599fb28060e478c356d6e"
     }
   },
   "sdk": {
@@ -35,7 +35,7 @@
     "messaging": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.13.1",
+      "version": "0.13.2",
       "bakinRange": ">=0.0.1-rc.50",
       "routes": {
         "total": 5,
@@ -51,7 +51,7 @@
     "projects": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.15.1",
+      "version": "0.15.2",
       "bakinRange": ">=0.0.1-rc.50",
       "routes": {
         "total": 3,
@@ -65,8 +65,8 @@
     "terminal": {
       "repository": "bakin-bits-official",
       "role": "official-plugin",
-      "version": "0.4.0-dev.31",
-      "bakinRange": ">=0.0.1-rc.45",
+      "version": "0.4.0-dev.32",
+      "bakinRange": ">=0.0.1-rc.50",
       "routes": {
         "total": 2,
         "visual": 2,

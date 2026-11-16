@@ -20,7 +20,13 @@ export function fillEntityHref(
       missing = true
       return ''
     }
-    return encodeURIComponent(value)
+    try {
+      return encodeURIComponent(value)
+    } catch {
+      // A lone surrogate cannot be encoded; an id like that has no link.
+      missing = true
+      return ''
+    }
   })
   return missing ? null : href
 }

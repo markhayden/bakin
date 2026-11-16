@@ -91,8 +91,9 @@ Spec: `.claude/specs/projects-revamp.md` D1–D6a.
   whose `outputPreview` carries a token gets the receipt's payload as row
   metadata (`data.metadata.bakinQuestion`, the full validated question) on
   the live chunk event AND the persisted row (the recorder keeps `metadata`
-  unclipped). A receipt is redeemed only by the tool and agent that produced
-  it, and only once (`registry.take`): a replayed frame, or another tool
+  unclipped). A receipt is redeemed only when its envelope OPENS the
+  output (`envelopeReceiptId`; a token quoted anywhere else is ignored), only
+  by the tool and agent that produced it, and only once (`registry.take`): a replayed frame, or another tool
   reading a transcript/log that quotes a live token, never reopens an
   answered question. Proven through the REAL adapter mappings
   (`tests/core/conversation-question-enrichment.test.ts`: Pi

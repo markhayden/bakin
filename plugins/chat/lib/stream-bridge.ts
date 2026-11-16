@@ -43,7 +43,9 @@ export const CHAT_TURN_FRAMING =
 
 const service = createConversationTurnService({
   name: 'chat',
-  events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', started: 'chat.started' },
+  // `appended` announces a row written outside a turn (the hand-off marker),
+  // also when it had to wait for a queued follow-up turn to finish.
+  events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', started: 'chat.started', appended: 'chat.appended' },
   payload: (chatId) => ({ chatId }),
   resolveThread: (chatId) => {
     const chat = getChatSummary(chatId)

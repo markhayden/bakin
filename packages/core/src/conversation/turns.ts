@@ -747,7 +747,8 @@ async function runTurn(
   attachments?: TurnAttachment[],
   runtimeContent?: string,
 ): Promise<TurnOutcome> {
-  const recorder = createTurnRecorder({ turnId })
+  // Rows name their author: a surface with several agents tells whose reply a row is.
+  const recorder = createTurnRecorder({ turnId, agentId })
   // What this turn's tool calls reported, for the settlement snapshot.
   const entities: EntityRef[] = []
   let assistantText = ''

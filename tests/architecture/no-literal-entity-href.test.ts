@@ -7,6 +7,8 @@
  * puts an id straight after it (`\`/tasks?taskId=\${id}\``,
  * `'/assets/' + id`). A different route that shares the prefix is not an
  * entity link and is allowed (`/workflows/\${id}/edit`, `/team/teams/\${id}`).
+ * A declared route with several placeholders is matched whole. Known limits:
+ * a link assembled from a base variable, `.concat` or `.join` is not seen.
  * The ESLint block "no hand-built entity links" in eslint.config.mjs mirrors
  * this for in-editor feedback; keep the two in step.
  *
@@ -20,6 +22,18 @@ const ROOT = join(import.meta.dir, '../..')
 const SCAN = ['plugins', 'packages/host/src', 'packages/sdk/src', 'packages/ui/src', 'src']
 /** Route tables name routes by pattern; they are definitions, not links. */
 const EXEMPT = [/\/routes\//, /route-shadow\.ts$/, /\/dist\//, /\/tests\//, /\/node_modules\//, /\/public\//]
+
+/** Every href template the core plugins declare. */
+function declaredHrefs(): string[] {
+  const hrefs: string[] = []
+  for (const pluginId of readdirSync(join(ROOT, 'plugins'))) {
+    const manifestPath = join(ROOT, 'plugins', pluginId, 'bakin-plugin.json')
+    if (!existsSync(manifestPath)) continue
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { contributes?: { entities?: Array<{ href: string }> } }
+    for (const entity of manifest.contributes?.entities ?? []) hrefs.push(entity.href)
+  }
+  return hrefs
+}
 
 /** `/tasks?taskId={id}` → `/tasks?taskId=` — the text an id is appended to. */
 function declaredPrefixes(): string[] {
@@ -35,8 +49,23 @@ function declaredPrefixes(): string[] {
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
 
-export function findHandBuiltEntityHrefs(source: string, prefixes: readonly string[]): string[] {
+/**
+ * A declared route with more than one placeholder (`/brands/{brandId}/docs/{kind}/{name}`)
+ * as a template-literal pattern: each placeholder is one `${…}`. The prefix
+ * check alone lets these through, because the text after the first id looks
+ * like a sub-route.
+ */
+function compoundPatterns(hrefs: readonly string[]): RegExp[] {
+  return hrefs
+    .filter((href) => (href.match(/\{/g) ?? []).length > 1)
+    .map((href) => new RegExp('`' + href.split(/\{[A-Za-z][A-Za-z0-9]*\}/).map(escape).join('\\$\\{[^`]*?\\}') + '[^`]*`', 'g'))
+}
+
+export function findHandBuiltEntityHrefs(source: string, prefixes: readonly string[], hrefs: readonly string[] = []): string[] {
   const found: string[] = []
+  for (const pattern of compoundPatterns(hrefs)) {
+    for (const match of source.matchAll(pattern)) found.push(match[0])
+  }
   for (const prefix of prefixes) {
     // `/prefix${expr}` in a template — unless the route continues past the id.
     const template = new RegExp(`\`${escape(prefix)}\\$\\{[^\`]*\``, 'g')
@@ -63,6 +92,7 @@ function sourceFiles(dir: string): string[] {
 
 describe('no hand-built entity links', () => {
   const prefixes = declaredPrefixes()
+  const hrefs = declaredHrefs()
 
   test('the declared kinds give the scanner something to look for', () => {
     expect(prefixes).toEqual(expect.arrayContaining(['/tasks?taskId=', '/assets/', '/schedule?jobId=', '/workflows/', '/brands/', '/chat/', '/team/']))
@@ -76,9 +106,11 @@ describe('no hand-built entity links', () => {
       'router.push(`/workflows/${id}/edit`)',
       'router.push(`/team/teams/${teamId}`)',
       "router.push('/tasks')",
+      'const path = `/brands/${brandId}/docs/${kind}/${name}`',
     ].join('\n')
-    expect(findHandBuiltEntityHrefs(sample, prefixes).sort()).toEqual([
+    expect(findHandBuiltEntityHrefs(sample, prefixes, hrefs).sort()).toEqual([
       "'/assets/' +",
+      '`/brands/${brandId}/docs/${kind}/${name}`',
       '`/tasks?taskId=${encodeURIComponent(id)}`',
       '`/team/${agent.id}?tab=diagnostics`',
     ])
@@ -88,7 +120,7 @@ describe('no hand-built entity links', () => {
     const offenders: string[] = []
     for (const dir of SCAN) {
       for (const file of sourceFiles(join(ROOT, dir))) {
-        for (const hit of findHandBuiltEntityHrefs(readFileSync(file, 'utf8'), prefixes)) {
+        for (const hit of findHandBuiltEntityHrefs(readFileSync(file, 'utf8'), prefixes, hrefs)) {
           offenders.push(`${file.slice(ROOT.length + 1)}: ${hit}`)
         }
       }

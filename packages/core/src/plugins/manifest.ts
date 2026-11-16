@@ -306,8 +306,8 @@ function parseRoutePattern(raw: unknown, index: number): ClientRoutePatternContr
 const ENTITY_KIND_RE = /^[a-z][a-z0-9-]{0,39}$/
 /** A reported kind's public identity: `<pluginId>:<kind>`. */
 export const ENTITY_REF_KIND_RE = /^[a-z][a-z0-9-]{0,39}:[a-z][a-z0-9-]{0,39}$/
-/** Path characters between placeholders: no braces, whitespace or backslashes. */
-const ENTITY_HREF_RE = /^\/(?:[^{}\s\\]|\{[A-Za-z][A-Za-z0-9]*\})*$/
+/** Path characters between placeholders: no braces, whitespace, control characters, backslashes or fragments. */
+const ENTITY_HREF_RE = /^\/(?:[^{}\s\\#\u0000-\u001f\u007f]|\{[A-Za-z][A-Za-z0-9]*\})*$/
 
 function parseExecTool(raw: unknown, index: number): ExecToolContribution {
   const label = `contributes.execTools[${index}]`
@@ -336,8 +336,8 @@ function parseEntity(raw: unknown, index: number): EntityContribution {
   }
   const href = stringField(raw, 'href', { required: true })!
   // In-app only: one leading slash (never `//host`), `{name}` placeholders.
-  if (!ENTITY_HREF_RE.test(href) || href.startsWith('//')) {
-    throw new PluginManifestError(`${label}.href "${href}" must be an in-app path starting with "/" whose placeholders are written {name}`)
+  if (!ENTITY_HREF_RE.test(href) || href.startsWith('//') || !href.includes('{')) {
+    throw new PluginManifestError(`${label}.href "${href}" must be an in-app path starting with "/", with at least one {name} placeholder and no fragment`)
   }
   if (raw.handoff !== undefined && typeof raw.handoff !== 'boolean') {
     throw new PluginManifestError(`${label}.handoff must be a boolean`)

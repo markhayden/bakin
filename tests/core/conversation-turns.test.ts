@@ -1736,6 +1736,21 @@ describe('settlement snapshot', () => {
     expect(outcomes[1]).toMatchObject({ aborted: true, entities: [task] })
   })
 
+  test('rows the engine writes name the agent that wrote them', async () => {
+    const h = makeHarness()
+    const { service } = collect(h)
+    h.setStream(async function* () {
+      yield toolResult('bakin_exec_tasks_create', [task])
+      yield { type: 'text', content: 'Done.' } as ChatChunk
+      yield { type: 'done' } as ChatChunk
+    })
+    await service.start(h.ctx, 's6', 'go')
+    await service.waitFor('s6')
+    const rows = h.rows.get('s6') ?? []
+    expect(rows.find((row) => row.kind === 'assistant')).toMatchObject({ agentId: 'main' })
+    expect(rows.find((row) => row.kind === 'tool')).toMatchObject({ agentId: 'main' })
+  })
+
   test('a turn that created nothing has an empty list', async () => {
     const h = makeHarness()
     const { service, outcomes } = collect(h)

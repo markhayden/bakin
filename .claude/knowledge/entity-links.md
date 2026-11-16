@@ -22,8 +22,8 @@ from that declaration. Spec: `.claude/specs/conversation-entity-links-and-handof
 
 - **Identity** is `<pluginId>:<kind>` (`projects:project`). `kind` is a
   lowercase slug, unique within the plugin.
-- **`href`** is an in-app path template: one leading `/`, placeholders written
-  `{name}`. `{id}` is the entity id; any other placeholder is filled from the
+- **`href`** is an in-app path template: one leading `/`, at least one
+  placeholder written `{name}`, no fragment or control characters. `{id}` is the entity id; any other placeholder is filled from the
   reference's `params` (`/brands/{brandId}/docs/{kind}/{name}`). Every value is
   URL-encoded, so an id can never add a segment, a parameter or a fragment.
 - **`icon`** is a Lucide icon name. **`handoff`** marks a kind that owns a
@@ -98,6 +98,8 @@ return { ok: true, id, entities: [{ kind: 'projects:project', id, title, action:
      logged and audited as `exec.entities.rejected`. It is never rendered.
 - Bounds: 50 references per result, titles clipped at 200 characters
   (`ENTITY_REF_LIMITS`).
+- `entities` (and `question`) are host-reserved fields on every tool result:
+  an array under `entities` never reaches the agent, declared or not.
 - Accepted references ride a host tool receipt (see `conversation-kit.md`,
   "Tool receipts"); `entities` is removed from what the agent reads, and the
   turn engine attaches them to the tool row as `metadata.bakinEntities`.
@@ -210,8 +212,11 @@ stays usable; later messages there are not carried.
 **Priming** (`handoffPreamble`, `@makinbakin/sdk/utils`): the receiving
 surface prepends the carried history to the runtime content of the agent's
 next turn. Derived, not stored: it returns the preamble while no assistant
-row from the agent about to be sent to (or an unattributed one) follows the
-carried rows. So a turn that failed before the agent replied primes again on
+or tool row from the agent about to be sent to (or an unattributed assistant
+row) follows the carried rows. The engine stamps `agentId` on every row it
+writes; a surface whose transcript also holds rows the agent wrote outside
+its conversation session (Projects' steward notes) leaves those out before
+asking. So a turn that failed before the agent replied primes again on
 retry, and a second agent on the same target is primed for its own thread.
 Byte-budgeted (16 KB by default), newest kept, with a visible omission
 marker; nothing runs automatically on arrival.

@@ -511,7 +511,7 @@ describe('plugin manifest entities', () => {
   })
 
   it('rejects an href that is not an in-app path template', () => {
-    for (const href of ['projects/{id}', '//evil.example/{id}', 'https://evil.example/{id}', '/projects/{id', '/projects/{}', '/projects/{my id}', '/projects/{id}}']) {
+    for (const href of ['projects/{id}', '//evil.example/{id}', 'https://evil.example/{id}', '/projects/{id', '/projects/{}', '/projects/{my id}', '/projects/{id}}', '/projects', '/projects#tab-{id}', '/projects/\u0000{id}']) {
       expect(withEntities([{ ...project, href }])).toThrow(/contributes\.entities\[0\]\.href/)
     }
   })
