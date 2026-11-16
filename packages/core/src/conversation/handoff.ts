@@ -133,8 +133,8 @@ const bytes = (text: string) => new TextEncoder().encode(text).length
  * turn, or `null` when that agent has already replied since the hand-off.
  *
  * Derived, never stored: after the latest `in` marker and its carried rows,
- * an assistant row from `agentId` (or an unattributed one) means the agent
- * has the history in its session. So a turn that failed before reaching the
+ * an assistant or tool row from `agentId` (or an unattributed assistant row)
+ * means the agent has the history in its session. So a turn that failed before reaching the
  * runtime primes again on retry, and a second agent on the same target is
  * primed for its own thread. Byte-budgeted, newest kept, with a visible
  * omission marker; a message is never cut mid-character.
@@ -152,8 +152,11 @@ export function handoffPreamble(
   if (at < 0) return null
   const marker = rows[at] as HandoffRow
   const carriedEnd = at + 1 + (marker.carried ?? 0)
+  // Any output from this agent's own turn here means its session has the
+  // history — a turn can end on a tool call (a question card) with no text.
   const replied = rows.slice(carriedEnd).some((row) =>
-    row.kind === 'assistant' && (row.agentId === undefined || row.agentId === agentId))
+    (row.kind === 'assistant' && (row.agentId === undefined || row.agentId === agentId))
+    || (row.kind === 'tool' && row.agentId === agentId))
   if (replied) return null
 
   const lines = rows.slice(at + 1, carriedEnd).flatMap((row) => {

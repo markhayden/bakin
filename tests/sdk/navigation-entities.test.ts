@@ -45,6 +45,10 @@ describe('fillEntityHref', () => {
     expect(fillEntityHref('/projects/{id}', '')).toBeNull()
   })
 
+  test('a value that cannot be encoded is no link, never a throw', () => {
+    expect(fillEntityHref('/projects/{id}', 'bad\ud800id')).toBeNull()
+  })
+
   test('params cannot replace the id', () => {
     expect(fillEntityHref('/projects/{id}', 'real', { id: 'spoofed' })).toBe('/projects/real')
   })

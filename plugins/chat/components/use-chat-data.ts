@@ -288,8 +288,8 @@ export function useChatStream(chatId: string): ChatStreamState {
   // attachments, and attachment URL mapping.
   const thread = useConversationThread<ChatSummaryDto, { name: string; mimeType: string; path: string }>({
     threadKey: chatId,
-    // `chat.handoff` announces the "continued in" marker, written outside a turn.
-    events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', appended: 'chat.handoff' },
+    // `chat.appended` announces the "continued in" marker, once it is written.
+    events: { chunk: 'chat.chunk', done: 'chat.done', error: 'chat.error', appended: 'chat.appended' },
     keyOf: (payload) => payload.chatId,
     load: async (key) => {
       const decorSeq = ++decorSeqRef.current

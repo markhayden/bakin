@@ -44,11 +44,11 @@ import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'f
 import asset_vendor_sdk_shared_tbqegyd9_js from '../../public/vendor/sdk-shared-tbqegyd9.js' with { type: 'file' }
 import asset_vendor_sdk_shared_s9hdzc7k_js from '../../public/vendor/sdk-shared-s9hdzc7k.js' with { type: 'file' }
 import asset_vendor_sdk_shared_w9hd8m5a_js from '../../public/vendor/sdk-shared-w9hd8m5a.js' with { type: 'file' }
-import asset_vendor_sdk_shared_z80pn0z2_js from '../../public/vendor/sdk-shared-z80pn0z2.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
 import asset_vendor_sdk_shared_2crmfcpv_js from '../../public/vendor/sdk-shared-2crmfcpv.js' with { type: 'file' }
 import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { type: 'file' }
 import asset_vendor_zod_js from '../../public/vendor/zod.js' with { type: 'file' }
+import asset_vendor_sdk_shared_m0ef9317_js from '../../public/vendor/sdk-shared-m0ef9317.js' with { type: 'file' }
 import asset_vendor_sdk_types_js from '../../public/vendor/sdk-types.js' with { type: 'file' }
 import asset_vendor_sdk_shared_126qmy1q_js from '../../public/vendor/sdk-shared-126qmy1q.js' with { type: 'file' }
 import asset_vendor_sdk_shared_z5sv8qff_js from '../../public/vendor/sdk-shared-z5sv8qff.js' with { type: 'file' }
@@ -148,11 +148,11 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/sdk-shared-tbqegyd9.js', asset_vendor_sdk_shared_tbqegyd9_js],
   ['/vendor/sdk-shared-s9hdzc7k.js', asset_vendor_sdk_shared_s9hdzc7k_js],
   ['/vendor/sdk-shared-w9hd8m5a.js', asset_vendor_sdk_shared_w9hd8m5a_js],
-  ['/vendor/sdk-shared-z80pn0z2.js', asset_vendor_sdk_shared_z80pn0z2_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
   ['/vendor/sdk-shared-2crmfcpv.js', asset_vendor_sdk_shared_2crmfcpv_js],
   ['/vendor/sdk-utils.js', asset_vendor_sdk_utils_js],
   ['/vendor/zod.js', asset_vendor_zod_js],
+  ['/vendor/sdk-shared-m0ef9317.js', asset_vendor_sdk_shared_m0ef9317_js],
   ['/vendor/sdk-types.js', asset_vendor_sdk_types_js],
   ['/vendor/sdk-shared-126qmy1q.js', asset_vendor_sdk_shared_126qmy1q_js],
   ['/vendor/sdk-shared-z5sv8qff.js', asset_vendor_sdk_shared_z5sv8qff_js],

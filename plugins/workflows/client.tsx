@@ -42,7 +42,7 @@ registerPlugin({
         return {
           title: String(hit.fields.name ?? hit.fields.title ?? bare),
           subtitle: isInstance ? 'workflow run' : 'workflow',
-          href: (isInstance ? entityHref('tasks:task', bare) : entityHref('workflows:workflow', bare)) ?? '/workflows',
+          href: isInstance ? entityHref('tasks:task', bare) ?? '/tasks' : entityHref('workflows:workflow', bare) ?? '/workflows',
           icon: 'workflow',
         }
       },

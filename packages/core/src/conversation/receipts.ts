@@ -58,6 +58,20 @@ function mintReceiptId(): string {
   return `r_${globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
 }
 
+/**
+ * The envelope at the very start of a tool's output — as plain text, or as the
+ * JSON-escaped text of an MCP `content` wrapper. Redemption requires this
+ * position: an ordinary result is never shaped like it, so a later call that
+ * merely echoes a live token (in a field, in an error) cannot redeem it.
+ */
+const RECEIPT_ENVELOPE_RE =
+  /^\s*(?:\{\s*"content":\s*\[\s*\{\s*(?:"type":\s*"text",\s*)?"text":\s*")?\{(?:\\n|\s)*\\?"receipt\\?":\s*\\?"bakin-receipt:(r_[a-z0-9]{16})\\?"/
+
+/** The receipt id a tool output opens with, if it is a sealed envelope. */
+export function envelopeReceiptId(text: string | undefined): string | null {
+  return text ? RECEIPT_ENVELOPE_RE.exec(text)?.[1] ?? null : null
+}
+
 /** The receipt id a tool result's text carries, if any. */
 export function findReceiptToken(text: string | undefined): string | null {
   return text ? RECEIPT_TOKEN_RE.exec(text)?.[1] ?? null : null
@@ -154,8 +168,8 @@ export function sealToolResult(
 /**
  * Redeem the receipt a tool result chunk carries and attach its payload as
  * row metadata, so the live event and the persisted row both hold it. The
- * token sits in the clipped output preview (both runtimes) or the chunk text;
- * anything else is returned untouched. `agentId` is the agent the turn runs
+ * envelope must open the clipped output preview (both runtimes) or the chunk
+ * text; a token anywhere else is ignored and the chunk returned untouched. `agentId` is the agent the turn runs
  * as: with the chunk's tool name it must match the receipt's producer, so a
  * later tool that reads a transcript or log quoting a live token never takes
  * it, and a redeemed token is gone.
@@ -166,7 +180,7 @@ export function enrichReceiptChunk(
   registry: ReceiptRegistry = receiptRegistry,
 ): ChatChunk {
   if (chunk.type !== 'tool' || chunk.data.phase !== 'result') return chunk
-  const id = findReceiptToken(chunk.data.outputPreview) ?? findReceiptToken(chunk.content)
+  const id = envelopeReceiptId(chunk.data.outputPreview) ?? envelopeReceiptId(chunk.content)
   const receipt = id ? registry.take(id, { agentId, toolName: chunk.data.toolName }) : null
   if (!receipt) return chunk
   return {

@@ -203,6 +203,22 @@ describe('handoffPreamble', () => {
     expect(handoffPreamble(base, 'main')).not.toBeNull()
   })
 
+  test('a first turn that ended on a tool call with no text still counts as a reply', () => {
+    const asked = [...base,
+      { kind: 'user', ts: 't', content: 'what is first?' } as ConversationTurnRow,
+      { kind: 'tool', ts: 't', turnId: 't2', agentId: 'lead', toolName: 'bakin_exec_ask_user', status: 'completed' } as ConversationTurnRow,
+    ]
+    expect(handoffPreamble(asked, 'lead')).toBeNull()
+    expect(handoffPreamble(asked, 'designer')).not.toBeNull()
+  })
+
+  test('the carried tool rows are not a reply here, whoever made them', () => {
+    const withTool = [{ ...marker, carried: 3 } as ConversationTurnRow, ...carried,
+      { kind: 'tool', ts: 't', turnId: 't1', agentId: 'lead', toolName: 'bakin_exec_projects_create', status: 'completed' } as ConversationTurnRow,
+    ]
+    expect(handoffPreamble(withTool, 'lead')).not.toBeNull()
+  })
+
   test('no hand-off, or nothing to say, is no preamble', () => {
     expect(handoffPreamble(carried, 'lead')).toBeNull()
     expect(handoffPreamble([{ ...marker, carried: 0 } as ConversationTurnRow], 'lead')).toBeNull()

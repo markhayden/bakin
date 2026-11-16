@@ -50,7 +50,7 @@
       "name": "sdk-navigation",
       "path": "packages/host/public/vendor/sdk-navigation.js",
       "bytes": 2910,
-      "reachableBytes": 122047
+      "reachableBytes": 122073
     },
     {
       "name": "sdk-patterns",
@@ -195,6 +195,10 @@
       "bytes": 138763
     },
     {
+      "path": "packages/host/public/vendor/sdk-shared-m0ef9317.js",
+      "bytes": 744
+    },
+    {
       "path": "packages/host/public/vendor/sdk-shared-p7r5ndze.js",
       "bytes": 82246
     },
@@ -243,10 +247,6 @@
       "bytes": 6517
     },
     {
-      "path": "packages/host/public/vendor/sdk-shared-z80pn0z2.js",
-      "bytes": 718
-    },
-    {
       "path": "packages/host/public/vendor/sdk-shared-zprn0mnp.js",
       "bytes": 2927
     },
@@ -264,7 +264,7 @@
     },
     {
       "path": "packages/host/public/vendor/sdk-utils.js",
-      "bytes": 11945
+      "bytes": 11977
     },
     {
       "path": "packages/host/public/vendor/tanstack-router.js",
@@ -298,7 +298,7 @@
       "repository": "bakin-bits-official",
       "pluginId": "terminal",
       "path": "bakin-bits-official/plugins/terminal/dist/client.js",
-      "bytes": 910280
+      "bytes": 910303
     },
     {
       "repository": "bakin",
@@ -316,7 +316,7 @@
       "repository": "bakin",
       "pluginId": "chat",
       "path": "plugins/chat/dist/client.js",
-      "bytes": 35719
+      "bytes": 35720
     },
     {
       "repository": "bakin",
@@ -376,7 +376,7 @@
       "repository": "bakin",
       "pluginId": "workflows",
       "path": "plugins/workflows/dist/client.js",
-      "bytes": 368619
+      "bytes": 368627
     }
   ]
 }

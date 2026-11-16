@@ -170,6 +170,33 @@ describe('sealToolResult — reported entities', () => {
   })
 })
 
+describe('redeeming a receipt', () => {
+  const TOOL = { agentId: 'main', toolName: 'bakin_exec_projects_create' }
+  const project = { kind: 'projects:project', id: 'p-old', title: 'Old plan', action: 'created' as const }
+  const result = (outputPreview: string) => ({ type: 'tool' as const, content: '', data: { phase: 'result' as const, toolName: TOOL.toolName, status: 'completed', outputPreview } })
+
+  test('a later result of the same tool and agent that merely quotes a live token does not redeem it', () => {
+    const registry = createReceiptRegistry()
+    // Sealed in a run nothing redeemed (a dispatch run): the receipt stays live.
+    const stale = findReceiptToken(sealToolResult({ ok: true, entities: [project] }, TOOL, { registry, reports: ['projects:project'] }))!
+    // The same tool, called again, returns an ordinary result echoing text that contains the token.
+    const echoed = JSON.stringify({ ok: true, note: `see bakin-receipt:${stale}` }, null, 2)
+    const chunk = result(echoed)
+    expect(enrichReceiptChunk(chunk, 'main', registry)).toBe(chunk)
+    const failed = result(`ERROR: no such thing {"receipt":"bakin-receipt:${stale}"}`)
+    expect(enrichReceiptChunk(failed, 'main', registry)).toBe(failed)
+  })
+
+  test('the envelope is redeemed as plain text and inside the MCP content wrapper', () => {
+    for (const wrap of [(text: string) => text, (text: string) => JSON.stringify({ content: [{ type: 'text', text }] })]) {
+      const registry = createReceiptRegistry()
+      const text = sealToolResult({ ok: true, entities: [project] }, TOOL, { registry, reports: ['projects:project'] })
+      const enriched = enrichReceiptChunk(result(wrap(text)), 'main', registry)
+      expect(enriched.type === 'tool' && enriched.data.metadata).toEqual({ bakinEntities: [project] })
+    }
+  })
+})
+
 describe('receipt registry', () => {
   test('a receipt is honoured exactly once', () => {
     const registry = createReceiptRegistry()
