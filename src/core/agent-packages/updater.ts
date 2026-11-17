@@ -30,6 +30,7 @@ import {
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { computeDirSha } from '../../../packages/core/src/agent-packages/markers'
+import { assertBakinRangeCompatible } from './bakin-range-gate'
 import { fetchSourceAsync, sourceSpecPinnedTo, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
 import { installManifestRequirements, modelDest, npmPayloadDir } from './requirements-installer'
@@ -150,6 +151,7 @@ async function updatePackageByIdLocked(options: UpdateOptions): Promise<UpdateRe
     // D14 also applies on the update path: a new version that dropped the
     // active runtime/platform must refuse, not install-then-flag.
     assertRuntimePlatformCompatible(manifest)
+    assertBakinRangeCompatible(manifest)
 
     // Sanity: id must match. Renaming a package mid-install is too dangerous
     // to allow silently — the user runs remove + install instead.

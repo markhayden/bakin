@@ -390,8 +390,10 @@ Agent packages now live outside the Bakin core repo:
 
 Skill-packs may declare `capability` (slug), `runtimes` (default `['*']`),
 `requires.bins[]` (pinned sha256-verified per-platform downloads →
-`~/.bakin/bin`), and enforced `secrets[]` (`secretSlot` + `help` drive the
-guided key step and boot env injection). Install resolves bare catalog
+`~/.bakin/bin`), `requires.login[]` (explicit login verification with
+receipts — provider-integrations §4.1, see capability-packs.md), and
+enforced `secrets[]` (`secretSlot` + `help` drive the guided key step and
+boot env injection). The base `bakin` range is enforced at install/upgrade. Install resolves bare catalog
 names server-side; readiness is ONE engine
 (`src/core/agent-packages/capability-readiness.ts`) behind REST, doctor,
 `bakin check capabilities`, and the runtime hub. Full doc:

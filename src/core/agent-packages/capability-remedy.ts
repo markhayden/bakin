@@ -10,7 +10,7 @@
  * - `package-sync`: a projected skill, an npm payload or a model is missing
  *   or unresolved — a sync re-projects and re-installs content.
  * - `human`: a required secret or a required prereq (user-installed tool)
- *   is missing — nothing Bakin can install.
+ *   is missing, or a declared login is not verified ok — nothing Bakin can install.
  * - `observation`: only platform gaps or optional prereqs remain.
  * - `null`: the pack is ready.
  *
@@ -31,6 +31,8 @@ export function capabilityRemedy(cap: CapabilityReadiness): CapabilityRemedy | n
   if (
     cap.secrets.some((secret) => secret.required && secret.status === 'missing')
     || cap.prereqs.some((prereq) => !prereq.optional && prereq.status === 'missing')
+    // A login the operator has not done (or Bakin could not verify) is theirs to fix — nothing Bakin installs.
+    || cap.login.some((login) => login.status !== 'ok')
   ) return 'human'
   return 'observation'
 }

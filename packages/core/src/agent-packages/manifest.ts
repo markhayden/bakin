@@ -114,15 +114,84 @@ const PrereqRequirementSchema = z
     name: z.string().min(1),
     kind: z.enum(['binary', 'app']),
     /** binary: a PATH lookup name. app: an absolute path that must exist. */
-    probe: z.string().min(1),
+    probe: z.string().min(1).max(4096),
     /** Where the user gets it — readiness remediation links here. */
     help: z.string().url(),
     /** Optional prereqs surface as a leg but never block readiness (default false). */
     optional: z.boolean().default(false),
   })
+  // A PATH lookup name is one path component: NAME_MAX is 255 everywhere Bakin
+  // runs, and `Bun.which` throws past ~1 KB instead of answering null (Codex r8 B7).
+  .refine((p) => p.kind !== 'binary' || (p.probe.length <= 255 && !p.probe.includes('/')), {
+    message: 'a binary prereq probe is a bare PATH lookup name of at most 255 characters',
+    path: ['probe'],
+  })
   .refine((p) => (p.kind === 'app' ? p.probe.startsWith('/') : !p.probe.includes('/')), {
     message: 'app probes must be absolute paths; binary probes must be bare PATH names',
   })
+
+/**
+ * Login verification (spec provider-integrations §4.1). A read-only command
+ * whose exit status says whether the operator has logged the pack's tool
+ * into its provider. Run only on explicit triggers (install/sync
+ * completion, `bakin check capabilities`, a "Check login" action) — never on
+ * a readiness read — and recorded as a receipt readiness reports with its age.
+ */
+const LoginRequirementSchema = z.object({
+  /** Human name shown in readiness/doctor findings. */
+  name: z.string().min(1),
+  /** argv, no shell. probe[0] is a bare binary name bound to a declared bin or binary prereq. */
+  probe: z.array(z.string().min(1)).min(1),
+  /** The exact command(s) the operator runs to log in — shown verbatim as remediation. */
+  setup: z.string().min(1),
+  /** Where the operator reads more. */
+  help: z.string().url(),
+  /** Env var naming the intended account; when set, the probe output must mention it. */
+  accountEnv: z.string().regex(/^[A-Z][A-Z0-9_]*$/, { message: 'accountEnv must be an environment variable name' }).optional(),
+  /**
+   * A regular expression the probe's STDOUT must match for `ok` — for tools
+   * whose auth listing exits 0 even with no accounts (gog: every `auth`
+   * subcommand exits 0 when logged out; `auth list --check --json` reports
+   * `"valid": true` per account). Exit 0 without a match is `missing`. Its
+   * first capturing group, when present, is the account readiness shows.
+   */
+  expect: z.string().min(1).max(1024).refine((pattern) => {
+    try { new RegExp(pattern); return true } catch { return false }
+  }, { message: 'login expect must be a valid regular expression' }).optional(),
+})
+  // Every refinement runs even after `.min(1)` failed: an empty probe must be an issue, never a throw (Codex r7 B6).
+  .refine((l) => l.probe.length === 0 || !l.probe[0]!.includes('/'), { message: 'login probe[0] must be a bare binary name, not a path' })
+  // With both declared, the configured account is compared with what the
+  // pattern CAPTURES — a pattern that captures nothing could only be matched
+  // against the whole output, where a second account's token would vouch for it.
+  .refine((l) => l.accountEnv === undefined || l.expect === undefined || regexCaptureCount(l.expect) > 0, {
+    message: 'login expect must have a capturing group (the account) when accountEnv is declared',
+    path: ['expect'],
+  })
+
+/**
+ * How many capturing groups a pattern has — the empty alternative matches
+ * without running it. A pattern that does not compile counts as capturing:
+ * the syntax refinement above already refused it, and zod runs every
+ * refinement regardless, so this one must not throw (Codex r5 B4).
+ */
+function regexCaptureCount(pattern: string): number {
+  try {
+    return (new RegExp(`${pattern}|`).exec('')?.length ?? 1) - 1
+  } catch {
+    return 1
+  }
+}
+
+/**
+ * A login entry's identity on disk: `Google account (gog)` → `google-account-gog`.
+ * Receipts are filed under it, so two entries of one pack must never share it
+ * (the schema below refuses the collision — a second receipt would otherwise
+ * overwrite the first and leave that entry permanently "unknown").
+ */
+export function loginEntryKey(entryName: string): string {
+  return entryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'login'
+}
 
 const RequiresSchema = z
   .object({
@@ -131,6 +200,39 @@ const RequiresSchema = z
     models: z.array(ModelRequirementSchema).optional(),
     /** Checked, never installed — external software the pack needs present. */
     prereqs: z.array(PrereqRequirementSchema).optional(),
+    /** Explicit login verification probes — each bound to a declared bin or binary prereq. */
+    login: z.array(LoginRequirementSchema).optional(),
+  })
+  .superRefine((requires, ctx) => {
+    // A login probe may only run a binary this pack itself declares: a Bakin-
+    // managed bin (verified path) or a binary prereq (PATH). Prereq display
+    // names never bind — only their probe does.
+    const bound = new Set<string>([
+      ...(requires.bins ?? []).map((b) => b.name),
+      ...(requires.prereqs ?? []).filter((p) => p.kind === 'binary').map((p) => p.probe),
+    ])
+    const seenKeys = new Map<string, string>()
+    requires.login?.forEach((entry, index) => {
+      const bin = entry.probe[0]
+      if (bin !== undefined && !bound.has(bin)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['login', index, 'probe'],
+          message: `login probe "${bin}" is not a declared bin or binary prereq of this pack`,
+        })
+      }
+      const key = loginEntryKey(entry.name)
+      const earlier = seenKeys.get(key)
+      if (earlier !== undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['login', index, 'name'],
+          message: `login entries "${earlier}" and "${entry.name}" share the receipt key "${key}" — give each a distinct name`,
+        })
+      } else {
+        seenKeys.set(key, entry.name)
+      }
+    })
   })
   .optional()
 
@@ -359,6 +461,7 @@ export type AgentManifest = z.infer<typeof AgentManifestSchema>
 export type SkillPackManifest = z.infer<typeof SkillPackManifestSchema>
 export type WorkflowPackManifest = z.infer<typeof WorkflowPackManifestSchema>
 export type LessonPackManifest = z.infer<typeof LessonPackManifestSchema>
+export type LoginRequirement = z.infer<typeof LoginRequirementSchema>
 export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
 export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>

@@ -14,7 +14,9 @@
 import { apiDelete, apiGet, apiPostJson, jsonObject } from '../http'
 import { operationBody, startAndFollow } from '../operation-command'
 import { print } from '../output'
-import { printCapabilityStatus, promptMissingSecrets, type InstallCapabilityInfo } from './packages'
+import { printCapabilityStatus, promptMissingSecrets } from './packages'
+import type { CapabilityReadiness } from '../../core/agent-packages/capability-readiness'
+import { resolveLocalSource } from '../local-source'
 
 interface PreviewBody {
   ok: boolean
@@ -151,10 +153,10 @@ async function confirm(question: string): Promise<boolean> {
 
 async function printPostInstallReadiness(packageId: string): Promise<void> {
   try {
-    const result = await apiGet('/api/packages/capabilities') as { capabilities?: InstallCapabilityInfo[] }
-    const cap = (result.capabilities ?? []).find((c) => (c as { packageId?: string }).packageId === packageId.split('@')[0])
+    const result = await apiGet('/api/packages/capabilities') as { capabilities?: CapabilityReadiness[] }
+    const cap = (result.capabilities ?? []).find((c) => c.packageId === packageId.split('@')[0])
     if (!cap) return
-    printCapabilityStatus(cap)
+    await printCapabilityStatus(cap)
     if (!cap.ready) await promptMissingSecrets(cap)
   } catch {
     // Readiness print is best-effort — install already succeeded.
@@ -182,7 +184,8 @@ async function cmdInstall(ref: string | undefined, yes: boolean): Promise<void> 
 
   // The preview and install are operations followed to their outcome; their
   // refusal bodies keep the exit-2 contract.
-  const previewRes = await skillOperation('/api/skills/preview', { ref })
+  const localRef = resolveLocalSource(ref)
+  const previewRes = await skillOperation('/api/skills/preview', { ref: localRef })
   const previewBody = previewRes.data as unknown as PreviewBody
   if (!previewRes.ok || !previewBody?.ok || !previewBody.preview) {
     const refused = previewBody?.refused === true
@@ -203,7 +206,7 @@ async function cmdInstall(ref: string | undefined, yes: boolean): Promise<void> 
       }
     }
 
-    const installRes = await skillOperation('/api/skills/install', { ref, consentToken: preview.consentToken })
+    const installRes = await skillOperation('/api/skills/install', { ref: localRef, consentToken: preview.consentToken })
     const installBody = installRes.data as unknown as InstallBody
     if (installRes.ok && installBody?.ok && installBody.installed) {
       console.log(`\n✓ Installed ${preview.skillName} v${preview.version} (${installBody.installed.packageId})`)

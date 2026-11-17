@@ -36,6 +36,8 @@ export interface CapabilityReadiness {
   npm: Array<{ name: string; status: 'ok' | 'missing' | 'unresolved' }>
   models: Array<{ name: string; bytes: number; status: 'ok' | 'missing' }>
   prereqs: Array<{ name: string; kind: 'binary' | 'app'; help: string; optional: boolean; status: 'ok' | 'missing' }>
+  /** Explicit login verification receipts (provider-integrations §4.1) — `unknown` = never checked, stale or could not run. */
+  login?: Array<{ name: string; setup: string; help: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; checkedAt?: string; account?: string }>
   secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: 'env' | 'store' | 'missing' }>
   platformSupported: boolean
   ready: boolean

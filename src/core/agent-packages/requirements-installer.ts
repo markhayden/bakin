@@ -27,9 +27,11 @@ import { createLogger } from '@/core/logger'
 import { runSystemBun } from '../whiskit/command'
 import { ensureBunAvailable } from '../whiskit/managed-bun'
 import { binItemId, binPlatformKey, installManifestBins } from './bin-installer'
+import { verifyLogin, type LoginReceipt } from './login-verify'
 import { generatedNpmManifest, verifyNpmPayload } from './npm-verify'
 import type { ProjectorResult } from './projector'
 import type { RequirementOp } from './requirement-op'
+import { runnableLoginSetup } from './login-setup'
 
 const log = createLogger('pack-requirements')
 
@@ -289,11 +291,13 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
   const target = input.op
   const models = manifest.requires?.models ?? []
   const npmReqs = manifest.requires?.npm ?? []
+  const logins = manifest.requires?.login ?? []
   // Every leg is listed up front, so the operation shows what is still to come.
   if (target) {
     for (const bin of manifest.requires?.bins ?? []) target.op.item(target.stageId, { id: binItemId(bin.name), label: `${bin.name} ${bin.version}` })
     for (const req of models) target.op.item(target.stageId, { id: modelItemId(req.name), label: req.name, bytes: { received: 0, total: req.bytes } })
     for (const req of npmReqs) target.op.item(target.stageId, { id: npmItemId(req.name), label: `${req.name} (npm)` })
+    for (const req of logins) target.op.item(target.stageId, { id: loginItemId(req.name), label: `${req.name} (login check)` })
   }
   await installManifestBins(manifest, installedBy, result, { op: target })
   for (const req of models) {
@@ -308,6 +312,25 @@ export async function installManifestRequirements(input: ManifestRequirementsInp
     const installed = await asItem<NpmInstallResult>(target, { id: npmItemId(req.name), label: `${req.name} (npm)` }, (r) => r.skipped, () => installNpmRequirement(req, packId, sourceDir, installedBy, { op: target }))
     result.projections.push({ kind: 'npm-payload', target: installed.target })
   }
+  // Login verification runs LAST, once the binary it probes is in place
+  // (spec provider-integrations §4.1): an explicit trigger — every install
+  // and sync pass — never a readiness read. A logged-out account is a
+  // receipt readiness reports, never an install failure.
+  for (const req of logins) {
+    const item = { id: loginItemId(req.name), label: `${req.name} (login check)` }
+    target?.op.item(target.stageId, { ...item, status: 'active' })
+    const receipt = await verifyLogin({ manifest, entry: req, packId })
+    target?.op.item(target.stageId, { ...item, status: 'done', message: describeLoginReceipt(receipt, runnableLoginSetup(manifest, req)) })
+  }
+}
+
+export const loginItemId = (name: string): string => `login:${name}`
+
+/** One line for an operation item / CLI: what the login check found. */
+export function describeLoginReceipt(receipt: LoginReceipt, setup: string): string {
+  if (receipt.status === 'ok') return receipt.account ? `logged in as ${receipt.account}` : 'logged in'
+  if (receipt.status === 'missing') return `needs login — run: ${setup}`
+  return `login not verified (${receipt.reason ?? 'unknown'})`
 }
 
 export const modelItemId = (name: string): string => `model:${name}`

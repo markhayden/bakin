@@ -6,7 +6,7 @@
  * removal. Stubbed fetch; no server.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import '../../rtl-settle'
 import { TEST_BOOT_ID, finishedOperation, operationResponse, operationStarted } from '../../helpers/operation-fetch'
 import { settleReact } from '../../rtl-settle'
@@ -204,6 +204,37 @@ describe('ecosystem lane — Installed grouping', () => {
     expect(del?.url).toBe(`/api/packages/${encodeURIComponent('hub-weather@2.0.1')}`)
     await waitFor(() => expect(toasts.join(' ')).toContain('removed'))
     await settleReact()
+  })
+
+  it('a not-logged-in pack offers Check login, which posts the shared control and re-reads readiness (provider-integrations §4.1)', async () => {
+    listData = { managed: [{ skillName: 'google-workspace', packageId: 'google-workspace@2.0.0', version: '2.0.0', source: 'github:x/y#packs/google-workspace', hub: false, capability: 'google-workspace' }], unmanaged: [] }
+    capabilitiesData = { capabilities: [{
+      capability: 'google-workspace', packageId: 'google-workspace', version: '2.0.0', name: 'Google Workspace', ready: false,
+      missing: ['Google account (gog): not logged in — run: gog auth setup'], secrets: [], prereqs: [],
+      login: [{ name: 'Google account (gog)', setup: 'gog auth setup', status: 'missing', reason: 'exit' }],
+    }] }
+    await act(async () => { render(<HubSkillsSection />) })
+    const legs = await screen.findByTestId('capability-legs-google-workspace')
+    const button = within(legs).getByRole('button', { name: 'Check login' })
+    await act(async () => { fireEvent.click(button) })
+    const post = fetchCalls.find((c) => c.url.endsWith('/api/packages/login-check'))
+    expect(post?.body).toEqual({ packageId: 'google-workspace' })
+    expect(refreshCalls).toContain('/api/packages/capabilities')
+  })
+
+  it('a ready pack shows its login evidence with the receipt age and keeps Check login (a logout leaves an old green receipt)', async () => {
+    listData = { managed: [{ skillName: 'google-workspace', packageId: 'google-workspace@2.0.0', version: '2.0.0', source: 'github:x/y#packs/google-workspace', hub: false, capability: 'google-workspace' }], unmanaged: [] }
+    const checkedAt = '2026-11-14T10:03:00.000Z'
+    capabilitiesData = { capabilities: [{
+      capability: 'google-workspace', packageId: 'google-workspace', version: '2.0.0', name: 'Google Workspace', ready: true,
+      missing: [], secrets: [], prereqs: [],
+      login: [{ name: 'Google account (gog)', setup: 'gog auth setup', status: 'ok', account: 'mark@example.com', checkedAt }],
+    }] }
+    await act(async () => { render(<HubSkillsSection />) })
+    const legs = await screen.findByTestId('capability-legs-google-workspace')
+    expect(legs.textContent).toContain('Google account (gog): logged in as mark@example.com')
+    expect(legs.textContent).toContain(`(checked ${new Date(checkedAt).toLocaleString()})`)
+    expect(within(legs).getByRole('button', { name: 'Check login' })).toBeTruthy()
   })
 
   it('readiness legs ride each installed row; ?capability= highlights, focuses and offers the key link (1.4c-2)', async () => {

@@ -368,6 +368,7 @@ export function InstallDialog({
               {preset
                 ? `Official ${kind.replace('-', ' ')} from the curated catalog.`
                 : 'Fetch a package or plugin from a GitHub repo or local path.'}
+              {kind === 'skill-pack' && ' Pinned binaries land in ~/.bakin/bin; a pack that declares a login check runs that read-only probe after install, on sync and when you click Check login.'}
             </DialogDescription>
           </DialogHeader>
           <Form busy={busy} onSubmit={handleSubmit}>

@@ -4,9 +4,10 @@
  * stays in Explore (one install path — story 2); this tab answers "is it
  * working, and if not, what do I do".
  */
+import { useState } from 'react'
 import { Compass } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { useJsonFetch } from '@makinbakin/sdk/hooks'
+import { toast, useJsonFetch } from '@makinbakin/sdk/hooks'
 import { Inline, Stack } from '@makinbakin/sdk/layout'
 import { StatusBadge, StatusMarker, type DataTableColumn } from '@makinbakin/sdk/patterns'
 import { Button, buttonVariants, Skeleton, SystemState, Text } from '@makinbakin/sdk/ui'
@@ -29,6 +30,52 @@ function Leg({ label }: { label: string }) {
       {label}
     </span>
   )
+}
+
+/** A pack with login legs always keeps its Check login control: a provider logout leaves an old green receipt behind. */
+const hasLogin = (cap: CapabilityReadiness) => (cap.login ?? []).length > 0
+
+/** `logged in as mark@… (checked 13 Nov, 10:00)` — the receipt's evidence, kept on ready rows. */
+function loginEvidence(login: NonNullable<CapabilityReadiness['login']>[number]): string {
+  const when = login.checkedAt ? ` (checked ${new Date(login.checkedAt).toLocaleString()})` : ''
+  if (login.status === 'ok') return `${login.name}: logged in${login.account ? ` as ${login.account}` : ''}${when}`
+  if (login.status === 'missing') return `${login.name}: not logged in${when}`
+  return `${login.name}: login not verified${when}`
+}
+
+/**
+ * The explicit login trigger (provider-integrations §4.1): runs the pack's
+ * probe through the shared host control, then re-reads readiness so the row
+ * shows the fresh receipt. The button is busy while the probe runs (≤ 5 s).
+ */
+function CheckLoginButton({ packageId, onChecked }: { packageId: string; onChecked: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const check = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/packages/login-check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ packageId }),
+      })
+      const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; receipts?: Array<{ name: string; status: string; account?: string; setup: string }> } | null
+      if (!res.ok || !body?.ok) {
+        toast(body?.error ?? `Login check failed (HTTP ${res.status})`, 'error')
+      } else {
+        for (const receipt of body.receipts ?? []) {
+          if (receipt.status === 'ok') toast(`${receipt.name}: logged in${receipt.account ? ` as ${receipt.account}` : ''}`, 'success')
+          else if (receipt.status === 'missing') toast(`${receipt.name}: not logged in — run: ${receipt.setup}`, 'error')
+          else toast(`${receipt.name}: login could not be verified`, 'error')
+        }
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Login check failed', 'error')
+    } finally {
+      setBusy(false)
+      onChecked()
+    }
+  }
+  return <Button size="xs" variant="outline" busy={busy} onClick={() => { void check() }}>Check login</Button>
 }
 
 export function CapabilitiesTab() {
@@ -93,7 +140,10 @@ export function CapabilitiesTab() {
     { key: 'package', header: 'Package', narrow: 'label', sortable: true, sortValue: cap => cap.packageId,
       cellClassName: 'whitespace-normal', cell: cap => <Text size="meta" mono className="break-all">{cap.packageId}@{cap.version}</Text> },
     { key: 'requirements', header: 'Readiness details', narrow: 'label', cellClassName: 'whitespace-normal', cell: cap => cap.ready
-      ? <Text size="meta" tone="muted">All requirements ready</Text>
+      ? <Stack gap="dense">
+          <Text size="meta" tone="muted">All requirements ready</Text>
+          {(cap.login ?? []).map((l) => <Text key={`l-${l.name}`} size="meta" tone="muted" as="p">{loginEvidence(l)}</Text>)}
+        </Stack>
       : <Stack gap="dense">
                     <Inline gap="item" align="center">
                       {!cap.platformSupported && <Leg key="platform" label="not available on this platform" />}
@@ -102,21 +152,27 @@ export function CapabilitiesTab() {
                       {(cap.npm ?? []).filter((n) => n.status !== 'ok').map((n) => <Leg key={`n-${n.name}`} label={n.status === 'unresolved' ? `dependencies ${n.name} not at declared versions` : `dependencies ${n.name} missing`} />)}
                       {(cap.models ?? []).filter((m) => m.status !== 'ok').map((m) => <Leg key={`m-${m.name}`} label={`model ${m.name} missing (${Math.round(m.bytes / 1e6)} MB)`} />)}
                       {(cap.prereqs ?? []).filter((p) => p.status !== 'ok' && !p.optional).map((p) => <Leg key={`p-${p.name}`} label={`${p.name} not installed`} />)}
+                      {(cap.login ?? []).filter((l) => l.status !== 'ok').map((l) => <Leg key={`l-${l.name}`} label={l.status === 'missing' ? `${l.name} not logged in` : `${l.name} login not verified`} />)}
                       {cap.secrets.filter((s) => s.status === 'missing').map((s) => <Leg key={`k-${s.name}`} label={`${s.name} not set`} />)}
                     </Inline>
                     <ul className="m-0 list-disc ps-bakin-4 text-bakin-typography-size-meta text-bakin-text-muted">
                       {cap.missing.map((line) => <li key={line}>{line}</li>)}
                     </ul>
       </Stack> },
-    { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, cell: cap => !cap.ready && cap.secrets.some(s => s.status === 'missing') ? (
-                      <Link
-                        to="/settings"
-                        search={{ tab: 'integrations' }}
-                        className={buttonVariants({ variant: 'outline', size: 'xs' })}
-                      >
-                        Add the key in Settings
-                      </Link>
-                    ) : null },
+    { key: 'actions', header: 'Actions', narrow: 'trailing', hideLabel: true, cell: cap => (cap.ready && !hasLogin(cap)) ? null : (
+                      <Inline gap="dense" align="center">
+                        {!cap.ready && cap.secrets.some(s => s.status === 'missing') && (
+                          <Link
+                            to="/settings"
+                            search={{ tab: 'integrations' }}
+                            className={buttonVariants({ variant: 'outline', size: 'xs' })}
+                          >
+                            Add the key in Settings
+                          </Link>
+                        )}
+                        {hasLogin(cap) && <CheckLoginButton packageId={cap.packageId} onChecked={refresh} />}
+                      </Inline>
+                    ) },
   ]
   return (
     <Stack gap="section" data-testid="capabilities-readiness">

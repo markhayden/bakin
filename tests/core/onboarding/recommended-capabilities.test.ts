@@ -21,7 +21,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let lockPackages: Record<string, { kind: string; version: string }> = {}
-let readiness: Array<{ capability: string; packageId: string; ready: boolean; missing: string[] }> = []
+let readiness: Array<{ capability: string; packageId: string; ready: boolean; missing: string[]; login?: Array<{ name: string; setup: string; help: string; status: string; account?: string; checkedAt?: string }> }> = []
 const installCalls: Array<{ source: string; installAs?: string }> = []
 
 mock.module('../../../packages/core/src/agent-packages/lockfile', () => ({
@@ -91,6 +91,13 @@ describe('capabilities onboarding component', () => {
     expect(result.remediation).toContain('BRAVE_SEARCH_API_KEY')
   })
 
+  it('a pack whose login is missing is not ready; the remediation is the exact setup command (provider-integrations §4.1)', async () => {
+    readiness = [{ capability: 'google-workspace', packageId: 'google-workspace', ready: false, missing: ['Google account (gog): not logged in — run: gog auth setup you@example.com --login'] }]
+    const result = await recommendedCapabilitiesComponent.check()
+    expect(result.status).toBe('missing')
+    expect(result.remediation).toContain('run: gog auth setup you@example.com --login')
+  })
+
   it('uninstalled à-la-carte packs never flip the check to missing', async () => {
     lockPackages = { 'web-search-brave@1.0.0': { kind: 'skill-pack', version: '1.0.0' } }
     readiness = [{ capability: 'web-search', packageId: 'web-search-brave', ready: true, missing: [] }]
@@ -104,6 +111,27 @@ describe('capabilities onboarding component', () => {
     readiness = [{ capability: 'web-search', packageId: 'web-search-brave', ready: true, missing: [] }]
     const result = await recommendedCapabilitiesComponent.check()
     expect(result.status).toBe('ok')
+    expect(result.message).not.toContain('logged in')
+  })
+
+  it('login evidence rides the human message, not only the JSON details (every renderer shows it)', async () => {
+    lockPackages['google-workspace@2.0.0'] = { kind: 'skill-pack', version: '2.0.0' }
+    lockPackages['web-search-brave@1.0.0'] = { kind: 'skill-pack', version: '1.0.0' }
+    readiness = [{
+      capability: 'google-workspace', packageId: 'google-workspace', ready: true, missing: [],
+      login: [{ name: 'Google account (gog)', setup: 'gog auth setup', help: 'https://x.dev', status: 'ok', account: 'mark@example.com', checkedAt: '2026-11-14T10:03:00.000Z' }],
+    }]
+    const result = await recommendedCapabilitiesComponent.check()
+    expect(result.status).toBe('ok')
+    expect(result.message).toContain('Google account (gog): logged in as mark@example.com (checked 2026-11-14T10:03:00.000Z)')
+    expect(result.details?.logins).toEqual([{ packageId: 'google-workspace', name: 'Google account (gog)', status: 'ok', account: 'mark@example.com', checkedAt: '2026-11-14T10:03:00.000Z' }])
+
+    // A not-ready pack beside a logged-in one: the evidence still shows, the fix still leads.
+    readiness.push({ capability: 'web-search', packageId: 'web-search-brave', ready: false, missing: ['BRAVE_SEARCH_API_KEY is not configured'] })
+    const mixed = await recommendedCapabilitiesComponent.check()
+    expect(mixed.status).toBe('missing')
+    expect(mixed.remediation).toContain('BRAVE_SEARCH_API_KEY')
+    expect(mixed.message).toContain('Google account (gog): logged in as mark@example.com')
   })
 
   it('installs defaultSelected packs under autoApprove with the ref pin', async () => {

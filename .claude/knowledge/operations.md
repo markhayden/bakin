@@ -316,6 +316,12 @@ observation may still be unhealthy — a check that vanished is not a pass.
   cancels when allowed (otherwise says why), twice detaches (exit 130) — in
   EVERY mode: a command printing its own JSON passes
   `silentOperationRenderer()` (notes to stderr) and keeps the handling.
+- **Waiting line** (`startAndFollow` on a terminal): the tty renderer shows
+  `Starting · waiting for Bakin to answer` the moment the request goes out,
+  rewords to `Started · waiting for its first update` once the 202 lands,
+  each with a clock, and the first real frame replaces it — a slow start is
+  never a silent terminal. A start that fails before any view erases it
+  (`dispose`). Plain and json modes never print it.
   `operationExitCode`: 0 succeeded, 130 cancelled/detached, 1 otherwise;
   the JSON document's `exitCode` is the same number.
 

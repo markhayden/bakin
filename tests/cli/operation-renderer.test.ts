@@ -397,3 +397,40 @@ describe('operationStatusLine: the one-line view onboarding shows', () => {
       .toBe('Download the search models 3.0 MB (size unknown)')
   })
 })
+
+describe('the waiting line before the first view (a slow start is never a silent terminal)', () => {
+  it('shows at once with its clock, rewords in place, and the first frame replaces it', () => {
+    const written: string[] = []
+    let t = NOW
+    const r = createOperationRenderer({ mode: 'tty', write: (s) => written.push(s), now: () => t, tickMs: 0 })
+    r.waiting('Starting · waiting for Bakin to answer')
+    expect(written).toEqual(['Starting · waiting for Bakin to answer · 0s\n'])
+    t += 12_000
+    r.waiting('Started · waiting for its first update')
+    // Same line rewritten (one line up, cleared), and the clock keeps the original start.
+    expect(written[1]).toBe('\x1b[1F\x1b[JStarted · waiting for its first update · 12s\n')
+    r.update(view({ startedAt: new Date(t).toISOString() }), [])
+    expect(written[2]!.startsWith('\x1b[1F\x1b[J')).toBe(true)
+    expect(written[2]).not.toContain('waiting for')
+    r.waiting('ignored once a view arrived')
+    expect(written).toHaveLength(3)
+  })
+
+  it('dispose erases the waiting line when the start fails before any view', () => {
+    const written: string[] = []
+    const r = createOperationRenderer({ mode: 'tty', write: (s) => written.push(s), now: () => NOW, tickMs: 0 })
+    r.waiting('Starting · waiting for Bakin to answer')
+    r.dispose()
+    expect(written.at(-1)).toBe('\x1b[1F\x1b[J')
+  })
+
+  it('plain and json renderers never print a waiting line', () => {
+    const written: string[] = []
+    for (const mode of ['plain', 'json'] as const) {
+      const r = createOperationRenderer({ mode, write: (s) => written.push(s), tickMs: 0 })
+      r.waiting('Starting')
+      r.dispose()
+    }
+    expect(written).toEqual([])
+  })
+})

@@ -19,6 +19,7 @@ import { getCliUsageGroups, renderCliUsage } from './cli/registry'
 import type { CommandFailureData, RuntimeActionData } from './cli/ui/readonly'
 import { isOnboarded } from './onboarding/state'
 import { restartChildCommandName, waitForRestartParentExit } from './server-restart'
+import { dispatchExpectMatch } from './agent-packages/expect-match'
 
 const BAKIN_URL = process.env.BAKIN_URL
 const DEV_CHILD_SIGNAL_GRACE_MS = 8000
@@ -338,6 +339,10 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
     await waitForRestartParentExit(argv[restartCommandIndex + 1])
     return { startServer: true, exitCode: 0 }
   }
+  // The server re-enters its own binary to run a pack's login `expect`
+  // pattern where it can be killed (expect-match.ts). stdin in, stdout out.
+  const expectMatchExit = await dispatchExpectMatch(argv)
+  if (expectMatchExit !== null) return { startServer: false, exitCode: expectMatchExit }
 
   const args = argv.slice(2)
   // No-arg invocation shows help — parity with the source CLI (cli/bakin.ts).

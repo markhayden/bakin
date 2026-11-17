@@ -19,6 +19,10 @@ import {
 } from '@bakin/core/media'
 import { SECRET_SLOTS, resolveSecretSlotStatus } from '@bakin/core/secrets'
 import { injectSecretEnvForSlot } from '@/core/secret-env'
+import { verifyInstalledPackLogins } from '@/core/agent-packages/login-verify'
+import { createLogger } from '@/core/logger'
+
+const log = createLogger('api:secrets')
 
 const secretValue = z.string().min(1).max(8192)
 
@@ -59,6 +63,12 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // D18 (#687): take effect NOW — the guided-key journey must not require a
   // server restart. Unset-only; a real env var still wins.
   const injectedEnv = injectSecretEnvForSlot(provider, name)
+  // A saved key is an explicit login trigger for the packs that declare this
+  // slot (spec provider-integrations §4.1) — fire-and-forget, the receipt is
+  // what readiness reads next.
+  void verifyInstalledPackLogins({ secretSlot: `${provider}.${name}` }).catch((err: unknown) => {
+    log.warn('login re-check after secret save failed', { provider, name, error: err instanceof Error ? err.message : String(err) })
+  })
   return Response.json({ ok: true, provider, name, stored: true, injectedEnv })
 }
 

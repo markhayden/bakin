@@ -129,7 +129,7 @@ describe('row 94 — kept user edits', () => {
 describe('row 6 — a capability is required only while an agent declares it', () => {
   const cap = (over: Partial<CapabilityReadiness> = {}): CapabilityReadiness => ({
     capability: 'web-search', packageId: 'acme.web-search', version: '1.0.0', name: 'Web search', description: 'Search the web.',
-    skills: [{ name: 'web-search', status: 'missing' }], bins: [], npm: [], models: [], prereqs: [], secrets: [],
+    skills: [{ name: 'web-search', status: 'missing' }], bins: [], npm: [], models: [], prereqs: [], login: [], secrets: [],
     platformSupported: true, manifestValid: true, ready: false, missing: ['skill "web-search" is not projected'],
     ...over,
   })

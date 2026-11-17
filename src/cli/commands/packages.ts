@@ -10,29 +10,18 @@ import { currentOperationMode } from '../operation-mode'
 import { print } from '../output'
 import { exitUsage, exitUnknownSubcommand, promptYesNo } from '../help'
 import { renderInkReport } from '../../core/cli/ui/render-report'
+import type { PackInstallPreviewData } from '../../core/cli/ui/reports/capability'
+import type { CapabilityReadiness } from '../../core/agent-packages/capability-readiness'
+import { resolveLocalSource } from '../local-source'
 import { parseAgentsFlags, printPackageActionTui, withSilentLogsIf, type AgentsCmdFlags } from './agents'
-
-export interface InstallCapabilityInfo {
-  capability: string
-  name: string
-  ready: boolean
-  missing: string[]
-  skills: Array<{ name: string; status: string }>
-  bins: Array<{ name: string; status: string }>
-  secrets: Array<{ name: string; required: boolean; secretSlot?: string; help?: string; status: string }>
-}
 
 function isBareName(source: string): boolean {
   return !source.includes(':') && !source.startsWith('./') && !source.startsWith('../')
     && !source.startsWith('/') && !source.startsWith('~/')
 }
 
-function legLine(ok: boolean, label: string): string {
-  return `  ${ok ? '✓' : '⚠'} ${label}`
-}
-
 /** Guided key step (story 3): offer to store each missing secretSlot-backed secret. */
-export async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<boolean> {
+export async function promptMissingSecrets(cap: CapabilityReadiness): Promise<boolean> {
   let storedAny = false
   for (const secret of cap.secrets) {
     if (secret.status !== 'missing' || !secret.secretSlot) continue
@@ -55,15 +44,9 @@ export async function promptMissingSecrets(cap: InstallCapabilityInfo): Promise<
   return storedAny
 }
 
-export function printCapabilityStatus(cap: InstallCapabilityInfo): void {
-  console.log(`\nCapability: ${cap.name} (${cap.capability})`)
-  for (const s of cap.skills) console.log(legLine(s.status === 'ok', `skill ${s.name}`))
-  for (const b of cap.bins) console.log(legLine(b.status === 'ok', `binary ${b.name}`))
-  for (const s of cap.secrets) {
-    console.log(legLine(s.status !== 'missing', `${s.name} (${s.status === 'missing' ? 'not configured' : s.status})`))
-  }
-  console.log(cap.ready ? '✓ READY — agents can use this capability now.' : '⚠ Not ready yet:')
-  if (!cap.ready) for (const line of cap.missing) console.log(`  - ${line}`)
+/** The pack's per-leg readiness (the ONE readiness engine's answer) as a TUI screen. */
+export async function printCapabilityStatus(cap: CapabilityReadiness): Promise<void> {
+  return renderInkReport(() => import('../../core/cli/ui/reports/capability'), (m) => m.CapabilityStatusReport, { cap })
 }
 
 async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
@@ -94,41 +77,56 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
 }
 
 /**
- * Best-effort pre-consent download preview. Local-path sources read the
- * manifest directly; remote sources fall back to the generic consent text
- * (their requirements print in the post-install capability status).
+ * What a pack declares, read before consent. A local source's manifest is
+ * read here, at the same absolute path the server will install from; a
+ * remote source is fetched only by the install, so its requirements are
+ * listed in the readiness screen afterwards.
  */
-async function previewInstallRequirements(source: string): Promise<string[]> {
-  const { existsSync, readFileSync } = await import('fs')
+export async function previewInstallRequirements(source: string, origin: string): Promise<PackInstallPreviewData> {
+  const empty = { source, origin, skills: [], bins: [], npm: [], models: [], prereqs: [], logins: [] }
+  if (isBareName(source) || !source.startsWith('/')) return { ...empty, manifest: 'remote' }
+  const { readFileSync } = await import('fs')
   const { join } = await import('path')
-  const manifestPath = join(source, 'bakin-package.json')
-  if (!existsSync(manifestPath)) return []
   const { safeParseManifest } = await import('../../../packages/core/src/agent-packages/manifest')
-  const parsed = safeParseManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
-  if (!parsed.success || parsed.data.kind !== 'skill-pack') return []
-  const lines: string[] = []
-  for (const model of parsed.data.requires?.models ?? []) {
-    lines.push(`Downloads model "${model.name}" (${Math.round(model.bytes / 1e6)} MB) into ~/.bakin/models.`)
+  let raw: unknown
+  try {
+    raw = JSON.parse(readFileSync(join(source, 'bakin-package.json'), 'utf-8'))
+  } catch (err) {
+    return { ...empty, manifest: 'unreadable', problem: err instanceof Error ? err.message : String(err) }
   }
-  for (const prereq of parsed.data.requires?.prereqs ?? []) {
-    lines.push(`Needs ${prereq.name} installed${prereq.optional ? ' (optional)' : ''} — checked, never auto-installed.`)
+  const parsed = safeParseManifest(raw)
+  if (!parsed.success) {
+    return { ...empty, manifest: 'unreadable', problem: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }
   }
-  return lines
+  const manifest = parsed.data
+  const base = { ...empty, manifest: 'read' as const, name: manifest.name, version: manifest.version, description: manifest.description }
+  if (manifest.kind !== 'skill-pack') return base
+  const { binPlatformKey } = await import('../../core/agent-packages/bin-platform')
+  const { runnableLoginSetup } = await import('../../core/agent-packages/login-setup')
+  const platform = binPlatformKey()
+  return {
+    ...base,
+    skills: manifest.contributions.skills.map((path) => path.split('/').pop() ?? path),
+    bins: (manifest.requires?.bins ?? []).flatMap((bin) => {
+      const download = platform ? bin.install[platform] : undefined
+      return download ? [{ name: bin.name, version: bin.version, host: new URL(download.url).host }] : []
+    }),
+    npm: (manifest.requires?.npm ?? []).map((npm) => ({ name: npm.name, dependencies: Object.keys(npm.dependencies).length })),
+    models: (manifest.requires?.models ?? []).map((model) => ({ name: model.name, bytes: model.bytes })),
+    prereqs: (manifest.requires?.prereqs ?? []).map((prereq) => ({ name: prereq.name, optional: prereq.optional })),
+    logins: (manifest.requires?.login ?? []).map((login) => ({ name: login.name, probe: login.probe.join(' '), setup: runnableLoginSetup(manifest, login) })),
+  }
 }
 
-async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: boolean): Promise<void> {
+async function cmdPackagesInstall(typed: string, flags: AgentsCmdFlags, yes: boolean): Promise<void> {
+  const source = resolveLocalSource(typed)
   // Consent (story 3): say what installs from where before any write —
   // including declared downloads, so a 900 MB model is never a surprise.
   if (!yes && !flags.json && process.stdout.isTTY) {
-    const origin = isBareName(source) ? `"${source}" from the curated catalog (pinned source)` : source
-    console.log(`This installs ${origin}: skill content projected to the active runtime,`)
-    console.log('plus any pinned binaries into ~/.bakin/bin and declared npm dependencies')
-    console.log('into ~/.bakin/npm. Scripts run as agent shell commands.')
-    try {
-      const preview = await previewInstallRequirements(source)
-      for (const line of preview) console.log(line)
-    } catch { /* preview is best-effort — consent text above still covers the install */ }
-    if (!(await promptYesNo('Proceed? [y/N] '))) {
+    const origin = isBareName(source) ? `the curated catalog ("${source}", pinned source)` : source
+    const preview = await previewInstallRequirements(source, origin)
+    await renderInkReport(() => import('../../core/cli/ui/reports/capability'), (m) => m.PackInstallConsentReport, { preview })
+    if (!(await promptYesNo('Install it?'))) {
       console.log('Aborted — nothing installed.')
       return
     }
@@ -139,7 +137,7 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: bo
   const operation = await startAndFollow(() => apiPost('/api/packages/install', body), { json: Boolean(flags.json) })
   const result = operationBody(operation) as Record<string, unknown> & {
     ok?: boolean
-    capability?: InstallCapabilityInfo
+    capability?: CapabilityReadiness
   }
 
   if (flags.json || !process.stdout.isTTY) {
@@ -152,11 +150,11 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: bo
   // Capability packs get the per-leg status + guided key step instead of the
   // generic TUI card.
   if (result.ok && result.capability) {
-    printCapabilityStatus(result.capability)
+    await printCapabilityStatus(result.capability)
     if (!result.capability.ready && (await promptMissingSecrets(result.capability))) {
-      const refreshed = await apiGet('/api/packages/capabilities') as { capabilities: InstallCapabilityInfo[] }
+      const refreshed = await apiGet('/api/packages/capabilities') as { capabilities: CapabilityReadiness[] }
       const cap = refreshed.capabilities.find((c) => c.capability === result.capability!.capability)
-      if (cap) printCapabilityStatus(cap)
+      if (cap) await printCapabilityStatus(cap)
     }
     return
   }
@@ -164,7 +162,7 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags, yes: bo
   await printPackageActionTui({
     action: 'installed',
     scope: 'package',
-    target: flags.installAs ?? source,
+    target: flags.installAs ?? typed,
     result,
   })
 }
@@ -239,7 +237,40 @@ export async function run(args: string[]): Promise<void> {
   } else if (sub === 'sync') {
     if (!args[2]) await exitUsage('bakin packages sync <package-id> [--check]')
     await cmdPackagesSync(args[2], parseAgentsFlags(args.slice(3)))
+  } else if (sub === 'login-check') {
+    if (!args[2]) await exitUsage('bakin packages login-check <id>')
+    await cmdPackagesLoginCheck(args[2]!, parseAgentsFlags(args.slice(3)))
   } else {
-    await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync'])
+    await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'sync', 'login-check'])
   }
+}
+
+interface LoginCheckReceiptRow { name: string; setup: string; status: 'ok' | 'missing' | 'unknown'; reason?: string; account?: string; checkedAt: string }
+
+/** `bakin packages login-check <id>` — run the pack's login probe now and say what it found. */
+async function cmdPackagesLoginCheck(id: string, flags: AgentsCmdFlags): Promise<void> {
+  const body = await apiPost('/api/packages/login-check', { packageId: id }) as { ok: boolean; error?: string; receipts?: LoginCheckReceiptRow[] }
+  if (flags.json) {
+    print(body)
+    if (!body.ok || (body.receipts ?? []).some((r) => r.status !== 'ok')) process.exit(1)
+    return
+  }
+  if (!body.ok) {
+    console.error(body.error ?? 'login check failed')
+    process.exit(1)
+  }
+  const receipts = body.receipts ?? []
+  const allOk = receipts.every((r) => r.status === 'ok')
+  if (process.stdout.isTTY) {
+    await renderInkReport(() => import('../../core/cli/ui/reports/capability'), (m) => m.LoginCheckReport, { packageId: id, receipts })
+    if (!allOk) process.exit(1)
+    return
+  }
+  const { loginReasonText } = await import('../../core/cli/ui/reports/login-reason')
+  for (const r of receipts) {
+    if (r.status === 'ok') console.log(`✓ ${r.name}: logged in${r.account ? ` as ${r.account}` : ''}`)
+    else if (r.status === 'missing') console.log(`✗ ${r.name}: needs login — run: ${r.setup}`)
+    else console.log(`? ${r.name}: login not verified — ${loginReasonText(r.reason)}`)
+  }
+  if (!allOk) process.exit(1)
 }

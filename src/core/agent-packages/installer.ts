@@ -33,6 +33,7 @@ import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
 import { announceAgentPackagesChanged } from './change-events'
 import { SkillRefusalError } from './errors'
+import { assertBakinRangeCompatible } from './bakin-range-gate'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
 import {
@@ -411,6 +412,7 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
 
     const resolvedTopId = options.installAs ?? manifest.id
     assertRuntimePlatformCompatible(manifest)
+    assertBakinRangeCompatible(manifest)
     validatePackageContributionIntegrity({
       manifest,
       stagingDir: topFetched.stagingDir,
@@ -474,6 +476,8 @@ async function installPackageLocked(options: InstallOptions): Promise<InstallRes
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
       assertRuntimePlatformCompatible(r.manifest)
+      // A dependency this host cannot run is refused like a parent would be.
+      assertBakinRangeCompatible(r.manifest)
       validatePackageContributionIntegrity({
         manifest: r.manifest,
         stagingDir: r.fetched.stagingDir,

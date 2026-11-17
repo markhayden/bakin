@@ -98,6 +98,97 @@ A capability pack is `kind: "skill-pack"` plus:
   absolute path existsSync). Missing required prereqs block readiness with
   the help link as remediation; `optional: true` surfaces without blocking
   (transcribe's ffmpeg).
+- `requires.login[]` (provider-integrations §4.1) — `{ name, probe: argv,
+  setup, help, accountEnv? }`: a read-only command whose exit status says
+  whether the operator has logged the pack's tool into its provider
+  (`gog auth list --check`, `gh auth status`). `probe[0]` MUST be a bare
+  binary this pack declares — `bins[].name` or a binary `prereqs[].probe`
+  (a prereq's display `name` never binds; a binary probe is a bare PATH
+  name of at most 255 characters — `Bun.which` THROWS past ~1 KB rather
+  than answering null, so the verifier, the readiness prereq scan and the
+  installed-pack batch each contain a lookup failure as "not found" for
+  that pack alone, never a crash that costs every other pack its answer;
+  Codex r8 B7); the manifest refuses anything else. Each entry's `name` slugs to its receipt key (`loginEntryKey`, owned
+  by the manifest module: `Google account (gog)` → `google-account-gog`) and
+  two entries of one pack may not share a key — the schema refuses the
+  collision, since the second receipt would overwrite the first and leave
+  that entry `unknown` forever. `setup` is the exact command the operator runs, shown verbatim as
+  remediation. `accountEnv` names an env var (`GOG_ACCOUNT`); when set, the
+  probe output must contain its value or the login is `missing`
+  (account-mismatch). `expect?` is a regular expression the probe's STDOUT
+  must match for `ok` — for tools whose auth listing exits 0 even when
+  logged out (gog: EVERY `gog auth` subcommand does, verified on v0.48.0;
+  `auth list --check --json` reports `"valid": true` per account): exit 0
+  without a match is `missing` (reason `no-match`, same `setup` remediation),
+  and the pattern's first capturing group is the account shown (a JSON
+  probe's first line is `{`). The schema refuses a pattern that does not
+  compile or runs past 1 KB, and — beside `accountEnv` — one without a
+  capturing group (the group count is read without throwing, so a pattern
+  that fails the syntax check is a schema RESULT, never an exception out of
+  `safeParseManifest` that would abort every capability enumeration): with
+  both declared, the configured account must BE one of
+  the captures of SOME match (every match is read, so the configured
+  account valid in second place is a login; a valid second account never
+  vouches for a revoked first one — whole-output substring matching would,
+  PR1 Codex r4 B2). The pattern never runs on the server's event loop:
+  `expect-match.ts` runs it in a child the server SIGKILLs at the login
+  deadline (a JS RegExp backtracks — `a*a*a*a*a*a*a*a*b` over 10 KB of `a`
+  stalls a thread for longer than the machine lives, and
+  `worker.terminate()` does not stop a regex thread; probed on bun 1.4.3,
+  PR1 Codex r4 B1). On a checkout the child is `bun expect-match.ts`; inside
+  the compiled binary it is the binary itself on the hidden
+  `__bakin-expect-match` command (`dispatchExpectMatch` runs first in
+  `dispatchCli`, stdin → stdout, one JSON document each way — the answer is
+  the bounded `{ matched, captures, wantedFound }` summary (match count, at
+  most 256 distinct first captures for DISPLAY, and whether some match
+  captured exactly the configured account — decided by the child over every
+  match, so the 257th account is still a login), never the matches
+  themselves, since a lookahead
+  pattern expands 16 KB of input into ~128 MB of whole matches; the child
+  awaits the flush before it exits; the server reads at most 8 MB; the compiled
+  teeth test `tests/integration/agent-packages/compiled-expect-match.test.ts`
+  pins the re-entry, the kill and the self-exit). The child also ends
+  ITSELF: it runs the regex on a worker thread and exits the whole process
+  at the `deadlineMs` the request carries (one second past the server's
+  kill), so a server that dies mid-check never leaves a child spinning for
+  good. A pattern that cannot finish is
+  `unknown` with reason `expect-timeout`; a matcher that cannot run or a
+  pattern the child cannot compile is `unknown`/`expect-error` — both keep
+  the pack not ready and name the pack in the server log, never a stall.
+  Verification is EXPLICIT (`login-verify.ts`): it runs
+  at install/sync completion (last leg, after the binary is in place), on
+  `POST /api/packages/login-check { packageId }` (the Check login button in
+  Explore, the runtime hub and the Health card; `bakin packages login-check
+  <id>`), and when a secret for a slot the pack declares is saved. Never on a
+  readiness read, never on `bakin check` (checks change nothing). The probe
+  runs as argv (no shell), stdin closed, output capped at 16 KB (one byte
+  budget across stdout+stderr; the PERSISTED string is re-cut so a torn
+  multibyte character or the separator never pushes it over), a 5 s
+  timeout that kills the child, concurrent callers share one run; a managed
+  bin executes only at its verified path (missing/drifted ⇒ `unknown`).
+  The receipt (`~/.bakin/packages/receipts/login/<installed pack id>/<entry
+  slug>.json` — one per login entry, filed under the INSTALLED id so an
+  aliased install reads its own) records status `ok|missing|unknown` +
+  reason (`killed` = a signal we did not send), `checkedAt`, the matched
+  account (STDOUT only), and the inputs that make it STALE — the probe argv,
+  the `expect` pattern, pack version, resolved binary path + identity (verified sha for a managed
+  bin, `stat:<size>:<mtime>` for a PATH prereq), the accountEnv value hash,
+  the declared secrets' digest (env AND store evidence); a stale receipt
+  reads `unknown` until re-checked. Concurrent callers share a run only for
+  identical inputs in the same Bakin home. `missing` and `unknown` both block ready; a ready row
+  KEEPS its login evidence (account + receipt age) and its Check login
+  control (a provider logout leaves an old green receipt behind). The
+  onboarding `capabilities` check carries the logged-in evidence in its
+  human message as well as `details.logins`, so the plain CLI and the TUI
+  show it, not only `--json`.
+- `bakin` (base field) — a semver range of hosts the pack runs on, ENFORCED at
+  install and upgrade since provider-integrations PR1 (`bakin-range-gate.ts`,
+  reusing the plugins' checker: well-formedness always, satisfaction skipped
+  on the unstamped `0.0.0-dev` host, an rc floor of the host's own base
+  compares the full prerelease). An installed pack is never re-judged by
+  sync. Set it to the rc that first understands a leg the pack needs
+  (`>=0.1.0-rc.9` for `requires.login`), or an older host would drop the
+  unknown leg and report ready.
 - `platforms?` (pack level) — OS/arch gate; a gated pack on the wrong
   platform reports "not available on this platform", never per-leg noise
   (transcribe is darwin-arm64 only).
@@ -188,6 +279,20 @@ rollback, receipts) with two additions:
   readiness; the CLI (`bakin packages install <name>`, consent + `--yes`)
   and Explore's install dialog both offer key entry into the masked secret
   store, skippable — "installed, needs key" is an honest standing state.
+- **CLI screens** — `bakin packages install` resolves a local path
+  (`./`, `../`, `~/`) against the OPERATOR's folder before anything else
+  (`src/cli/local-source.ts`; `agents install` and `skills install` share it):
+  the server resolves a relative path against its own cwd, so the consent
+  preview and the install would otherwise read different directories. The
+  consent is the Ink `PackInstallConsentReport` (every skill, pinned
+  binary + download host, npm payload, model size, prereq and login probe +
+  setup command, read from that absolute path; a remote source says its
+  requirements list after install; an unreadable manifest says why), then
+  ONE `[y/N]`. After install `CapabilityStatusReport` lays out every leg
+  (login rows carry account + checked-at) with the remediation lines as
+  next steps, and `bakin packages login-check` renders `LoginCheckReport`
+  on a terminal (plain lines when piped; reason wording in the Ink-free
+  `reports/login-reason.ts`).
 
 ## Readiness — ONE engine
 
@@ -196,8 +301,20 @@ content leg (lockfile skill projections resolved against live
 `runtime.skills`), bins leg (Bakin bin dir; honest `unsupported-platform`),
 npm leg (`verifyNpmPayload` — `ok`/`missing`/`unresolved`), models leg (dest
 present at declared size), prereqs leg (PATH/app probes; optional ones
-never block), platform gate (`platformSupported`), secrets leg (env →
-store per `secretSlot`). Non-ready legs carry remediation strings. Surfaces (all thin clients): `GET
+never block), login leg (READS the receipt `login-verify.ts` wrote — never
+spawns; `ok|missing|unknown` + `checkedAt`/`account`; never checked, stale
+or could-not-run ⇒ `unknown`; both non-ok states block ready), platform
+gate (`platformSupported`), secrets leg (env → store per `secretSlot`).
+Non-ready legs carry remediation strings (a login: the `setup` command as
+`runnableLoginSetup` shows it — `src/core/agent-packages/login-setup.ts`, the
+ONE rewrite every setup surface uses (readiness rows + remediation, the
+install's login item, `POST /api/packages/login-check`, the CLI consent):
+each command word naming one of the pack's `bins` becomes its path in the
+Bakin bin dir (`~/…` under HOME), since only the SERVER's PATH carries that
+dir; the manifest keeps the bare name — or "click Check login or run: bakin packages login-check <id>").
+Health maps a login gap to the `not-ready-login` incident (human,
+credential, `handoff.command = setup`, a `Check login` request choice on
+the shared control `/api/packages/login-check`). Surfaces (all thin clients): `GET
 /api/packages/capabilities`, the health plugin's `capability.<slug>` doctor
 findings, `bakin check capabilities` (the `capabilities` onboarding
 component — check = readiness + missing recommendations; install =

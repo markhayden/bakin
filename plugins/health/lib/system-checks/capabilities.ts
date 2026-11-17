@@ -29,6 +29,7 @@ export const CAPABILITIES_INCIDENTS: HealthIncidentDeclaration[] = [
   { id: 'not-ready-reinstall', subjectKind: 'package', resolution: { type: 'repair', actionId: PACKAGE_REINSTALL_ACTION }, required: 'owner-decides' },
   { id: 'not-ready-credential', subjectKind: 'package', resolution: { type: 'human', needs: 'credential' }, required: 'owner-decides' },
   { id: 'not-ready-install', subjectKind: 'package', resolution: { type: 'human', needs: 'external-install' }, required: 'owner-decides' },
+  { id: 'not-ready-login', subjectKind: 'package', resolution: { type: 'human', needs: 'credential' }, required: 'owner-decides' },
 ]
 
 type Family = HealthIncidentDeclaration['id']
@@ -50,9 +51,41 @@ export function capabilityFamily(cap: CapabilityReadiness): { declarationId: Fam
       }
     }
     const prereq = cap.prereqs.find((row) => !row.optional && row.status === 'missing')
+    if (prereq) {
+      return {
+        declarationId: 'not-ready-install',
+        resolution: { key: 'install-prereq', type: 'human', needs: 'external-install', label: `Install ${prereq.name}`.slice(0, 120), href, ...(prereq.help ? { handoff: { command: prereq.help } } : {}) },
+      }
+    }
+    const login = cap.login.find((row) => row.status !== 'ok')
+    if (login) {
+      // Provider-integrations §4.1: the operator logs in with the pack's exact
+      // setup command, then re-checks from the card — the shared host control
+      // runs the probe and refreshes the receipt readiness reads.
+      return {
+        declarationId: 'not-ready-login',
+        resolution: {
+          key: 'login',
+          type: 'human',
+          needs: 'credential',
+          label: (login.status === 'missing' ? `Log in: ${login.name}` : `Verify login: ${login.name}`).slice(0, 120),
+          href,
+          handoff: { command: login.setup },
+          choices: [{
+            key: 'check-login',
+            kind: 'request',
+            label: 'Check login',
+            method: 'POST',
+            url: '/api/packages/login-check',
+            body: { packageId: cap.packageId },
+            effects: { deletesUserContent: false, spendsMoney: false, widensAuthorization: false },
+          }],
+        },
+      }
+    }
     return {
       declarationId: 'not-ready-install',
-      resolution: { key: 'install-prereq', type: 'human', needs: 'external-install', label: `Install ${prereq?.name ?? 'the missing tool'}`.slice(0, 120), href, ...(prereq?.help ? { handoff: { command: prereq.help } } : {}) },
+      resolution: { key: 'install-prereq', type: 'human', needs: 'external-install', label: 'Install the missing tool', href },
     }
   }
   return null
